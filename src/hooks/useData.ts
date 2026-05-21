@@ -18,7 +18,17 @@ import {
   MOCK_VERIFICATIONS
 } from '../config';
 
-const API_URL = 'http://localhost:3001/api';
+// URL de API - ajusta según el entorno
+const getApiUrl = () => {
+  if (typeof window === 'undefined') return 'http://localhost:3001/api';
+
+  const isDevelopment = window.location.hostname === 'localhost' ||
+                        window.location.hostname === '127.0.0.1';
+
+  return isDevelopment ? 'http://localhost:3001/api' : '/api';
+};
+
+const API_URL = getApiUrl();
 
 export const useData = () => {
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
