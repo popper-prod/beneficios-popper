@@ -1,0 +1,31 @@
+id,dni,nombre,apellido,email,telefono,nivel,departamento,empresa,fecha_ingreso,activo
+ben_001,30123456,Roberto,Fernández,roberto.fernandez@grupopopper.com,+54 11 5555-1234,platinum,Tecnología,GRUPO POPPER,2020-03-15,true
+ben_002,32789012,Laura,Rodríguez,laura.rodriguez@grupopopper.com,+54 11 5555-5678,oro,Recursos Humanos,GRUPO POPPER,2021-07-10,true
+ben_003,34567890,Martín,Sánchez,martin.sanchez@grupopopper.com,+54 11 5555-9012,plata,Ventas,GRUPO POPPER,2022-01-20,true
+ben_004,28901234,Patricia,Torres,patricia.torres@grupopopper.com,+54 11 5555-3456,bronce,Administración,GRUPO POPPER,2023-05-08,true
+ben_005,35678901,Diego,Morales,diego.morales@grupopopper.com,+54 11 5555-7890,oro,Logística,GRUPO POPPER,2022-09-12,true
+ben_006,31234567,Ana,García,ana.garcia@grupopopper.com,+54 11 5555-2345,plata,Finanzas,GRUPO POPPER,2021-11-03,true
+ben_007,33445566,Carlos,López,carlos.lopez@grupopopper.com,+54 11 5555-6789,platinum,Dirección,GRUPO POPPER,2019-02-10,true
+ben_008,29876543,María,Pérez,maria.perez@grupopopper.com,+54 11 5555-4321,bronce,Servicio al Cliente,GRUPO POPPER,2023-08-15,true
+ben_009,36789012,Jorge,Martínez,jorge.martinez@grupopopper.com,+54 11 5555-8765,oro,Operaciones,GRUPO POPPER,2020-06-22,true
+ben_010,27654321,Sofia,González,sofia.gonzalez@grupopopper.com,+54 11 5555-1111,plata,Marketing,GRUPO POPPER,2022-03-30,true
+ben_011,37890123,Miguel,Rodríguez,miguel.rodriguez@grupopopper.com,+54 11 5555-2222,bronce,Capacitación,GRUPO POPPER,2023-10-05,true
+ben_012,32111222,Claudia,Díaz,claudia.diaz@grupopopper.com,+54 11 5555-3333,platinum,Finanzas,GRUPO POPPER,2018-01-15,true
+ben_013,31222333,Fernando,Moreno,fernando.moreno@grupopopper.com,+54 11 5555-4444,oro,Tecnología,GRUPO POPPER,2021-04-12,true
+ben_014,30333444,Verónica,Castro,veronica.castro@grupopopper.com,+54 11 5555-5555,plata,Recursos Humanos,GRUPO POPPER,2022-07-20,true
+ben_015,33444555,Ricardo,Ángeles,ricardo.angeles@grupopopper.com,+54 11 5555-6666,bronce,Ventas,GRUPO POPPER,2023-09-08,true
+ben_016,34555666,Gabriela,Flores,gabriela.flores@grupopopper.com,+54 11 5555-7777,oro,Administración,GRUPO POPPER,2020-11-18,true
+ben_017,29555777,Alejandro,Herrera,alejandro.herrera@grupopopper.com,+54 11 5555-8888,plata,Logística,GRUPO POPPER,2021-12-03,true
+ben_018,35666888,Cecilia,Ramos,cecilia.ramos@grupopopper.com,+54 11 5555-9999,bronce,Finanzas,GRUPO POPPER,2023-02-14,true
+ben_019,36777999,Raúl,Vargas,raul.vargas@grupopopper.com,+54 11 5555-0000,platinum,Operaciones,GRUPO POPPER,2019-08-27,true
+ben_020,28888000,Daniela,Silva,daniela.silva@grupopopper.com,+54 11 5555-1010,oro,Servicio al Cliente,GRUPO POPPER,2021-05-09,true
+ben_021,37999111,Eduardo,Navarro,eduardo.navarro@grupopopper.com,+54 11 5555-2020,plata,Marketing,GRUPO POPPER,2022-10-15,true
+ben_022,30000222,Lucía,Santos,lucia.santos@grupopopper.com,+54 11 5555-3030,bronce,Capacitación,GRUPO POPPER,2023-11-20,true
+ben_023,33111333,Sergio,Guerrero,sergio.guerrero@grupopopper.com,+54 11 5555-4040,platinum,Dirección,GRUPO POPPER,2017-03-10,true
+ben_024,34222444,Valentina,Cortés,valentina.cortes@grupopopper.com,+54 11 5555-5050,oro,Tecnología,GRUPO POPPER,2020-09-25,true
+ben_025,29333555,Mauricio,Jiménez,mauricio.jimenez@grupopopper.com,+54 11 5555-6060,plata,Recursos Humanos,GRUPO POPPER,2022-01-08,true
+ben_026,36444666,Natalia,Carrillo,natalia.carrillo@grupopopper.com,+54 11 5555-7070,bronce,Ventas,GRUPO POPPER,2023-06-12,true
+ben_027,31555777,Gustavo,Herrera,gustavo.herrera@grupopopper.com,+54 11 5555-8080,oro,Administración,GRUPO POPPER,2021-02-28,true
+ben_028,35666888,Isabella,Mendoza,isabella.mendoza@grupopopper.com,+54 11 5555-9090,plata,Logística,GRUPO POPPER,2022-04-17,true
+ben_029,32777999,Héctor,Quintero,hector.quintero@grupopopper.com,+54 11 5555-1111,bronce,Finanzas,GRUPO POPPER,2023-07-22,true
+ben_030,37888000,Sandra,Vega,sandra.vega@grupopopper.com,+54 11 5555-2121,platinum,Operaciones,GRUPO POPPER,2019-12-05,true
