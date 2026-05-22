@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const API_URL = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:3001/api'
-  : 'https://beneficios-backend-jfpx.onrender.com/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://beneficios-backend-jfpx.onrender.com/api';
 
 interface Comercio {
   id: string;

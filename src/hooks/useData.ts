@@ -16,19 +16,7 @@ import {
   MOCK_COMMERCE,
 } from '../config';
 
-// URL de API - ajusta según el entorno
-const getApiUrl = () => {
-  if (typeof window === 'undefined') return 'http://localhost:3001/api';
-
-  const isDevelopment = window.location.hostname === 'localhost' ||
-                        window.location.hostname === '127.0.0.1';
-
-  return isDevelopment
-    ? 'http://localhost:3001/api'
-    : 'https://beneficios-backend-jfpx.onrender.com/api';
-};
-
-const API_URL = getApiUrl();
+const API_URL = import.meta.env.VITE_API_URL || 'https://beneficios-backend-jfpx.onrender.com/api';
 
 export const useData = () => {
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
