@@ -15,7 +15,9 @@ const getApiUrl = () => {
   const isDevelopment = window.location.hostname === 'localhost' ||
                         window.location.hostname === '127.0.0.1';
 
-  return isDevelopment ? 'http://localhost:3001/api' : '/api';
+  return isDevelopment
+    ? 'http://localhost:3001/api'
+    : 'https://beneficios-backend-jfpx.onrender.com/api';
 };
 
 const API_URL = getApiUrl();
