@@ -20,21 +20,6 @@ const RegisterSchema = z.object({
   apellido: z.string().min(1, 'Apellido requerido'),
 });
 
-// Reset passwords - ejecutar UNA vez y eliminar
-router.get('/reset-passwords', async (req: AuthRequest, res: Response) => {
-  try {
-    const adminHash = await bcrypt.hash('Admin2024!', 12);
-    const sandraHash = await bcrypt.hash('Sandra2024!', 12);
-
-    await query('UPDATE usuarios SET password_hash = $1 WHERE username = $2', [adminHash, 'admin.popper']);
-    await query('UPDATE usuarios SET password_hash = $1 WHERE username = $2', [sandraHash, 'sandra.perez']);
-
-    res.json({ success: true, message: 'Passwords reseteadas correctamente' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 router.post('/login', validate(LoginSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { username, password } = req.body;
