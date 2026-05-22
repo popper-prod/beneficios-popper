@@ -126,9 +126,9 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
       comercio: comercioResult.rows[0],
       fuente: 'local',
     });
-  } catch (error) {
-    console.error('Error buscando beneficiario:', error);
-    res.status(500).json({ error: 'Error interno' });
+  } catch (error: any) {
+    console.error('Error buscando beneficiario:', error?.message || error);
+    res.status(500).json({ error: 'Error interno', detalle: error?.message });
   }
 });
 
