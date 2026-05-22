@@ -110,6 +110,11 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [migracionDone, setMigracionDone] = useState(false);
   const [motivoModal, setMotivoModal] = useState<{ id: string; nombre: string; accion: 'activar' | 'desactivar' } | null>(null);
   const [motivoInput, setMotivoInput] = useState('');
+  const [areas, setAreas] = useState<string[]>([]);
+  const [sectores, setSectores] = useState<string[]>([]);
+  const [filtroArea, setFiltroArea] = useState('');
+  const [filtroSector, setFiltroSector] = useState('');
+  const [grupoMotivo, setGrupoMotivo] = useState('');
 
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
@@ -159,7 +164,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
     if (activeTab === 'beneficios') fetchBeneficios();
     if (activeTab === 'comercios' || activeTab === 'qrcodes') fetchComercios();
     if (activeTab === 'beneficiarios') fetchBeneficiarios();
-    if (activeTab === 'autorizaciones') { fetchBeneficiarios(); fetchAuthLogs(); }
+    if (activeTab === 'autorizaciones') { fetchBeneficiarios(); fetchAuthLogs(); fetchAreasSectores(); }
   }, [activeTab]);
 
   // ============================================
@@ -293,6 +298,31 @@ export default function AdminDashboard({ token, user, onLogout }: {
       setTimeout(() => { fetchBeneficiarios(); fetchAuthLogs(); }, 5000);
     }
     setSyncing(false);
+  };
+
+  // Autorizaciones: cargar areas y sectores
+  const fetchAreasSectores = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/areas-sectores`, { headers });
+      if (res.ok) { const d = await res.json(); setAreas(d.areas || []); setSectores(d.sectores || []); }
+    } catch { /* silencioso */ }
+  };
+
+  // Autorizaciones: bloquear/desbloquear por grupo
+  const handleGrupoAutorizar = async (tipo: 'departamento' | 'sector', valor: string, accion: 'activar' | 'desactivar') => {
+    const motivo = grupoMotivo || `${accion === 'desactivar' ? 'Bloqueo' : 'Desbloqueo'} por ${tipo}: ${valor}`;
+    if (accion === 'desactivar' && !confirm(`${accion === 'desactivar' ? 'Bloquear' : 'Desbloquear'} todos los colaboradores de ${tipo} "${valor}"?\nMotivo: ${motivo}`)) return;
+    try {
+      const res = await fetch(`${API_URL}/admin/autorizar-grupo`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ tipo, valor, accion, motivo }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAuthMsg(`${data.procesados} colaborador(es) ${accion === 'desactivar' ? 'bloqueados' : 'desbloqueados'} en ${tipo} "${valor}"`);
+        fetchBeneficiarios(); fetchAuthLogs();
+      } else setAuthMsg(data.error || 'Error');
+    } catch { setAuthMsg('Error de conexion'); }
   };
 
   // Autorizaciones: logs
@@ -857,6 +887,88 @@ export default function AdminDashboard({ token, user, onLogout }: {
               )}
             </div>
 
+            {/* Bloqueo por area / sector */}
+            <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-4" style={{ color: 'rgba(191,163,99,0.5)' }}>
+                Bloqueo por area / sector
+              </p>
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* Bloqueo por Area */}
+                <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <p className="text-[11px] font-semibold text-white mb-2">Por Area / Departamento</p>
+                  <select
+                    value={filtroArea}
+                    onChange={e => setFiltroArea(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-[12px] text-white outline-none mb-2"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  >
+                    <option value="">Seleccionar area...</option>
+                    {areas.map(a => <option key={a} value={a}>{a} ({beneficiarios.filter((b: any) => b.departamento === a).length})</option>)}
+                  </select>
+                  {filtroArea && (
+                    <div className="space-y-2">
+                      <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                        <span className="font-semibold text-white">{filtroArea}</span> — {beneficiarios.filter((b: any) => b.departamento === filtroArea && b.activo).length} activos, {beneficiarios.filter((b: any) => b.departamento === filtroArea && !b.activo).length} inactivos
+                      </div>
+                      <input type="text" placeholder="Motivo (ej: Temporada baja, Reestructuracion...)" value={grupoMotivo}
+                        onChange={e => setGrupoMotivo(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg text-[11px] text-white outline-none placeholder:text-white/20"
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }} />
+                      <div className="flex gap-2">
+                        <button onClick={() => handleGrupoAutorizar('departamento', filtroArea, 'desactivar')}
+                          className="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider"
+                          style={{ color: '#f87171', border: '1px solid rgba(248,113,113,0.25)', background: 'rgba(248,113,113,0.05)' }}>
+                          Bloquear area
+                        </button>
+                        <button onClick={() => handleGrupoAutorizar('departamento', filtroArea, 'activar')}
+                          className="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider"
+                          style={{ color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)', background: 'rgba(74,222,128,0.05)' }}>
+                          Desbloquear area
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bloqueo por Sector */}
+                <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <p className="text-[11px] font-semibold text-white mb-2">Por Sector</p>
+                  <select
+                    value={filtroSector}
+                    onChange={e => setFiltroSector(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-[12px] text-white outline-none mb-2"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  >
+                    <option value="">Seleccionar sector...</option>
+                    {sectores.map(s => <option key={s} value={s}>{s} ({beneficiarios.filter((b: any) => b.sector === s).length})</option>)}
+                  </select>
+                  {filtroSector && (
+                    <div className="space-y-2">
+                      <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                        <span className="font-semibold text-white">{filtroSector}</span> — {beneficiarios.filter((b: any) => b.sector === filtroSector && b.activo).length} activos, {beneficiarios.filter((b: any) => b.sector === filtroSector && !b.activo).length} inactivos
+                      </div>
+                      <input type="text" placeholder="Motivo (ej: Cierre temporada, Restructuracion...)" value={grupoMotivo}
+                        onChange={e => setGrupoMotivo(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg text-[11px] text-white outline-none placeholder:text-white/20"
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }} />
+                      <div className="flex gap-2">
+                        <button onClick={() => handleGrupoAutorizar('sector', filtroSector, 'desactivar')}
+                          className="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider"
+                          style={{ color: '#f87171', border: '1px solid rgba(248,113,113,0.25)', background: 'rgba(248,113,113,0.05)' }}>
+                          Bloquear sector
+                        </button>
+                        <button onClick={() => handleGrupoAutorizar('sector', filtroSector, 'activar')}
+                          className="flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider"
+                          style={{ color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)', background: 'rgba(74,222,128,0.05)' }}>
+                          Desbloquear sector
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Acciones en bloque */}
             <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
               <p className="text-[10px] font-semibold uppercase tracking-wider mb-4" style={{ color: 'rgba(191,163,99,0.5)' }}>
@@ -896,7 +1008,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
                         <input type="checkbox" checked={selectedIds.size === beneficiarios.length && beneficiarios.length > 0}
                           onChange={selectAll} className="accent-amber-500 cursor-pointer" />
                       </th>
-                      {['DNI', 'Nombre', 'Nivel', 'Departamento', 'Estado', 'Motivo baja', 'Acciones'].map(h => (
+                      {['DNI', 'Nombre', 'Nivel', 'Area', 'Sector', 'Estado', 'Motivo baja', 'Acciones'].map(h => (
                         <th key={h} className="text-left py-2 px-2 font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>{h}</th>
                       ))}
                     </tr>
@@ -916,6 +1028,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
                           </span>
                         </td>
                         <td className="py-2.5 px-2" style={{ color: 'rgba(255,255,255,0.4)' }}>{b.departamento || '-'}</td>
+                        <td className="py-2.5 px-2" style={{ color: 'rgba(255,255,255,0.4)' }}>{b.sector || '-'}</td>
                         <td className="py-2.5 px-2">
                           <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase"
                             style={{ background: b.activo ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)', color: b.activo ? '#4ade80' : '#f87171' }}>

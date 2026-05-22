@@ -464,7 +464,10 @@ router.post('/migrar-autorizaciones', async (req: AuthRequest, res: Response) =>
     await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS autorizado_por VARCHAR(100)`);
     await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS ultima_sync TIMESTAMP`);
     await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS origen VARCHAR(20) DEFAULT 'manual'`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS sector VARCHAR(100)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_beneficiarios_naaloo_id ON beneficiarios(naaloo_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_beneficiarios_sector ON beneficiarios(sector)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_beneficiarios_departamento ON beneficiarios(departamento)`);
     await query(`
       CREATE TABLE IF NOT EXISTS autorizacion_logs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -515,11 +518,11 @@ router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
         // Empleado nuevo — insertar solo si activo en Naaloo
         if (emp.activo) {
           const inserted = await query(
-            `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, empresa, fecha_ingreso, activo, naaloo_id, origen, ultima_sync)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,$10,'naaloo',NOW())
-             ON CONFLICT (dni) DO UPDATE SET nombre=EXCLUDED.nombre, apellido=EXCLUDED.apellido, naaloo_id=EXCLUDED.naaloo_id, ultima_sync=NOW()
+            `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, sector, empresa, fecha_ingreso, activo, naaloo_id, origen, ultima_sync)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE,$11,'naaloo',NOW())
+             ON CONFLICT (dni) DO UPDATE SET nombre=EXCLUDED.nombre, apellido=EXCLUDED.apellido, departamento=EXCLUDED.departamento, sector=EXCLUDED.sector, naaloo_id=EXCLUDED.naaloo_id, ultima_sync=NOW()
              RETURNING id`,
-            [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.empresa, fechaValida, emp.id]
+            [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.sector || null, ben.empresa, fechaValida, emp.id]
           );
           logInserts.push({ beneficiario_id: inserted.rows[0].id, accion: 'sync_alta', motivo: 'Alta automatica desde Naaloo' });
           altas++;
@@ -528,8 +531,8 @@ router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
       } else if (emp.activo && !local.activo) {
         // Reactivar
         await query(
-          `UPDATE beneficiarios SET activo=TRUE, nombre=$1, apellido=$2, nivel=$3, departamento=$4, naaloo_id=$5, motivo_baja=NULL, fecha_baja=NULL, ultima_sync=NOW(), updated_at=NOW() WHERE id=$6`,
-          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, emp.id, local.id]
+          `UPDATE beneficiarios SET activo=TRUE, nombre=$1, apellido=$2, nivel=$3, departamento=$4, sector=$5, naaloo_id=$6, motivo_baja=NULL, fecha_baja=NULL, ultima_sync=NOW(), updated_at=NOW() WHERE id=$7`,
+          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, ben.sector || null, emp.id, local.id]
         );
         logInserts.push({ beneficiario_id: local.id, accion: 'sync_alta', motivo: 'Reactivado automaticamente desde Naaloo' });
         altas++;
@@ -546,8 +549,8 @@ router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
       } else {
         // Solo actualizar datos
         await query(
-          `UPDATE beneficiarios SET nombre=$1, apellido=$2, nivel=$3, departamento=$4, naaloo_id=$5, ultima_sync=NOW(), updated_at=NOW() WHERE id=$6`,
-          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, emp.id, local.id]
+          `UPDATE beneficiarios SET nombre=$1, apellido=$2, nivel=$3, departamento=$4, sector=$5, naaloo_id=$6, ultima_sync=NOW(), updated_at=NOW() WHERE id=$7`,
+          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, ben.sector || null, emp.id, local.id]
         );
         actualizados++;
       }
@@ -648,6 +651,76 @@ router.post('/autorizar-bulk', async (req: AuthRequest, res: Response) => {
   } catch (error: any) {
     console.error('Error autorizacion masiva:', error.message);
     res.status(500).json({ error: 'Error procesando autorizacion masiva', detalle: error.message });
+  }
+});
+
+// GET /api/admin/areas-sectores - Listar areas y sectores unicos
+router.get('/areas-sectores', async (req: AuthRequest, res: Response) => {
+  try {
+    const [areasResult, sectoresResult] = await Promise.all([
+      query(`SELECT DISTINCT departamento FROM beneficiarios WHERE departamento IS NOT NULL AND departamento != '' ORDER BY departamento`),
+      query(`SELECT DISTINCT sector FROM beneficiarios WHERE sector IS NOT NULL AND sector != '' ORDER BY sector`),
+    ]);
+    res.json({
+      areas: areasResult.rows.map((r: any) => r.departamento),
+      sectores: sectoresResult.rows.map((r: any) => r.sector),
+    });
+  } catch (error: any) {
+    res.json({ areas: [], sectores: [] });
+  }
+});
+
+// POST /api/admin/autorizar-grupo - Bloquear/activar por area o sector
+router.post('/autorizar-grupo', async (req: AuthRequest, res: Response) => {
+  try {
+    const { tipo, valor, accion, motivo } = req.body;
+    // tipo: 'departamento' | 'sector'
+    // valor: el nombre del area/sector
+    // accion: 'activar' | 'desactivar'
+    if (!tipo || !valor || !accion || !['activar', 'desactivar'].includes(accion) || !['departamento', 'sector'].includes(tipo)) {
+      return res.status(400).json({ error: 'Datos invalidos. Requerido: tipo (departamento/sector), valor, accion (activar/desactivar)' });
+    }
+
+    const adminNombre = (req as any).user?.nombre ? `${(req as any).user.nombre} ${(req as any).user.apellido || ''}`.trim() : 'Admin';
+    const motivoFinal = motivo || `${accion === 'desactivar' ? 'Bloqueo' : 'Desbloqueo'} por ${tipo}: ${valor}`;
+
+    // Obtener IDs de beneficiarios afectados
+    const col = tipo === 'departamento' ? 'departamento' : 'sector';
+    const targetActivo = accion === 'desactivar'; // queremos los que estan activos para desactivar, o inactivos para activar
+    const affected = await query(
+      `SELECT id FROM beneficiarios WHERE ${col} = $1 AND activo = $2`,
+      [valor, targetActivo]
+    );
+
+    if (affected.rows.length === 0) {
+      return res.json({ exito: true, procesados: 0, mensaje: `No hay colaboradores ${targetActivo ? 'activos' : 'inactivos'} en ${tipo} "${valor}"` });
+    }
+
+    // Aplicar cambio
+    if (accion === 'desactivar') {
+      await query(
+        `UPDATE beneficiarios SET activo=FALSE, motivo_baja=$1, fecha_baja=NOW(), autorizado_por=$2, updated_at=NOW() WHERE ${col} = $3 AND activo = TRUE`,
+        [motivoFinal, adminNombre, valor]
+      );
+    } else {
+      await query(
+        `UPDATE beneficiarios SET activo=TRUE, motivo_baja=NULL, fecha_baja=NULL, autorizado_por=NULL, updated_at=NOW() WHERE ${col} = $1 AND activo = FALSE`,
+        [valor]
+      );
+    }
+
+    // Insertar logs
+    for (const row of affected.rows) {
+      await query(
+        `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, $2, $3, $4)`,
+        [row.id, accion, motivoFinal, adminNombre]
+      );
+    }
+
+    res.json({ exito: true, procesados: affected.rows.length, accion, tipo, valor });
+  } catch (error: any) {
+    console.error('Error autorizacion por grupo:', error.message);
+    res.status(500).json({ error: 'Error procesando autorizacion por grupo', detalle: error.message });
   }
 });
 
