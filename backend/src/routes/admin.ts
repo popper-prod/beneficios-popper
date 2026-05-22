@@ -493,73 +493,73 @@ router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
     }
 
     const adminNombre = (req as any).user?.nombre ? `${(req as any).user.nombre} ${(req as any).user.apellido || ''}`.trim() : 'Sistema';
-    let altas = 0, bajas = 0, actualizados = 0, sinCambios = 0;
+
+    // Pre-cargar TODOS los beneficiarios locales en memoria (1 sola query)
+    const localResult = await query('SELECT id, dni, activo, naaloo_id FROM beneficiarios');
+    const localMap = new Map<string, { id: string; activo: boolean; naaloo_id: number | null }>();
+    for (const row of localResult.rows) {
+      localMap.set(row.dni, { id: row.id, activo: row.activo, naaloo_id: row.naaloo_id });
+    }
+
+    let altas = 0, bajas = 0, actualizados = 0;
     const detalles: { dni: string; nombre: string; accion: string }[] = [];
+    const logInserts: { beneficiario_id: string; accion: string; motivo: string }[] = [];
 
     for (const emp of empleados) {
       const ben = naalooToBeneficiario(emp);
       const fechaIngreso = ben.fecha_ingreso ? new Date(ben.fecha_ingreso) : null;
       const fechaValida = fechaIngreso && !isNaN(fechaIngreso.getTime()) ? fechaIngreso.toISOString().split('T')[0] : null;
+      const local = localMap.get(ben.dni);
 
-      // Buscar si ya existe en la BD local
-      const existing = await query('SELECT id, activo, naaloo_id FROM beneficiarios WHERE dni = $1', [ben.dni]);
-
-      if (existing.rows.length === 0) {
-        // Empleado nuevo — insertar
+      if (!local) {
+        // Empleado nuevo — insertar solo si activo en Naaloo
         if (emp.activo) {
           const inserted = await query(
             `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, empresa, fecha_ingreso, activo, naaloo_id, origen, ultima_sync)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,$10,'naaloo',NOW()) RETURNING id`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,$10,'naaloo',NOW())
+             ON CONFLICT (dni) DO UPDATE SET nombre=EXCLUDED.nombre, apellido=EXCLUDED.apellido, naaloo_id=EXCLUDED.naaloo_id, ultima_sync=NOW()
+             RETURNING id`,
             [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.empresa, fechaValida, emp.id]
           );
-          await query(
-            `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, 'sync_alta', 'Alta automatica desde Naaloo', $2)`,
-            [inserted.rows[0].id, adminNombre]
-          );
+          logInserts.push({ beneficiario_id: inserted.rows[0].id, accion: 'sync_alta', motivo: 'Alta automatica desde Naaloo' });
           altas++;
           detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'alta' });
         }
+      } else if (emp.activo && !local.activo) {
+        // Reactivar
+        await query(
+          `UPDATE beneficiarios SET activo=TRUE, nombre=$1, apellido=$2, nivel=$3, departamento=$4, naaloo_id=$5, motivo_baja=NULL, fecha_baja=NULL, ultima_sync=NOW(), updated_at=NOW() WHERE id=$6`,
+          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, emp.id, local.id]
+        );
+        logInserts.push({ beneficiario_id: local.id, accion: 'sync_alta', motivo: 'Reactivado automaticamente desde Naaloo' });
+        altas++;
+        detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'reactivado' });
+      } else if (!emp.activo && local.activo) {
+        // Baja
+        await query(
+          `UPDATE beneficiarios SET activo=FALSE, naaloo_id=$1, motivo_baja='Baja detectada en Naaloo', fecha_baja=NOW(), autorizado_por='Sync Naaloo', ultima_sync=NOW(), updated_at=NOW() WHERE id=$2`,
+          [emp.id, local.id]
+        );
+        logInserts.push({ beneficiario_id: local.id, accion: 'sync_baja', motivo: 'Baja automatica - empleado inactivo en Naaloo' });
+        bajas++;
+        detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'baja' });
       } else {
-        const local = existing.rows[0];
-
-        if (emp.activo && !local.activo) {
-          // Reactivar: estaba inactivo localmente pero activo en Naaloo
-          await query(
-            `UPDATE beneficiarios SET activo=TRUE, nombre=$1, apellido=$2, nivel=$3, departamento=$4, naaloo_id=$5, motivo_baja=NULL, fecha_baja=NULL, ultima_sync=NOW(), updated_at=NOW() WHERE id=$6`,
-            [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, emp.id, local.id]
-          );
-          await query(
-            `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, 'sync_alta', 'Reactivado automaticamente desde Naaloo', $2)`,
-            [local.id, adminNombre]
-          );
-          altas++;
-          detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'reactivado' });
-
-        } else if (!emp.activo && local.activo) {
-          // Baja: activo localmente pero inactivo en Naaloo
-          await query(
-            `UPDATE beneficiarios SET activo=FALSE, naaloo_id=$1, motivo_baja='Baja detectada en Naaloo', fecha_baja=NOW(), autorizado_por=$2, ultima_sync=NOW(), updated_at=NOW() WHERE id=$3`,
-            [emp.id, 'Sync Naaloo', local.id]
-          );
-          await query(
-            `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, 'sync_baja', 'Baja automatica - empleado inactivo en Naaloo', $2)`,
-            [local.id, adminNombre]
-          );
-          bajas++;
-          detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'baja' });
-
-        } else {
-          // Actualizar datos sin cambiar estado
-          await query(
-            `UPDATE beneficiarios SET nombre=$1, apellido=$2, nivel=$3, departamento=$4, naaloo_id=$5, ultima_sync=NOW(), updated_at=NOW() WHERE id=$6`,
-            [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, emp.id, local.id]
-          );
-          actualizados++;
-        }
+        // Solo actualizar datos
+        await query(
+          `UPDATE beneficiarios SET nombre=$1, apellido=$2, nivel=$3, departamento=$4, naaloo_id=$5, ultima_sync=NOW(), updated_at=NOW() WHERE id=$6`,
+          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, emp.id, local.id]
+        );
+        actualizados++;
       }
     }
 
-    sinCambios = empleados.length - altas - bajas - actualizados;
+    // Insertar todos los logs de una vez
+    for (const log of logInserts) {
+      await query(
+        `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, $2, $3, $4)`,
+        [log.beneficiario_id, log.accion, log.motivo, adminNombre]
+      );
+    }
 
     res.json({
       exito: true,
@@ -568,7 +568,7 @@ router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
         altas,
         bajas,
         actualizados,
-        sinCambios,
+        sinCambios: empleados.length - altas - bajas - actualizados,
       },
       detalles,
     });
