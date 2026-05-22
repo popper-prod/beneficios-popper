@@ -17,7 +17,7 @@ interface DashboardData {
   ultimasVerificaciones: any[];
 }
 
-type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'comercios' | 'beneficiarios' | 'qrcodes';
+type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones';
 
 const gold = '#bfa363';
 
@@ -100,6 +100,17 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [cleanupMsg, setCleanupMsg] = useState('');
   const [cleaningUp, setCleaningUp] = useState(false);
 
+  // Autorizaciones state
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<any>(null);
+  const [authLogs, setAuthLogs] = useState<any[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkMotivo, setBulkMotivo] = useState('');
+  const [authMsg, setAuthMsg] = useState('');
+  const [migracionDone, setMigracionDone] = useState(false);
+  const [motivoModal, setMotivoModal] = useState<{ id: string; nombre: string; accion: 'activar' | 'desactivar' } | null>(null);
+  const [motivoInput, setMotivoInput] = useState('');
+
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
 
@@ -148,6 +159,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
     if (activeTab === 'beneficios') fetchBeneficios();
     if (activeTab === 'comercios' || activeTab === 'qrcodes') fetchComercios();
     if (activeTab === 'beneficiarios') fetchBeneficiarios();
+    if (activeTab === 'autorizaciones') { fetchBeneficiarios(); fetchAuthLogs(); }
   }, [activeTab]);
 
   // ============================================
@@ -252,6 +264,87 @@ export default function AdminDashboard({ token, user, onLogout }: {
     } catch { alert('Error de conexion al exportar'); }
   };
 
+  // Autorizaciones: ejecutar migracion
+  const handleMigracion = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/migrar-autorizaciones`, { method: 'POST', headers });
+      const data = await res.json();
+      if (res.ok) { setMigracionDone(true); setAuthMsg('Migracion completada correctamente'); }
+      else setAuthMsg(data.error || 'Error en migracion');
+    } catch { setAuthMsg('Error de conexion'); }
+  };
+
+  // Autorizaciones: sync con Naaloo
+  const handleSyncNaaloo = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    setAuthMsg('');
+    try {
+      const res = await fetch(`${API_URL}/admin/sync-naaloo`, { method: 'POST', headers });
+      const data = await res.json();
+      if (res.ok) { setSyncResult(data); fetchBeneficiarios(); fetchAuthLogs(); }
+      else setAuthMsg(data.error || 'Error sincronizando');
+    } catch { setAuthMsg('Error de conexion con el servidor'); }
+    setSyncing(false);
+  };
+
+  // Autorizaciones: logs
+  const fetchAuthLogs = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/autorizacion-logs`, { headers });
+      if (res.ok) { const d = await res.json(); setAuthLogs(d.logs || []); }
+    } catch { /* silencioso */ }
+  };
+
+  // Autorizaciones: activar/desactivar individual
+  const handleAutorizar = async (beneficiario_id: string, accion: 'activar' | 'desactivar', motivo: string) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/autorizar`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ beneficiario_id, accion, motivo }),
+      });
+      if (res.ok) { fetchBeneficiarios(); fetchAuthLogs(); setMotivoModal(null); setMotivoInput(''); }
+      else { const d = await res.json(); setAuthMsg(d.error || 'Error'); }
+    } catch { setAuthMsg('Error de conexion'); }
+  };
+
+  // Autorizaciones: bulk
+  const handleBulkAutorizar = async (accion: 'activar' | 'desactivar') => {
+    if (selectedIds.size === 0) return;
+    const motivo = bulkMotivo || (accion === 'desactivar' ? 'Desactivacion masiva' : 'Reactivacion masiva');
+    if (accion === 'desactivar' && !confirm(`Desactivar ${selectedIds.size} colaborador(es)? Motivo: ${motivo}`)) return;
+    try {
+      const res = await fetch(`${API_URL}/admin/autorizar-bulk`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ ids: Array.from(selectedIds), accion, motivo }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAuthMsg(`${data.procesados} colaborador(es) ${accion === 'desactivar' ? 'desactivados' : 'activados'} correctamente`);
+        setSelectedIds(new Set());
+        setBulkMotivo('');
+        fetchBeneficiarios();
+        fetchAuthLogs();
+      } else setAuthMsg(data.error || 'Error');
+    } catch { setAuthMsg('Error de conexion'); }
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selectedIds.size === beneficiarios.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(beneficiarios.map((b: any) => b.id)));
+    }
+  };
+
   // Limpiar duplicados
   const handleCleanup = async () => {
     if (!confirm('Limpiar verificaciones duplicadas? Esta accion no se puede deshacer.')) return;
@@ -278,6 +371,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
     { id: 'comercios', label: 'Comercios', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
     { id: 'beneficiarios', label: 'Colaboradores', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
     { id: 'qrcodes', label: 'QR Codes', icon: 'M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z' },
+    { id: 'autorizaciones', label: 'Autorizaciones', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
   ];
 
   const formatDate = (d: string) => new Date(d).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -689,6 +783,211 @@ export default function AdminDashboard({ token, user, onLogout }: {
             })}
           </div>
         )}
+
+        {/* ====== AUTORIZACIONES ====== */}
+        {activeTab === 'autorizaciones' && (
+          <div className="space-y-5">
+            {/* Barra de acciones */}
+            <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(191,163,99,0.5)' }}>
+                    Sincronizacion con Naaloo
+                  </p>
+                  <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    Detecta bajas, cesantias y nuevas altas automaticamente
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!migracionDone && (
+                    <button onClick={handleMigracion}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
+                      style={{ color: '#a78bfa', border: '1px solid rgba(167,139,250,0.25)', background: 'rgba(167,139,250,0.05)' }}>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                      </svg>
+                      Preparar BD
+                    </button>
+                  )}
+                  <button onClick={handleSyncNaaloo} disabled={syncing}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all disabled:opacity-50"
+                    style={{ background: `linear-gradient(135deg, ${gold}, #d4b96e)`, color: '#0a0e14' }}>
+                    <svg className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    {syncing ? 'Sincronizando...' : 'Sincronizar con Naaloo'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Resultado de sync */}
+              {syncResult && (
+                <div className="p-4 rounded-xl mt-3" style={{ background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.15)' }}>
+                  <p className="text-[12px] font-semibold mb-2" style={{ color: '#4ade80' }}>Sincronizacion completada</p>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-[11px]">
+                    <div><span style={{ color: 'rgba(255,255,255,0.3)' }}>Total Naaloo:</span> <span className="text-white font-bold">{syncResult.resumen.totalNaaloo}</span></div>
+                    <div><span style={{ color: 'rgba(255,255,255,0.3)' }}>Altas:</span> <span className="font-bold" style={{ color: '#4ade80' }}>{syncResult.resumen.altas}</span></div>
+                    <div><span style={{ color: 'rgba(255,255,255,0.3)' }}>Bajas:</span> <span className="font-bold" style={{ color: '#f87171' }}>{syncResult.resumen.bajas}</span></div>
+                    <div><span style={{ color: 'rgba(255,255,255,0.3)' }}>Actualizados:</span> <span className="font-bold" style={{ color: '#60a5fa' }}>{syncResult.resumen.actualizados}</span></div>
+                    <div><span style={{ color: 'rgba(255,255,255,0.3)' }}>Sin cambios:</span> <span className="text-white">{syncResult.resumen.sinCambios}</span></div>
+                  </div>
+                  {syncResult.detalles?.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      {syncResult.detalles.map((d: any, i: number) => (
+                        <p key={i} className="text-[11px]" style={{ color: d.accion === 'baja' ? '#f87171' : '#4ade80' }}>
+                          {d.accion === 'baja' ? '⬇' : '⬆'} {d.nombre} ({d.dni}) — {d.accion}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {authMsg && (
+                <div className="mt-3 p-3 rounded-lg" style={{ background: 'rgba(191,163,99,0.08)', border: '1px solid rgba(191,163,99,0.15)' }}>
+                  <p className="text-[12px] text-center" style={{ color: gold }}>{authMsg}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Acciones en bloque */}
+            <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-4" style={{ color: 'rgba(191,163,99,0.5)' }}>
+                Gestion manual ({beneficiarios.length} colaboradores) {selectedIds.size > 0 && <span className="text-white">— {selectedIds.size} seleccionados</span>}
+              </p>
+
+              {/* Barra de acciones bulk */}
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-3 mb-4 p-3 rounded-lg" style={{ background: 'rgba(191,163,99,0.05)', border: '1px solid rgba(191,163,99,0.1)' }}>
+                  <input
+                    type="text"
+                    placeholder="Motivo (ej: Temporada baja, Rendimiento, Cesantia...)"
+                    value={bulkMotivo}
+                    onChange={e => setBulkMotivo(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg text-[12px] text-white outline-none placeholder:text-white/20"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  />
+                  <button onClick={() => handleBulkAutorizar('desactivar')}
+                    className="px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap"
+                    style={{ color: '#f87171', border: '1px solid rgba(248,113,113,0.25)', background: 'rgba(248,113,113,0.05)' }}>
+                    Desactivar ({selectedIds.size})
+                  </button>
+                  <button onClick={() => handleBulkAutorizar('activar')}
+                    className="px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap"
+                    style={{ color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)', background: 'rgba(74,222,128,0.05)' }}>
+                    Activar ({selectedIds.size})
+                  </button>
+                </div>
+              )}
+
+              {/* Tabla de colaboradores con checkboxes */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      <th className="py-2 px-2 w-8">
+                        <input type="checkbox" checked={selectedIds.size === beneficiarios.length && beneficiarios.length > 0}
+                          onChange={selectAll} className="accent-amber-500 cursor-pointer" />
+                      </th>
+                      {['DNI', 'Nombre', 'Nivel', 'Departamento', 'Estado', 'Motivo baja', 'Acciones'].map(h => (
+                        <th key={h} className="text-left py-2 px-2 font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {beneficiarios.map((b: any) => (
+                      <tr key={b.id} className="hover:bg-white/[0.02] transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                        <td className="py-2.5 px-2">
+                          <input type="checkbox" checked={selectedIds.has(b.id)} onChange={() => toggleSelection(b.id)}
+                            className="accent-amber-500 cursor-pointer" />
+                        </td>
+                        <td className="py-2.5 px-2 font-mono" style={{ color: 'rgba(255,255,255,0.5)' }}>{b.dni}</td>
+                        <td className="py-2.5 px-2 text-white font-medium">{b.nombre} {b.apellido}</td>
+                        <td className="py-2.5 px-2">
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: 'rgba(191,163,99,0.1)', color: gold }}>
+                            {b.nivel}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-2" style={{ color: 'rgba(255,255,255,0.4)' }}>{b.departamento || '-'}</td>
+                        <td className="py-2.5 px-2">
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase"
+                            style={{ background: b.activo ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)', color: b.activo ? '#4ade80' : '#f87171' }}>
+                            {b.activo ? 'Autorizado' : 'Desactivado'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-2 text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                          {b.motivo_baja || '-'}
+                        </td>
+                        <td className="py-2.5 px-2">
+                          {b.activo ? (
+                            <button onClick={() => { setMotivoModal({ id: b.id, nombre: `${b.nombre} ${b.apellido}`, accion: 'desactivar' }); setMotivoInput(''); }}
+                              className="px-3 py-1 rounded text-[10px] font-semibold"
+                              style={{ color: '#f87171', border: '1px solid rgba(248,113,113,0.2)' }}>
+                              Desactivar
+                            </button>
+                          ) : (
+                            <button onClick={() => handleAutorizar(b.id, 'activar', 'Reactivacion manual')}
+                              className="px-3 py-1 rounded text-[10px] font-semibold"
+                              style={{ color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)' }}>
+                              Activar
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {beneficiarios.length === 0 && (
+                  <p className="text-center py-12 text-[13px]" style={{ color: 'rgba(255,255,255,0.2)' }}>No hay colaboradores registrados</p>
+                )}
+              </div>
+            </div>
+
+            {/* Historial de autorizaciones */}
+            <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-4" style={{ color: 'rgba(191,163,99,0.5)' }}>
+                Historial de autorizaciones ({authLogs.length})
+              </p>
+              {authLogs.length === 0 ? (
+                <p className="text-center py-8 text-[13px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                  Sin historial. Ejecuta "Preparar BD" y luego "Sincronizar con Naaloo" para comenzar.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[12px]">
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        {['Fecha', 'Colaborador', 'DNI', 'Accion', 'Motivo', 'Autorizado por'].map(h => (
+                          <th key={h} className="text-left py-2 px-2 font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {authLogs.map((log: any) => (
+                        <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                          <td className="py-2 px-2" style={{ color: 'rgba(255,255,255,0.5)' }}>{formatDate(log.fecha)}</td>
+                          <td className="py-2 px-2 text-white font-medium">{log.nombre} {log.apellido}</td>
+                          <td className="py-2 px-2 font-mono" style={{ color: 'rgba(255,255,255,0.4)' }}>{log.dni}</td>
+                          <td className="py-2 px-2">
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase"
+                              style={{
+                                background: log.accion.includes('alta') || log.accion === 'activar' ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
+                                color: log.accion.includes('alta') || log.accion === 'activar' ? '#4ade80' : '#f87171',
+                              }}>
+                              {log.accion}
+                            </span>
+                          </td>
+                          <td className="py-2 px-2 text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>{log.motivo}</td>
+                          <td className="py-2 px-2 text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{log.autorizado_por}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ====== MODALES ====== */}
@@ -775,6 +1074,29 @@ export default function AdminDashboard({ token, user, onLogout }: {
         )}
         {msg && <p className="text-[12px] text-center mb-3" style={{ color: '#f87171' }}>{msg}</p>}
         <SubmitBtn onClick={handleSave} loading={saving} label={modal?.mode === 'create' ? 'Crear colaborador' : 'Guardar cambios'} />
+      </Modal>
+
+      {/* Modal Motivo de Desactivacion */}
+      <Modal open={!!motivoModal} onClose={() => setMotivoModal(null)} title={`Desactivar: ${motivoModal?.nombre || ''}`}>
+        <p className="text-[12px] mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          El colaborador no podra canjear beneficios mientras este desactivado.
+        </p>
+        <Field label="Motivo de desactivacion" value={motivoInput} onChange={setMotivoInput}
+          placeholder="Ej: Temporada baja, Cesantia, Rendimiento, Baja voluntaria..." required />
+        <div className="flex gap-3 mt-4">
+          <button onClick={() => setMotivoModal(null)}
+            className="flex-1 py-3 rounded-xl text-[12px] font-medium"
+            style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            Cancelar
+          </button>
+          <button
+            onClick={() => motivoModal && handleAutorizar(motivoModal.id, 'desactivar', motivoInput || 'Sin motivo especificado')}
+            disabled={!motivoInput.trim()}
+            className="flex-1 py-3 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all disabled:opacity-30"
+            style={{ background: 'rgba(248,113,113,0.15)', color: '#f87171', border: '1px solid rgba(248,113,113,0.3)' }}>
+            Confirmar desactivacion
+          </button>
+        </div>
       </Modal>
     </div>
   );

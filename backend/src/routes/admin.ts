@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
 import { verifyToken, AuthRequest } from '../middleware/auth';
+import { obtenerTodosEmpleados, naalooToBeneficiario } from '../services/naaloo';
 
 const router = Router();
 router.use(verifyToken);
@@ -447,6 +448,224 @@ router.get('/exportar-verificaciones', async (req: AuthRequest, res: Response) =
   } catch (error: any) {
     console.error('Error exportando:', error.message);
     res.status(500).json({ error: 'Error exportando' });
+  }
+});
+
+// ============================================
+// MODULO DE AUTORIZACIONES - SYNC NAALOO
+// ============================================
+
+// POST /api/admin/migrar-autorizaciones - Ejecutar migracion de columnas
+router.post('/migrar-autorizaciones', async (req: AuthRequest, res: Response) => {
+  try {
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS naaloo_id INT`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS motivo_baja VARCHAR(200)`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS fecha_baja TIMESTAMP`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS autorizado_por VARCHAR(100)`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS ultima_sync TIMESTAMP`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS origen VARCHAR(20) DEFAULT 'manual'`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_beneficiarios_naaloo_id ON beneficiarios(naaloo_id)`);
+    await query(`
+      CREATE TABLE IF NOT EXISTS autorizacion_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        beneficiario_id UUID NOT NULL REFERENCES beneficiarios(id),
+        accion VARCHAR(20) NOT NULL CHECK (accion IN ('activar', 'desactivar', 'sync_alta', 'sync_baja')),
+        motivo VARCHAR(200),
+        autorizado_por VARCHAR(100),
+        fecha TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_autorizacion_logs_beneficiario ON autorizacion_logs(beneficiario_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_autorizacion_logs_fecha ON autorizacion_logs(fecha)`);
+    res.json({ exito: true, mensaje: 'Migracion de autorizaciones completada' });
+  } catch (error: any) {
+    console.error('Error migrando:', error.message);
+    res.status(500).json({ error: 'Error en migracion', detalle: error.message });
+  }
+});
+
+// POST /api/admin/sync-naaloo - Sincronizar empleados con Naaloo
+router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
+  try {
+    const empleados = await obtenerTodosEmpleados();
+    if (empleados.length === 0) {
+      return res.status(502).json({ error: 'No se pudo conectar con Naaloo o no hay empleados' });
+    }
+
+    const adminNombre = (req as any).user?.nombre ? `${(req as any).user.nombre} ${(req as any).user.apellido || ''}`.trim() : 'Sistema';
+    let altas = 0, bajas = 0, actualizados = 0, sinCambios = 0;
+    const detalles: { dni: string; nombre: string; accion: string }[] = [];
+
+    for (const emp of empleados) {
+      const ben = naalooToBeneficiario(emp);
+      const fechaIngreso = ben.fecha_ingreso ? new Date(ben.fecha_ingreso) : null;
+      const fechaValida = fechaIngreso && !isNaN(fechaIngreso.getTime()) ? fechaIngreso.toISOString().split('T')[0] : null;
+
+      // Buscar si ya existe en la BD local
+      const existing = await query('SELECT id, activo, naaloo_id FROM beneficiarios WHERE dni = $1', [ben.dni]);
+
+      if (existing.rows.length === 0) {
+        // Empleado nuevo — insertar
+        if (emp.activo) {
+          const inserted = await query(
+            `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, empresa, fecha_ingreso, activo, naaloo_id, origen, ultima_sync)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,$10,'naaloo',NOW()) RETURNING id`,
+            [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.empresa, fechaValida, emp.id]
+          );
+          await query(
+            `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, 'sync_alta', 'Alta automatica desde Naaloo', $2)`,
+            [inserted.rows[0].id, adminNombre]
+          );
+          altas++;
+          detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'alta' });
+        }
+      } else {
+        const local = existing.rows[0];
+
+        if (emp.activo && !local.activo) {
+          // Reactivar: estaba inactivo localmente pero activo en Naaloo
+          await query(
+            `UPDATE beneficiarios SET activo=TRUE, nombre=$1, apellido=$2, nivel=$3, departamento=$4, naaloo_id=$5, motivo_baja=NULL, fecha_baja=NULL, ultima_sync=NOW(), updated_at=NOW() WHERE id=$6`,
+            [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, emp.id, local.id]
+          );
+          await query(
+            `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, 'sync_alta', 'Reactivado automaticamente desde Naaloo', $2)`,
+            [local.id, adminNombre]
+          );
+          altas++;
+          detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'reactivado' });
+
+        } else if (!emp.activo && local.activo) {
+          // Baja: activo localmente pero inactivo en Naaloo
+          await query(
+            `UPDATE beneficiarios SET activo=FALSE, naaloo_id=$1, motivo_baja='Baja detectada en Naaloo', fecha_baja=NOW(), autorizado_por=$2, ultima_sync=NOW(), updated_at=NOW() WHERE id=$3`,
+            [emp.id, 'Sync Naaloo', local.id]
+          );
+          await query(
+            `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, 'sync_baja', 'Baja automatica - empleado inactivo en Naaloo', $2)`,
+            [local.id, adminNombre]
+          );
+          bajas++;
+          detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'baja' });
+
+        } else {
+          // Actualizar datos sin cambiar estado
+          await query(
+            `UPDATE beneficiarios SET nombre=$1, apellido=$2, nivel=$3, departamento=$4, naaloo_id=$5, ultima_sync=NOW(), updated_at=NOW() WHERE id=$6`,
+            [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, emp.id, local.id]
+          );
+          actualizados++;
+        }
+      }
+    }
+
+    sinCambios = empleados.length - altas - bajas - actualizados;
+
+    res.json({
+      exito: true,
+      resumen: {
+        totalNaaloo: empleados.length,
+        altas,
+        bajas,
+        actualizados,
+        sinCambios,
+      },
+      detalles,
+    });
+  } catch (error: any) {
+    console.error('Error sincronizando con Naaloo:', error.message);
+    res.status(500).json({ error: 'Error sincronizando', detalle: error.message });
+  }
+});
+
+// POST /api/admin/autorizar - Activar o desactivar un beneficiario manualmente
+router.post('/autorizar', async (req: AuthRequest, res: Response) => {
+  try {
+    const { beneficiario_id, accion, motivo } = req.body;
+    if (!beneficiario_id || !accion || !['activar', 'desactivar'].includes(accion)) {
+      return res.status(400).json({ error: 'Datos invalidos. Requerido: beneficiario_id, accion (activar/desactivar)' });
+    }
+
+    const adminNombre = (req as any).user?.nombre ? `${(req as any).user.nombre} ${(req as any).user.apellido || ''}`.trim() : 'Admin';
+
+    if (accion === 'desactivar') {
+      await query(
+        `UPDATE beneficiarios SET activo=FALSE, motivo_baja=$1, fecha_baja=NOW(), autorizado_por=$2, updated_at=NOW() WHERE id=$3`,
+        [motivo || 'Desactivacion manual', adminNombre, beneficiario_id]
+      );
+    } else {
+      await query(
+        `UPDATE beneficiarios SET activo=TRUE, motivo_baja=NULL, fecha_baja=NULL, autorizado_por=NULL, updated_at=NOW() WHERE id=$1`,
+        [beneficiario_id]
+      );
+    }
+
+    await query(
+      `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, $2, $3, $4)`,
+      [beneficiario_id, accion, motivo || (accion === 'desactivar' ? 'Desactivacion manual' : 'Reactivacion manual'), adminNombre]
+    );
+
+    res.json({ exito: true, accion });
+  } catch (error: any) {
+    console.error('Error autorizando:', error.message);
+    res.status(500).json({ error: 'Error procesando autorizacion', detalle: error.message });
+  }
+});
+
+// POST /api/admin/autorizar-bulk - Activar o desactivar varios beneficiarios
+router.post('/autorizar-bulk', async (req: AuthRequest, res: Response) => {
+  try {
+    const { ids, accion, motivo } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0 || !accion || !['activar', 'desactivar'].includes(accion)) {
+      return res.status(400).json({ error: 'Datos invalidos. Requerido: ids (array), accion (activar/desactivar)' });
+    }
+
+    const adminNombre = (req as any).user?.nombre ? `${(req as any).user.nombre} ${(req as any).user.apellido || ''}`.trim() : 'Admin';
+    const motivoFinal = motivo || (accion === 'desactivar' ? 'Desactivacion masiva' : 'Reactivacion masiva');
+    let procesados = 0;
+
+    for (const id of ids) {
+      if (accion === 'desactivar') {
+        await query(
+          `UPDATE beneficiarios SET activo=FALSE, motivo_baja=$1, fecha_baja=NOW(), autorizado_por=$2, updated_at=NOW() WHERE id=$3`,
+          [motivoFinal, adminNombre, id]
+        );
+      } else {
+        await query(
+          `UPDATE beneficiarios SET activo=TRUE, motivo_baja=NULL, fecha_baja=NULL, autorizado_por=NULL, updated_at=NOW() WHERE id=$1`,
+          [id]
+        );
+      }
+
+      await query(
+        `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, $2, $3, $4)`,
+        [id, accion, motivoFinal, adminNombre]
+      );
+      procesados++;
+    }
+
+    res.json({ exito: true, procesados, accion });
+  } catch (error: any) {
+    console.error('Error autorizacion masiva:', error.message);
+    res.status(500).json({ error: 'Error procesando autorizacion masiva', detalle: error.message });
+  }
+});
+
+// GET /api/admin/autorizacion-logs - Historial de cambios de autorizacion
+router.get('/autorizacion-logs', async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT al.id, al.accion, al.motivo, al.autorizado_por, al.fecha,
+             b.dni, b.nombre, b.apellido
+      FROM autorizacion_logs al
+      LEFT JOIN beneficiarios b ON b.id = al.beneficiario_id
+      ORDER BY al.fecha DESC
+      LIMIT 100
+    `);
+    res.json({ logs: result.rows });
+  } catch (error: any) {
+    // Si la tabla no existe aun, devolver vacio
+    res.json({ logs: [] });
   }
 });
 

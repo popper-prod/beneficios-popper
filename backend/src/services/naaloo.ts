@@ -95,6 +95,42 @@ export async function obtenerEmpleadosActivos(): Promise<NaalooEmpleado[]> {
   }
 }
 
+// Obtener TODOS los empleados (activos e inactivos) para sincronización
+export async function obtenerTodosEmpleados(): Promise<NaalooEmpleado[]> {
+  try {
+    const allEmpleados: NaalooEmpleado[] = [];
+    let page = 1;
+    const limit = 100;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch(`${NAALOO_API_URL}/personal/?page=${page}&limit=${limit}`, {
+        headers: {
+          'Authorization': `Bearer ${NAALOO_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) break;
+
+      const data: NaalooResponse = await response.json();
+
+      if (data.data.length === 0) {
+        hasMore = false;
+      } else {
+        allEmpleados.push(...data.data); // No filtramos por activo
+        page++;
+        if (data.data.length < limit) hasMore = false;
+      }
+    }
+
+    return allEmpleados;
+  } catch (error) {
+    console.error('Error obteniendo todos los empleados de Naaloo:', error);
+    return [];
+  }
+}
+
 // Convertir empleado de Naaloo al formato de beneficiario local
 export function naalooToBeneficiario(empleado: NaalooEmpleado) {
   // Asignar nivel según antigüedad
