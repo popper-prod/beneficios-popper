@@ -169,11 +169,39 @@ router.post('/canjear', async (req: Request, res: Response) => {
 
     // Verificar beneficio
     const beneficioResult = await query(
-      'SELECT id, nombre FROM beneficios WHERE id = $1 AND activo = TRUE',
+      'SELECT id, nombre, limite_uso_diario, limite_uso_mensual FROM beneficios WHERE id = $1 AND activo = TRUE',
       [beneficio_id]
     );
     if (beneficioResult.rows.length === 0) {
       return res.status(404).json({ error: 'Beneficio no encontrado' });
+    }
+
+    const beneficio = beneficioResult.rows[0];
+
+    // Validar limite diario
+    if (beneficio.limite_uso_diario) {
+      const usosHoy = await query(
+        `SELECT COUNT(*) as total FROM verificaciones
+         WHERE beneficiario_id = $1 AND beneficio_id = $2 AND estado = 'exitoso'
+         AND fecha_verificacion >= CURRENT_DATE`,
+        [beneficiarioId, beneficio_id]
+      );
+      if (parseInt(usosHoy.rows[0].total) >= beneficio.limite_uso_diario) {
+        return res.status(429).json({ error: `Limite diario alcanzado (${beneficio.limite_uso_diario} por dia)` });
+      }
+    }
+
+    // Validar limite mensual
+    if (beneficio.limite_uso_mensual) {
+      const usosMes = await query(
+        `SELECT COUNT(*) as total FROM verificaciones
+         WHERE beneficiario_id = $1 AND beneficio_id = $2 AND estado = 'exitoso'
+         AND fecha_verificacion >= date_trunc('month', CURRENT_DATE)`,
+        [beneficiarioId, beneficio_id]
+      );
+      if (parseInt(usosMes.rows[0].total) >= beneficio.limite_uso_mensual) {
+        return res.status(429).json({ error: `Limite mensual alcanzado (${beneficio.limite_uso_mensual} por mes)` });
+      }
     }
 
     // Registrar verificacion
@@ -195,11 +223,43 @@ router.post('/canjear', async (req: Request, res: Response) => {
     res.json({
       exito: true,
       verificacion: verificacion.rows[0],
-      beneficio: beneficioResult.rows[0].nombre,
+      beneficio: beneficio.nombre,
     });
   } catch (error: any) {
     console.error('Error canjeando beneficio:', error?.message || error);
     res.status(500).json({ error: 'Error interno', detalle: error?.message });
+  }
+});
+
+// GET /api/public/historial/:dni - Historial de canjes del colaborador
+router.get('/historial/:dni', async (req: Request, res: Response) => {
+  try {
+    const dni = req.params.dni as string;
+    if (!/^\d{7,8}$/.test(dni)) return res.status(400).json({ error: 'DNI invalido' });
+
+    const beneficiario = await query('SELECT id, nombre, apellido FROM beneficiarios WHERE dni = $1', [dni]);
+    if (beneficiario.rows.length === 0) return res.json({ historial: [] });
+
+    const result = await query(
+      `SELECT v.fecha_verificacion, v.estado, v.codigo_referencia,
+              ben.nombre as beneficio_nombre, ben.tipo as beneficio_tipo, ben.descuento,
+              c.nombre as comercio_nombre
+       FROM verificaciones v
+       LEFT JOIN beneficios ben ON ben.id = v.beneficio_id
+       LEFT JOIN comercios c ON c.id = v.comercio_id
+       WHERE v.beneficiario_id = $1 AND v.estado = 'exitoso'
+       ORDER BY v.fecha_verificacion DESC
+       LIMIT 50`,
+      [beneficiario.rows[0].id]
+    );
+
+    res.json({
+      historial: result.rows,
+      total: result.rows.length,
+    });
+  } catch (error: any) {
+    console.error('Error historial:', error?.message);
+    res.status(500).json({ error: 'Error interno' });
   }
 });
 

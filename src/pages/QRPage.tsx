@@ -35,6 +35,15 @@ interface Beneficio {
   nivel_minimo: string;
 }
 
+interface HistorialItem {
+  fecha_verificacion: string;
+  beneficio_nombre: string;
+  beneficio_tipo: string;
+  descuento: number | null;
+  comercio_nombre: string;
+  codigo_referencia: string;
+}
+
 type Step = 'loading' | 'identify' | 'profile' | 'success' | 'error';
 
 const nivelColors: Record<string, { bg: string; text: string; label: string }> = {
@@ -55,6 +64,8 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [processing, setProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successData, setSuccessData] = useState<any>(null);
+  const [historial, setHistorial] = useState<HistorialItem[]>([]);
+  const [showHistorial, setShowHistorial] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   const gold = '#bfa363';
@@ -100,6 +111,15 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
       setBeneficiario(data.beneficiario);
       setBeneficios(data.beneficios);
       setStep('profile');
+
+      // Cargar historial en paralelo (no bloquea)
+      try {
+        const hRes = await fetch(`${API_URL}/public/historial/${dni}`);
+        if (hRes.ok) {
+          const hData = await hRes.json();
+          setHistorial(hData.historial || []);
+        }
+      } catch { /* silencioso */ }
     } catch {
       setErrorMsg('Error de conexion');
     }
@@ -144,6 +164,8 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
     setSelectedBenefit('');
     setErrorMsg('');
     setSuccessData(null);
+    setHistorial([]);
+    setShowHistorial(false);
     setStep('identify');
   };
 
@@ -398,6 +420,43 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
                         </div>
                       </button>
                     ))}
+                  </div>
+                )}
+
+                {/* Historial de canjes */}
+                {historial.length > 0 && (
+                  <div className="mt-5">
+                    <div className="h-px mb-4" style={{ background: 'linear-gradient(90deg, transparent, rgba(191,163,99,0.12), transparent)' }} />
+                    <button
+                      onClick={() => setShowHistorial(!showHistorial)}
+                      className="w-full flex items-center justify-between py-2 text-[10px] font-semibold tracking-[0.2em] uppercase"
+                      style={{ color: 'rgba(191,163,99,0.45)' }}
+                    >
+                      <span>Mis canjes recientes ({historial.length})</span>
+                      <svg className={`w-3.5 h-3.5 transition-transform duration-300 ${showHistorial ? 'rotate-180' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {showHistorial && (
+                      <div className="mt-2 space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                        {historial.map((h, i) => (
+                          <div key={i} className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[12px] font-medium text-white truncate">{h.beneficio_nombre}</p>
+                                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                                  {h.comercio_nombre} · {new Date(h.fecha_verificacion).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                </p>
+                              </div>
+                              {h.descuento && (
+                                <span className="flex-shrink-0 text-[11px] font-bold" style={{ color: '#4ade80' }}>{h.descuento}%</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 

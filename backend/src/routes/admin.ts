@@ -368,4 +368,86 @@ router.get('/comercio-beneficios/:comercioId', async (req: AuthRequest, res: Res
   }
 });
 
+// ============================================
+// LIMPIAR DUPLICADOS
+// ============================================
+router.post('/limpiar-duplicados', async (req: AuthRequest, res: Response) => {
+  try {
+    // Eliminar comercios duplicados (mantener el más reciente)
+    const dupComercios = await query(`
+      DELETE FROM comercios WHERE id NOT IN (
+        SELECT DISTINCT ON (qr_code) id FROM comercios ORDER BY qr_code, created_at DESC
+      ) AND id NOT IN (SELECT DISTINCT comercio_id FROM verificaciones)
+      RETURNING id
+    `);
+
+    // Eliminar beneficios duplicados (mantener el más reciente)
+    const dupBeneficios = await query(`
+      DELETE FROM beneficios WHERE id NOT IN (
+        SELECT DISTINCT ON (nombre) id FROM beneficios ORDER BY nombre, created_at DESC
+      ) AND id NOT IN (SELECT DISTINCT beneficio_id FROM verificaciones)
+      RETURNING id
+    `);
+
+    // Limpiar comercio_beneficios huérfanos
+    await query(`DELETE FROM comercio_beneficios WHERE comercio_id NOT IN (SELECT id FROM comercios) OR beneficio_id NOT IN (SELECT id FROM beneficios)`);
+
+    res.json({
+      eliminados: {
+        comercios: dupComercios.rows.length,
+        beneficios: dupBeneficios.rows.length,
+      }
+    });
+  } catch (error: any) {
+    console.error('Error limpiando duplicados:', error.message);
+    res.status(500).json({ error: 'Error limpiando duplicados', detalle: error.message });
+  }
+});
+
+// ============================================
+// EXPORTAR VERIFICACIONES CSV
+// ============================================
+router.get('/exportar-verificaciones', async (req: AuthRequest, res: Response) => {
+  try {
+    const { desde, hasta } = req.query;
+    let where = "WHERE 1=1";
+    const params: any[] = [];
+    let idx = 1;
+    if (desde) { where += ` AND v.fecha_verificacion >= $${idx++}`; params.push(desde); }
+    if (hasta) { where += ` AND v.fecha_verificacion <= $${idx++}`; params.push(hasta); }
+
+    const result = await query(`
+      SELECT v.fecha_verificacion, v.estado, v.codigo_referencia, v.monto_original, v.monto_descuento, v.monto_final,
+             b.dni, b.nombre as beneficiario_nombre, b.apellido as beneficiario_apellido, b.nivel,
+             ben.nombre as beneficio_nombre, ben.tipo as beneficio_tipo, ben.descuento,
+             c.nombre as comercio_nombre, c.direccion as comercio_direccion
+      FROM verificaciones v
+      LEFT JOIN beneficiarios b ON b.id = v.beneficiario_id
+      LEFT JOIN beneficios ben ON ben.id = v.beneficio_id
+      LEFT JOIN comercios c ON c.id = v.comercio_id
+      ${where}
+      ORDER BY v.fecha_verificacion DESC
+    `, params);
+
+    // CSV
+    const headers = ['Fecha', 'Estado', 'Codigo', 'DNI', 'Colaborador', 'Nivel', 'Beneficio', 'Tipo', 'Descuento%', 'Comercio', 'Direccion'];
+    const rows = result.rows.map((r: any) => [
+      new Date(r.fecha_verificacion).toLocaleString('es-AR'),
+      r.estado, r.codigo_referencia, r.dni,
+      `${r.beneficiario_nombre || ''} ${r.beneficiario_apellido || ''}`.trim(),
+      r.nivel || '', r.beneficio_nombre || '', r.beneficio_tipo || '',
+      r.descuento || '', r.comercio_nombre || '', r.comercio_direccion || '',
+    ]);
+
+    const csv = [headers.join(','), ...rows.map((r: string[]) => r.map(c => `"${(c || '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="verificaciones_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send('﻿' + csv); // BOM for Excel UTF-8
+  } catch (error: any) {
+    console.error('Error exportando:', error.message);
+    res.status(500).json({ error: 'Error exportando' });
+  }
+});
+
 export default router;

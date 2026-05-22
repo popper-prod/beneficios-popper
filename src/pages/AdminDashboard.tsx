@@ -97,6 +97,8 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [modal, setModal] = useState<{ type: 'beneficio' | 'comercio' | 'beneficiario'; mode: 'create' | 'edit'; item?: any } | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [cleanupMsg, setCleanupMsg] = useState('');
+  const [cleaningUp, setCleaningUp] = useState(false);
 
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
@@ -231,6 +233,42 @@ export default function AdminDashboard({ token, user, onLogout }: {
         if (type === 'beneficiario') fetchBeneficiarios();
       }
     } catch (e) { console.error(e); }
+  };
+
+  // Exportar CSV
+  const handleExportCSV = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/exportar-verificaciones`, { headers });
+      if (!res.ok) { alert('Error al exportar'); return; }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `verificaciones_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch { alert('Error de conexion al exportar'); }
+  };
+
+  // Limpiar duplicados
+  const handleCleanup = async () => {
+    if (!confirm('Limpiar verificaciones duplicadas? Esta accion no se puede deshacer.')) return;
+    setCleaningUp(true);
+    setCleanupMsg('');
+    try {
+      const res = await fetch(`${API_URL}/admin/limpiar-duplicados`, { method: 'POST', headers });
+      const data = await res.json();
+      if (res.ok) {
+        setCleanupMsg(`Limpieza completada: ${data.duplicadosEliminados || 0} duplicados eliminados.`);
+        fetchVerificaciones();
+        fetchDashboard();
+      } else {
+        setCleanupMsg(data.error || 'Error al limpiar');
+      }
+    } catch { setCleanupMsg('Error de conexion'); }
+    setCleaningUp(false);
   };
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
@@ -423,15 +461,38 @@ export default function AdminDashboard({ token, user, onLogout }: {
         {/* ====== VERIFICACIONES ====== */}
         {activeTab === 'verificaciones' && (
           <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(191,163,99,0.5)' }}>
                 Historial completo ({verificaciones.length})
               </p>
-              <button onClick={fetchVerificaciones} className="text-[11px] px-3 py-1.5 rounded-lg"
-                style={{ color: gold, border: `1px solid rgba(191,163,99,0.2)` }}>
-                Actualizar
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={handleExportCSV}
+                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg font-medium transition-all"
+                  style={{ color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)', background: 'rgba(74,222,128,0.05)' }}>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Exportar CSV
+                </button>
+                <button onClick={handleCleanup} disabled={cleaningUp}
+                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
+                  style={{ color: '#fb923c', border: '1px solid rgba(251,146,60,0.2)', background: 'rgba(251,146,60,0.05)' }}>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                  </svg>
+                  {cleaningUp ? 'Limpiando...' : 'Limpiar duplicados'}
+                </button>
+                <button onClick={fetchVerificaciones} className="text-[11px] px-3 py-1.5 rounded-lg"
+                  style={{ color: gold, border: `1px solid rgba(191,163,99,0.2)` }}>
+                  Actualizar
+                </button>
+              </div>
             </div>
+            {cleanupMsg && (
+              <div className="mb-4 p-3 rounded-lg" style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.15)' }}>
+                <p className="text-[12px] text-center" style={{ color: '#fb923c' }}>{cleanupMsg}</p>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-[12px]">
                 <thead>
