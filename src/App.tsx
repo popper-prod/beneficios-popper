@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useAuth from './hooks/useAuth';
 import useData from './hooks/useData';
 import LoginScreen from './components/auth/LoginScreen';
@@ -10,6 +10,18 @@ export default function App() {
   const { isAuthenticated, user, token, loading, error, login, logout } = useAuth();
   const { commerce, getBeneficiaryByDni, getBenefitsForBeneficiary, processVerification } = useData();
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('login');
+
+  // Ocultar la pantalla de carga HTML cuando React se monta
+  useEffect(() => {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+      loadingScreen.classList.add('hidden');
+      // Remover del DOM después de la transición
+      setTimeout(() => {
+        loadingScreen.remove();
+      }, 600);
+    }
+  }, []);
 
   const handleLogin = async (username: string, password: string) => {
     const success = await login(username, password);

@@ -59,22 +59,19 @@ export const useData = () => {
     };
     const updated = [...beneficiaries, newBeneficiary];
     setBeneficiaries(updated);
-    storeData(KEYS.beneficiaries, updated);
     return newBeneficiary;
   }, [beneficiaries]);
 
   const updateBeneficiary = useCallback((id: string, updates: Partial<Beneficiary>) => {
-    const updated = beneficiaries.map(b => 
+    const updated = beneficiaries.map(b =>
       b.id === id ? { ...b, ...updates } : b
     );
     setBeneficiaries(updated);
-    storeData(KEYS.beneficiaries, updated);
   }, [beneficiaries]);
 
   const deleteBeneficiary = useCallback((id: string) => {
     const updated = beneficiaries.filter(b => b.id !== id);
     setBeneficiaries(updated);
-    storeData(KEYS.beneficiaries, updated);
   }, [beneficiaries]);
 
   const getBeneficiaryByDni = useCallback(async (dni: string, token?: string): Promise<Beneficiary | undefined> => {
@@ -115,22 +112,19 @@ export const useData = () => {
     };
     const updated = [...benefits, newBenefit];
     setBenefits(updated);
-    storeData(KEYS.benefits, updated);
     return newBenefit;
   }, [benefits]);
 
   const updateBenefit = useCallback((id: string, updates: Partial<Benefit>) => {
-    const updated = benefits.map(b => 
+    const updated = benefits.map(b =>
       b.id === id ? { ...b, ...updates } : b
     );
     setBenefits(updated);
-    storeData(KEYS.benefits, updated);
   }, [benefits]);
 
   const deleteBenefit = useCallback((id: string) => {
     const updated = benefits.filter(b => b.id !== id);
     setBenefits(updated);
-    storeData(KEYS.benefits, updated);
   }, [benefits]);
 
   // ============================================
@@ -145,22 +139,19 @@ export const useData = () => {
     };
     const updated = [...commerce, commerceItem];
     setCommerce(updated);
-    storeData(KEYS.commerce, updated);
     return commerceItem;
   }, [commerce]);
 
   const updateCommerce = useCallback((id: string, updates: Partial<Commerce>) => {
-    const updated = commerce.map(c => 
+    const updated = commerce.map(c =>
       c.id === id ? { ...c, ...updates } : c
     );
     setCommerce(updated);
-    storeData(KEYS.commerce, updated);
   }, [commerce]);
 
   const deleteCommerce = useCallback((id: string) => {
     const updated = commerce.filter(c => c.id !== id);
     setCommerce(updated);
-    storeData(KEYS.commerce, updated);
   }, [commerce]);
 
   // ============================================
