@@ -155,12 +155,14 @@ router.post('/canjear', async (req: Request, res: Response) => {
         return res.status(404).json({ error: 'Colaborador no encontrado' });
       }
       const ben = naalooToBeneficiario(empleado);
+      const fechaIngreso = ben.fecha_ingreso ? new Date(ben.fecha_ingreso) : null;
+      const fechaValida = fechaIngreso && !isNaN(fechaIngreso.getTime()) ? fechaIngreso.toISOString().split('T')[0] : null;
       const insertResult = await query(
         `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, empresa, legajo, fecha_ingreso, activo)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (dni) DO UPDATE SET nombre = EXCLUDED.nombre, apellido = EXCLUDED.apellido, nivel = EXCLUDED.nivel, updated_at = NOW()
          RETURNING id`,
-        [ben.dni, ben.nombre, ben.apellido, ben.email, ben.telefono, ben.nivel, ben.departamento, ben.empresa, ben.legajo, ben.fecha_ingreso, ben.activo]
+        [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.empresa, ben.legajo || null, fechaValida, ben.activo]
       );
       beneficiarioId = insertResult.rows[0].id;
     }
