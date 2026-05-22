@@ -23,8 +23,19 @@ const RegisterSchema = z.object({
 // Diagnostico temporal - eliminar despues
 router.get('/check-users', async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query('SELECT username, rol, activo FROM usuarios LIMIT 10');
-    res.json({ total: result.rows.length, users: result.rows });
+    const result = await query('SELECT username, rol, activo, password_hash FROM usuarios LIMIT 10');
+    // Verificar hash contra password conocida
+    const checks = await Promise.all(result.rows.map(async (u: any) => {
+      const testPass = u.username === 'admin.popper' ? 'Admin2024!' : 'Sandra2024!';
+      const matches = await bcrypt.compare(testPass, u.password_hash);
+      return {
+        username: u.username,
+        rol: u.rol,
+        hashPrefix: u.password_hash.substring(0, 20) + '...',
+        passwordMatches: matches,
+      };
+    }));
+    res.json({ total: result.rows.length, users: checks });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
