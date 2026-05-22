@@ -137,17 +137,24 @@ export interface NaalooAuthUser {
   validEmail?: boolean;
 }
 
+// Headers que la app web de Naaloo envia en cada request (detectados via reverse-engineering del bundle)
+const NAALOO_HEADERS = {
+  'Content-Type': 'application/json',
+  'X-Client-Version': '2.79.002',
+  'Origin': 'https://app.naaloo.com',
+  'Referer': 'https://app.naaloo.com/',
+};
+
 export async function loginNaaloo(userName: string, password: string): Promise<NaalooAuthUser | null> {
   try {
     // Paso 1: obtener tenants del usuario
     const tenantsRes = await fetch(`${NAALOO_API_URL}/auth/tenants`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: NAALOO_HEADERS,
       body: JSON.stringify({
         userName,
         password,
-        applicationName: 'GrupoPopper Beneficios',
-        agent: 'Beneficios-Backend',
+        applicationName: 'naaloo',
       }),
     });
 
@@ -177,13 +184,12 @@ export async function loginNaaloo(userName: string, password: string): Promise<N
     // Paso 2: autenticar contra el tenant
     const authRes = await fetch(`${NAALOO_API_URL}/auth/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: NAALOO_HEADERS,
       body: JSON.stringify({
         userName,
         password,
         token: tenantToken,
-        applicationName: 'GrupoPopper Beneficios',
-        agent: 'Beneficios-Backend',
+        applicationName: 'naaloo',
       }),
     });
 
