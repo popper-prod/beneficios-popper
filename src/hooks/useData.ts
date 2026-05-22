@@ -12,10 +12,8 @@ import {
   BenefitLevel
 } from '../types';
 import {
-  MOCK_BENEFICIARIES,
   MOCK_BENEFITS,
   MOCK_COMMERCE,
-  MOCK_VERIFICATIONS
 } from '../config';
 
 // URL de API - ajusta según el entorno
@@ -36,7 +34,7 @@ export const useData = () => {
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [benefits, setBenefits] = useState<Benefit[]>([]);
   const [commerce, setCommerce] = useState<Commerce[]>([]);
-  const [verifications, setVerifications] = useState<Verification[]>([]);
+  const [verifications] = useState<Verification[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Cargar datos estáticos (comercios, beneficios) al iniciar
@@ -160,8 +158,8 @@ export const useData = () => {
   
   const processVerification = useCallback(async (
     formData: VerificationFormData,
-    verifierId: string,
-    verifierName: string,
+    _verifierId: string,
+    _verifierName: string,
     geoLocation?: { lat: number; lng: number },
     token?: string
   ): Promise<{ success: boolean; message: string; verification?: Verification }> => {
@@ -178,8 +176,8 @@ export const useData = () => {
           dni: formData.dni,
           beneficio_id: formData.beneficioId,
           comercio_id: formData.comercioId,
-          monto_original: formData.montoOriginal || 0,
-          monto_descuento: formData.montoDescuento || 0,
+          monto_original: 0,
+          monto_descuento: 0,
           latitud: geoLocation?.lat,
           longitud: geoLocation?.lng,
         }),

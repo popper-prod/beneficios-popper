@@ -4,6 +4,7 @@ import { config } from './config';
 import authRoutes from './routes/auth';
 import verificacionRoutes from './routes/verificacion';
 import publicRoutes from './routes/public';
+import adminRoutes from './routes/admin';
 
 const app = express();
 
@@ -44,6 +45,7 @@ app.get('/', (req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/verificacion', verificacionRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('❌ Error:', err);
