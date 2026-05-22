@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query } from '../db';
 import { verifyToken, AuthRequest } from '../middleware/auth';
 import { validate } from '../middleware/validation';
+import { buscarEmpleadoPorDni, obtenerEmpleadosActivos, naalooToBeneficiario } from '../services/naaloo';
 
 const router = Router();
 
@@ -26,12 +27,37 @@ router.get('/beneficiario/:dni', async (req: AuthRequest, res: Response) => {
   try {
     const dni = req.params.dni as string;
 
-    if (!/^\d{8}$/.test(dni)) {
+    if (!/^\d{7,8}$/.test(dni)) {
       return res.status(400).json({ error: 'DNI inválido' });
     }
 
+    // 1. Buscar primero en Naaloo (datos reales de RRHH)
+    const empleadoNaaloo = await buscarEmpleadoPorDni(dni);
+
+    if (empleadoNaaloo) {
+      const beneficiario = naalooToBeneficiario(empleadoNaaloo);
+
+      // Buscar beneficios disponibles según su nivel
+      const nivelOrder: Record<string, number> = { bronce: 1, plata: 2, oro: 3, platinum: 4 };
+      const beneficiosResult = await query(
+        `SELECT b.id, b.nombre, b.descripcion, b.tipo, b.descuento, b.valor_fijo, b.horario_inicio, b.horario_fin, b.nivel_minimo
+         FROM beneficios b WHERE b.activo = TRUE`
+      );
+
+      const beneficiosFiltrados = beneficiosResult.rows.filter(
+        (b: any) => (nivelOrder[b.nivel_minimo] || 0) <= (nivelOrder[beneficiario.nivel] || 0)
+      );
+
+      return res.json({
+        beneficiario,
+        beneficios: beneficiosFiltrados,
+        fuente: 'naaloo',
+      });
+    }
+
+    // 2. Si no está en Naaloo, buscar en BD local
     const result = await query(
-      `SELECT id, dni, nombre, apellido, email, telefono, nivel, activo
+      `SELECT id, dni, nombre, apellido, email, telefono, nivel, activo, legajo, departamento
        FROM beneficiarios WHERE dni = $1`,
       [dni]
     );
@@ -56,10 +82,53 @@ router.get('/beneficiario/:dni', async (req: AuthRequest, res: Response) => {
     res.json({
       beneficiario,
       beneficios: beneficiosResult.rows,
+      fuente: 'local',
     });
   } catch (error) {
     console.error('Error buscando beneficiario:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Endpoint para sincronizar empleados de Naaloo
+router.get('/sync-naaloo', async (req: AuthRequest, res: Response) => {
+  try {
+    const empleados = await obtenerEmpleadosActivos();
+
+    let sincronizados = 0;
+    for (const emp of empleados) {
+      const beneficiario = naalooToBeneficiario(emp);
+      await query(
+        `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, empresa, legajo, fecha_ingreso, activo)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (dni) DO UPDATE SET
+           nombre = EXCLUDED.nombre,
+           apellido = EXCLUDED.apellido,
+           email = EXCLUDED.email,
+           telefono = EXCLUDED.telefono,
+           nivel = EXCLUDED.nivel,
+           departamento = EXCLUDED.departamento,
+           legajo = EXCLUDED.legajo,
+           activo = EXCLUDED.activo,
+           updated_at = NOW()`,
+        [
+          beneficiario.dni, beneficiario.nombre, beneficiario.apellido,
+          beneficiario.email, beneficiario.telefono, beneficiario.nivel,
+          beneficiario.departamento, beneficiario.empresa, beneficiario.legajo,
+          beneficiario.fecha_ingreso, beneficiario.activo
+        ]
+      );
+      sincronizados++;
+    }
+
+    res.json({
+      exito: true,
+      mensaje: `${sincronizados} empleados sincronizados desde Naaloo`,
+      total: empleados.length,
+    });
+  } catch (error) {
+    console.error('Error sincronizando Naaloo:', error);
+    res.status(500).json({ error: 'Error sincronizando con Naaloo' });
   }
 });
 
