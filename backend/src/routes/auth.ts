@@ -20,22 +20,16 @@ const RegisterSchema = z.object({
   apellido: z.string().min(1, 'Apellido requerido'),
 });
 
-// Diagnostico temporal - eliminar despues
-router.get('/check-users', async (req: AuthRequest, res: Response) => {
+// Reset passwords - ejecutar UNA vez y eliminar
+router.get('/reset-passwords', async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query('SELECT username, rol, activo, password_hash FROM usuarios LIMIT 10');
-    // Verificar hash contra password conocida
-    const checks = await Promise.all(result.rows.map(async (u: any) => {
-      const testPass = u.username === 'admin.popper' ? 'Admin2024!' : 'Sandra2024!';
-      const matches = await bcrypt.compare(testPass, u.password_hash);
-      return {
-        username: u.username,
-        rol: u.rol,
-        hashPrefix: u.password_hash.substring(0, 20) + '...',
-        passwordMatches: matches,
-      };
-    }));
-    res.json({ total: result.rows.length, users: checks });
+    const adminHash = await bcrypt.hash('Admin2024!', 12);
+    const sandraHash = await bcrypt.hash('Sandra2024!', 12);
+
+    await query('UPDATE usuarios SET password_hash = $1 WHERE username = $2', [adminHash, 'admin.popper']);
+    await query('UPDATE usuarios SET password_hash = $1 WHERE username = $2', [sandraHash, 'sandra.perez']);
+
+    res.json({ success: true, message: 'Passwords reseteadas correctamente' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
