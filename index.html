@@ -3,99 +3,99 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#0a1628" />
-    <meta name="description" content="Sistema Premium de Verificacion de Beneficios - GRUPO POPPER" />
+    <meta name="theme-color" content="#080e1a" />
+    <meta name="description" content="Sistema de Verificacion de Beneficios - Grupo Popper" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Popper Benefits" />
+    <meta name="apple-mobile-web-app-title" content="Grupo Popper" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <title>GRUPO POPPER - Sistema de Beneficios</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <title>Grupo Popper - Beneficios</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0a1628; }
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: #080e1a;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
       #loading-screen {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(135deg, #0a1628 0%, #132d50 50%, #0d2137 100%);
+        inset: 0;
+        background: radial-gradient(ellipse at 50% 0%, #0f1b2e 0%, #080e1a 70%);
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
         z-index: 9999;
-        transition: opacity 0.6s ease, transform 0.6s ease;
+        transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
       }
       #loading-screen.hidden {
         opacity: 0;
-        transform: scale(1.02);
+        transform: scale(1.03);
         pointer-events: none;
       }
-      .loading-logo {
-        width: 64px;
-        height: 64px;
-        background: linear-gradient(135deg, #fff, #f0f0f0);
-        border-radius: 16px;
+      .loading-icon {
+        width: 56px;
+        height: 56px;
+        border: 1.5px solid rgba(191, 163, 99, 0.3);
+        border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 40px rgba(255,215,0,0.1);
-        margin-bottom: 24px;
-        animation: logoPulse 2s ease-in-out infinite;
+        margin-bottom: 20px;
+        animation: iconGlow 3s ease-in-out infinite;
       }
-      .loading-logo span {
-        font-size: 22px;
-        font-weight: 900;
-        background: linear-gradient(135deg, #1e3a5f, #2d5a87);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: -0.5px;
+      .loading-icon svg {
+        width: 24px;
+        height: 24px;
+        color: #bfa363;
+        opacity: 0.8;
       }
-      .loading-bar-container {
-        width: 200px;
-        height: 2px;
-        background: rgba(255,255,255,0.06);
-        border-radius: 4px;
-        overflow: hidden;
-        margin-top: 20px;
-      }
-      .loading-bar {
-        width: 40%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, #ffd700, transparent);
-        border-radius: 4px;
-        animation: loadingSlide 1.5s ease-in-out infinite;
-      }
-      .loading-text {
-        color: rgba(255,255,255,0.3);
-        margin-top: 16px;
-        font-size: 11px;
-        letter-spacing: 3px;
+      .loading-brand {
+        font-family: 'Playfair Display', Georgia, serif;
+        color: rgba(191, 163, 99, 0.7);
+        font-size: 15px;
+        letter-spacing: 6px;
         text-transform: uppercase;
         font-weight: 500;
       }
-      @keyframes logoPulse {
-        0%, 100% { transform: scale(1); box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 40px rgba(255,215,0,0.1); }
-        50% { transform: scale(1.05); box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 60px rgba(255,215,0,0.15); }
+      .loading-bar-wrap {
+        width: 120px;
+        height: 1px;
+        background: rgba(191, 163, 99, 0.1);
+        margin-top: 24px;
+        overflow: hidden;
+        border-radius: 1px;
       }
-      @keyframes loadingSlide {
+      .loading-bar-inner {
+        width: 30%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, #bfa363, transparent);
+        animation: barSlide 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      @keyframes iconGlow {
+        0%, 100% { border-color: rgba(191, 163, 99, 0.2); box-shadow: 0 0 20px rgba(191, 163, 99, 0); }
+        50% { border-color: rgba(191, 163, 99, 0.4); box-shadow: 0 0 30px rgba(191, 163, 99, 0.08); }
+      }
+      @keyframes barSlide {
         0% { transform: translateX(-100%); }
-        100% { transform: translateX(350%); }
+        100% { transform: translateX(450%); }
       }
     </style>
   </head>
   <body>
     <div id="loading-screen">
-      <div class="loading-logo">
-        <span>GP</span>
+      <div class="loading-icon">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z" />
+        </svg>
       </div>
-      <div class="loading-bar-container">
-        <div class="loading-bar"></div>
+      <p class="loading-brand">Grupo Popper</p>
+      <div class="loading-bar-wrap">
+        <div class="loading-bar-inner"></div>
       </div>
-      <p class="loading-text">Grupo Popper</p>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
