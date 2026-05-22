@@ -195,9 +195,9 @@ router.post('/canjear', async (req: Request, res: Response) => {
       verificacion: verificacion.rows[0],
       beneficio: beneficioResult.rows[0].nombre,
     });
-  } catch (error) {
-    console.error('Error canjeando beneficio:', error);
-    res.status(500).json({ error: 'Error interno' });
+  } catch (error: any) {
+    console.error('Error canjeando beneficio:', error?.message || error);
+    res.status(500).json({ error: 'Error interno', detalle: error?.message });
   }
 });
 
