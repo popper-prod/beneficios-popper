@@ -58,8 +58,9 @@ router.post('/login', validate(LoginSchema), async (req: AuthRequest, res: Respo
         rol: user.rol,
       },
     });
-  } catch (error) {
-    console.error('Login error:', error);
+  } catch (error: any) {
+    console.error('Login error:', error?.message || error);
+    console.error('Login error stack:', error?.stack);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });

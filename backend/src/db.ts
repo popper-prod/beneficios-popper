@@ -1,15 +1,23 @@
 import { Pool, QueryResult, PoolClient } from 'pg';
 import { config } from './config';
 
+const isProduction = config.nodeEnv === 'production';
+const needsSSL = isProduction || config.databaseUrl.includes('supabase') || config.databaseUrl.includes('neon') || config.databaseUrl.includes('railway');
+
 const pool = new Pool({
   connectionString: config.databaseUrl,
-  max: 20,
+  max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000,
+  ssl: needsSSL ? { rejectUnauthorized: false } : false,
+});
+
+pool.on('connect', () => {
+  console.log('DB: Conexion establecida');
 });
 
 pool.on('error', (err: Error) => {
-  console.error('Unexpected error on idle client', err);
+  console.error('DB Pool error:', err.message);
 });
 
 export const query = (text: string, params?: any[]): Promise<QueryResult> => {
