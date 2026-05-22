@@ -1,5 +1,9 @@
 import { Pool, QueryResult, PoolClient } from 'pg';
+import dns from 'dns';
 import { config } from './config';
+
+// Forzar IPv4 - Render usa IPv6 por defecto y Supabase no lo soporta
+dns.setDefaultResultOrder('ipv4first');
 
 const isProduction = config.nodeEnv === 'production';
 const needsSSL = isProduction || config.databaseUrl.includes('supabase') || config.databaseUrl.includes('neon') || config.databaseUrl.includes('railway');
