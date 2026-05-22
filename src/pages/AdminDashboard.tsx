@@ -278,13 +278,20 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const handleSyncNaaloo = async () => {
     setSyncing(true);
     setSyncResult(null);
-    setAuthMsg('');
+    setAuthMsg('Sincronizando con Naaloo... esto puede tomar hasta 1 minuto.');
     try {
-      const res = await fetch(`${API_URL}/admin/sync-naaloo`, { method: 'POST', headers });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 55000);
+      const res = await fetch(`${API_URL}/admin/sync-naaloo`, { method: 'POST', headers, signal: controller.signal });
+      clearTimeout(timeout);
       const data = await res.json();
-      if (res.ok) { setSyncResult(data); fetchBeneficiarios(); fetchAuthLogs(); }
+      if (res.ok) { setSyncResult(data); setAuthMsg(''); fetchBeneficiarios(); fetchAuthLogs(); }
       else setAuthMsg(data.error || 'Error sincronizando');
-    } catch { setAuthMsg('Error de conexion con el servidor'); }
+    } catch {
+      // Timeout o error de red — la sync sigue corriendo en el server
+      setAuthMsg('La sincronizacion se esta procesando en el servidor. Recarga en unos segundos para ver los resultados.');
+      setTimeout(() => { fetchBeneficiarios(); fetchAuthLogs(); }, 5000);
+    }
     setSyncing(false);
   };
 
