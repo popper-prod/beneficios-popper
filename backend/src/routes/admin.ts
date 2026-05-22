@@ -779,7 +779,7 @@ router.get('/admins', async (req: AuthRequest, res: Response) => {
   try {
     const result = await query(`
       SELECT id, dni, nombre, apellido, email, telefono, nivel, departamento, sector,
-             cargo, foto, rol_admin, admin_desde, admin_por
+             rol_admin, admin_desde, admin_por
       FROM beneficiarios
       WHERE es_admin = TRUE AND activo = TRUE
       ORDER BY rol_admin DESC, admin_desde ASC NULLS LAST
@@ -787,7 +787,7 @@ router.get('/admins', async (req: AuthRequest, res: Response) => {
     res.json({ admins: result.rows });
   } catch (error: any) {
     console.error('Error listando admins:', error.message);
-    res.status(500).json({ error: 'Error listando admins' });
+    res.status(500).json({ error: 'Error listando admins', detalle: error.message });
   }
 });
 
@@ -799,7 +799,7 @@ router.get('/admins/buscar', async (req: AuthRequest, res: Response) => {
       return res.json({ resultados: [] });
     }
     const result = await query(`
-      SELECT id, dni, nombre, apellido, email, nivel, departamento, sector, cargo, foto, es_admin, rol_admin
+      SELECT id, dni, nombre, apellido, email, nivel, departamento, sector, es_admin, rol_admin
       FROM beneficiarios
       WHERE activo = TRUE
         AND (
@@ -807,7 +807,6 @@ router.get('/admins/buscar', async (req: AuthRequest, res: Response) => {
           OR LOWER(apellido) LIKE LOWER($1)
           OR LOWER(email) LIKE LOWER($1)
           OR dni LIKE $1
-          OR legajo LIKE $1
         )
       ORDER BY apellido ASC, nombre ASC
       LIMIT 30
@@ -815,7 +814,7 @@ router.get('/admins/buscar', async (req: AuthRequest, res: Response) => {
     res.json({ resultados: result.rows });
   } catch (error: any) {
     console.error('Error buscando candidatos:', error.message);
-    res.status(500).json({ error: 'Error buscando' });
+    res.status(500).json({ error: 'Error buscando', detalle: error.message });
   }
 });
 
@@ -929,7 +928,7 @@ router.get('/mi-perfil', async (req: AuthRequest, res: Response) => {
     const username = req.user?.username || '';
     if (username.includes('@')) {
       const result = await query(
-        `SELECT id, dni, nombre, apellido, email, rol_admin, foto FROM beneficiarios
+        `SELECT id, dni, nombre, apellido, email, rol_admin FROM beneficiarios
          WHERE LOWER(email) = LOWER($1) LIMIT 1`,
         [username]
       );
