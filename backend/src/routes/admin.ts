@@ -160,4 +160,212 @@ router.get('/beneficiarios', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ============================================
+// CRUD BENEFICIOS
+// ============================================
+
+// POST /api/admin/beneficios - Crear beneficio
+router.post('/beneficios', async (req: AuthRequest, res: Response) => {
+  try {
+    const { nombre, descripcion, tipo, nivel_minimo, descuento, valor_fijo, fecha_inicio, fecha_fin, horario_inicio, horario_fin, limite_uso_diario, limite_uso_mensual } = req.body;
+    if (!nombre || !tipo || !nivel_minimo || !fecha_inicio || !fecha_fin) {
+      return res.status(400).json({ error: 'Faltan campos requeridos' });
+    }
+    const result = await query(
+      `INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, descuento, valor_fijo, fecha_inicio, fecha_fin, horario_inicio, horario_fin, limite_uso_diario, limite_uso_mensual, activo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE) RETURNING *`,
+      [nombre, descripcion || null, tipo, nivel_minimo, descuento || null, valor_fijo || null, fecha_inicio, fecha_fin, horario_inicio || null, horario_fin || null, limite_uso_diario || null, limite_uso_mensual || null]
+    );
+    res.json({ beneficio: result.rows[0] });
+  } catch (error: any) {
+    console.error('Error creando beneficio:', error.message);
+    res.status(500).json({ error: 'Error creando beneficio' });
+  }
+});
+
+// PUT /api/admin/beneficios/:id - Editar beneficio
+router.put('/beneficios/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { nombre, descripcion, tipo, nivel_minimo, descuento, valor_fijo, fecha_inicio, fecha_fin, horario_inicio, horario_fin, limite_uso_diario, limite_uso_mensual, activo } = req.body;
+    const result = await query(
+      `UPDATE beneficios SET nombre=$1, descripcion=$2, tipo=$3, nivel_minimo=$4, descuento=$5, valor_fijo=$6, fecha_inicio=$7, fecha_fin=$8, horario_inicio=$9, horario_fin=$10, limite_uso_diario=$11, limite_uso_mensual=$12, activo=$13, updated_at=NOW()
+       WHERE id=$14 RETURNING *`,
+      [nombre, descripcion || null, tipo, nivel_minimo, descuento || null, valor_fijo || null, fecha_inicio, fecha_fin, horario_inicio || null, horario_fin || null, limite_uso_diario || null, limite_uso_mensual || null, activo, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
+    res.json({ beneficio: result.rows[0] });
+  } catch (error: any) {
+    console.error('Error editando beneficio:', error.message);
+    res.status(500).json({ error: 'Error editando beneficio' });
+  }
+});
+
+// DELETE /api/admin/beneficios/:id - Eliminar beneficio
+router.delete('/beneficios/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM comercio_beneficios WHERE beneficio_id = $1', [id]);
+    const result = await query('DELETE FROM beneficios WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
+    res.json({ eliminado: true });
+  } catch (error: any) {
+    console.error('Error eliminando beneficio:', error.message);
+    res.status(500).json({ error: 'Error eliminando beneficio' });
+  }
+});
+
+// ============================================
+// CRUD COMERCIOS
+// ============================================
+
+// POST /api/admin/comercios - Crear comercio
+router.post('/comercios', async (req: AuthRequest, res: Response) => {
+  try {
+    const { nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable } = req.body;
+    if (!nombre) return res.status(400).json({ error: 'Nombre es requerido' });
+    const qr_code = `QR-${nombre.replace(/\s+/g, '-').toUpperCase().substring(0, 20)}-${Date.now().toString(36).toUpperCase()}`;
+    const result = await query(
+      `INSERT INTO comercios (nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, qr_code, activo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE) RETURNING *`,
+      [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, qr_code]
+    );
+    res.json({ comercio: result.rows[0] });
+  } catch (error: any) {
+    console.error('Error creando comercio:', error.message);
+    res.status(500).json({ error: 'Error creando comercio' });
+  }
+});
+
+// PUT /api/admin/comercios/:id - Editar comercio
+router.put('/comercios/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, activo } = req.body;
+    const result = await query(
+      `UPDATE comercios SET nombre=$1, direccion=$2, ciudad=$3, provincia=$4, telefono=$5, email=$6, horario_apertura=$7, horario_cierre=$8, responsable=$9, activo=$10, updated_at=NOW()
+       WHERE id=$11 RETURNING *`,
+      [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, activo, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Comercio no encontrado' });
+    res.json({ comercio: result.rows[0] });
+  } catch (error: any) {
+    console.error('Error editando comercio:', error.message);
+    res.status(500).json({ error: 'Error editando comercio' });
+  }
+});
+
+// DELETE /api/admin/comercios/:id - Eliminar comercio
+router.delete('/comercios/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    await query('DELETE FROM comercio_beneficios WHERE comercio_id = $1', [id]);
+    const result = await query('DELETE FROM comercios WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Comercio no encontrado' });
+    res.json({ eliminado: true });
+  } catch (error: any) {
+    console.error('Error eliminando comercio:', error.message);
+    res.status(500).json({ error: 'Error eliminando comercio' });
+  }
+});
+
+// ============================================
+// CRUD BENEFICIARIOS
+// ============================================
+
+// POST /api/admin/beneficiarios - Crear beneficiario
+router.post('/beneficiarios', async (req: AuthRequest, res: Response) => {
+  try {
+    const { dni, nombre, apellido, email, telefono, nivel, departamento, empresa } = req.body;
+    if (!dni || !nombre || !apellido || !nivel) return res.status(400).json({ error: 'Faltan campos requeridos' });
+    const result = await query(
+      `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, empresa, activo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE) RETURNING *`,
+      [dni, nombre, apellido, email || null, telefono || null, nivel, departamento || null, empresa || 'Grupo Popper']
+    );
+    res.json({ beneficiario: result.rows[0] });
+  } catch (error: any) {
+    if (error.message?.includes('duplicate')) return res.status(409).json({ error: 'Ya existe un beneficiario con ese DNI' });
+    console.error('Error creando beneficiario:', error.message);
+    res.status(500).json({ error: 'Error creando beneficiario' });
+  }
+});
+
+// PUT /api/admin/beneficiarios/:id - Editar beneficiario
+router.put('/beneficiarios/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { nombre, apellido, email, telefono, nivel, departamento, empresa, activo } = req.body;
+    const result = await query(
+      `UPDATE beneficiarios SET nombre=$1, apellido=$2, email=$3, telefono=$4, nivel=$5, departamento=$6, empresa=$7, activo=$8, updated_at=NOW()
+       WHERE id=$9 RETURNING *`,
+      [nombre, apellido, email || null, telefono || null, nivel, departamento || null, empresa || 'Grupo Popper', activo, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficiario no encontrado' });
+    res.json({ beneficiario: result.rows[0] });
+  } catch (error: any) {
+    console.error('Error editando beneficiario:', error.message);
+    res.status(500).json({ error: 'Error editando beneficiario' });
+  }
+});
+
+// DELETE /api/admin/beneficiarios/:id - Eliminar beneficiario
+router.delete('/beneficiarios/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await query('DELETE FROM beneficiarios WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficiario no encontrado' });
+    res.json({ eliminado: true });
+  } catch (error: any) {
+    console.error('Error eliminando beneficiario:', error.message);
+    res.status(500).json({ error: 'Error eliminando beneficiario' });
+  }
+});
+
+// ============================================
+// VINCULAR COMERCIO ↔ BENEFICIO
+// ============================================
+
+// POST /api/admin/comercio-beneficios - Vincular
+router.post('/comercio-beneficios', async (req: AuthRequest, res: Response) => {
+  try {
+    const { comercio_id, beneficio_id } = req.body;
+    if (!comercio_id || !beneficio_id) return res.status(400).json({ error: 'Faltan datos' });
+    await query(
+      `INSERT INTO comercio_beneficios (comercio_id, beneficio_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [comercio_id, beneficio_id]
+    );
+    res.json({ vinculado: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error vinculando' });
+  }
+});
+
+// DELETE /api/admin/comercio-beneficios - Desvincular
+router.delete('/comercio-beneficios', async (req: AuthRequest, res: Response) => {
+  try {
+    const { comercio_id, beneficio_id } = req.body;
+    await query('DELETE FROM comercio_beneficios WHERE comercio_id = $1 AND beneficio_id = $2', [comercio_id, beneficio_id]);
+    res.json({ desvinculado: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error desvinculando' });
+  }
+});
+
+// GET /api/admin/comercio-beneficios/:comercioId - Beneficios de un comercio
+router.get('/comercio-beneficios/:comercioId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { comercioId } = req.params;
+    const result = await query(
+      `SELECT b.* FROM beneficios b
+       INNER JOIN comercio_beneficios cb ON cb.beneficio_id = b.id
+       WHERE cb.comercio_id = $1 ORDER BY b.nombre`,
+      [comercioId]
+    );
+    res.json({ beneficios: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error cargando beneficios del comercio' });
+  }
+});
+
 export default router;
