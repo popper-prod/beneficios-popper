@@ -38,16 +38,15 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-// Solo escuchar en desarrollo local
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-  app.listen(config.port, () => {
-    console.log(`\n${'='.repeat(50)}`);
-    console.log(`✅ Servidor BENEFICIOS POPPER iniciado`);
-    console.log(`📍 Puerto: ${config.port}`);
-    console.log(`🔗 http://localhost:${config.port}`);
-    console.log(`🔗 http://localhost:${config.port}/api/health`);
-    console.log(`${'='.repeat(50)}\n`);
-  });
-}
+// Escuchar en todos los ambientes
+app.listen(config.port, () => {
+  console.log(`\n${'='.repeat(50)}`);
+  console.log(`✅ Servidor BENEFICIOS POPPER iniciado`);
+  console.log(`📍 Puerto: ${config.port}`);
+  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 http://localhost:${config.port}`);
+  console.log(`🔗 http://localhost:${config.port}/api/health`);
+  console.log(`${'='.repeat(50)}\n`);
+});
 
 export default app;
