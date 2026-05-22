@@ -20,6 +20,16 @@ const RegisterSchema = z.object({
   apellido: z.string().min(1, 'Apellido requerido'),
 });
 
+// Diagnostico temporal - eliminar despues
+router.get('/check-users', async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query('SELECT username, rol, activo FROM usuarios LIMIT 10');
+    res.json({ total: result.rows.length, users: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/login', validate(LoginSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { username, password } = req.body;
