@@ -9,12 +9,22 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get('/api/health', (req: Request, res: Response) => {
+app.get('/api/health', async (req: Request, res: Response) => {
+  let dbStatus = 'unknown';
+  try {
+    const { query } = await import('./db');
+    const result = await query('SELECT NOW() as time');
+    dbStatus = 'connected - ' + result.rows[0].time;
+  } catch (err: any) {
+    dbStatus = 'error - ' + (err.message || 'unknown');
+  }
+
   res.json({
     status: 'ok',
     timestamp: new Date(),
     environment: config.nodeEnv,
-    port: config.port
+    port: config.port,
+    database: dbStatus,
   });
 });
 
