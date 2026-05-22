@@ -47,6 +47,23 @@ app.listen(config.port, () => {
   console.log(`🔗 http://localhost:${config.port}`);
   console.log(`🔗 http://localhost:${config.port}/api/health`);
   console.log(`${'='.repeat(50)}\n`);
+
+  // Keep-alive: ping cada 14 minutos para evitar que Render duerma el servidor
+  if (process.env.NODE_ENV === 'production') {
+    const KEEP_ALIVE_URL = 'https://beneficios-backend-jfpx.onrender.com/api/health';
+    const INTERVAL = 14 * 60 * 1000; // 14 minutos en ms
+
+    setInterval(async () => {
+      try {
+        const res = await fetch(KEEP_ALIVE_URL);
+        console.log(`🏓 Keep-alive ping: ${res.status} - ${new Date().toISOString()}`);
+      } catch (err) {
+        console.log(`⚠️ Keep-alive falló: ${new Date().toISOString()}`);
+      }
+    }, INTERVAL);
+
+    console.log(`🏓 Keep-alive activado: ping cada 14 min`);
+  }
 });
 
 export default app;
