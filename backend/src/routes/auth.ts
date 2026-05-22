@@ -4,12 +4,13 @@ import { z } from 'zod';
 import { query } from '../db';
 import { generateToken, AuthRequest } from '../middleware/auth';
 import { validate } from '../middleware/validation';
+import { loginNaaloo } from '../services/naaloo';
 
 const router = Router();
 
 const LoginSchema = z.object({
-  username: z.string().min(1, 'Username requerido'),
-  password: z.string().min(6, 'Contraseña mínimo 6 caracteres'),
+  username: z.string().min(1, 'Usuario o email requerido'),
+  password: z.string().min(1, 'Contraseña requerida'),
 });
 
 const RegisterSchema = z.object({
@@ -20,12 +21,67 @@ const RegisterSchema = z.object({
   apellido: z.string().min(1, 'Apellido requerido'),
 });
 
+// Login hibrido: intenta Naaloo (email+pass) primero, luego local (admin.popper fallback)
 router.post('/login', validate(LoginSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { username, password } = req.body;
+    const esEmail = username.includes('@');
 
+    // === FLUJO 1: AUTH NAALOO (si parece email) ===
+    if (esEmail) {
+      const naaloo = await loginNaaloo(username, password);
+      if (naaloo) {
+        // Validar que tenga permiso en nuestro sistema
+        const benefRes = await query(
+          `SELECT id, dni, nombre, apellido, email, es_admin, rol_admin
+           FROM beneficiarios
+           WHERE LOWER(email) = LOWER($1) AND activo = TRUE
+           LIMIT 1`,
+          [naaloo.email || username]
+        );
+
+        if (benefRes.rows.length === 0) {
+          return res.status(403).json({
+            error: 'Credenciales válidas en Naaloo, pero no se encontró tu perfil en el sistema de beneficios.'
+          });
+        }
+
+        const benef = benefRes.rows[0];
+        if (!benef.es_admin) {
+          return res.status(403).json({
+            error: 'Tu cuenta de Naaloo no tiene permisos de administración. Solicita acceso a un super-administrador.'
+          });
+        }
+
+        const rol = benef.rol_admin || 'admin';
+        const token = generateToken(benef.id, benef.email, rol);
+
+        // Audit log de acceso
+        await query(
+          `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por)
+           VALUES ($1, 'login_admin', $2, $3)`,
+          [benef.id, `Login desde Naaloo (${naaloo.fullName})`, benef.email]
+        ).catch(() => {}); // ignorar si tabla no existe
+
+        return res.json({
+          token,
+          user: {
+            id: benef.id,
+            username: benef.email,
+            email: benef.email,
+            nombre: benef.nombre,
+            apellido: benef.apellido,
+            rol,
+            origen: 'naaloo',
+          },
+        });
+      }
+      // si Naaloo falla, caemos al login local (por si el email coincide con un usuario local)
+    }
+
+    // === FLUJO 2: AUTH LOCAL (admin.popper y similares) ===
     const result = await query(
-      'SELECT id, username, email, password_hash, nombre, apellido, rol FROM usuarios WHERE username = $1 AND activo = TRUE',
+      'SELECT id, username, email, password_hash, nombre, apellido, rol FROM usuarios WHERE (username = $1 OR LOWER(email) = LOWER($1)) AND activo = TRUE',
       [username]
     );
 
@@ -56,6 +112,7 @@ router.post('/login', validate(LoginSchema), async (req: AuthRequest, res: Respo
         nombre: user.nombre,
         apellido: user.apellido,
         rol: user.rol,
+        origen: 'local',
       },
     });
   } catch (error: any) {

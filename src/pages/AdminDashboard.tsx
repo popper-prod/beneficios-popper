@@ -17,7 +17,7 @@ interface DashboardData {
   ultimasVerificaciones: any[];
 }
 
-type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones';
+type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones' | 'permisos';
 
 const gold = '#bfa363';
 
@@ -116,6 +116,15 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [filtroSector, setFiltroSector] = useState('');
   const [grupoMotivo, setGrupoMotivo] = useState('');
 
+  // Permisos state
+  const [admins, setAdmins] = useState<any[]>([]);
+  const [miPerfil, setMiPerfil] = useState<any>(null);
+  const [permisoSearch, setPermisoSearch] = useState('');
+  const [permisoResultados, setPermisoResultados] = useState<any[]>([]);
+  const [searchingPermiso, setSearchingPermiso] = useState(false);
+  const [permisoMsg, setPermisoMsg] = useState('');
+  const [permisosMigracionDone, setPermisosMigracionDone] = useState(false);
+
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
 
@@ -165,6 +174,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
     if (activeTab === 'comercios' || activeTab === 'qrcodes') fetchComercios();
     if (activeTab === 'beneficiarios') fetchBeneficiarios();
     if (activeTab === 'autorizaciones') { fetchBeneficiarios(); fetchAuthLogs(); fetchAreasSectores(); }
+    if (activeTab === 'permisos') { fetchAdmins(); fetchMiPerfil(); }
   }, [activeTab]);
 
   // ============================================
@@ -325,6 +335,79 @@ export default function AdminDashboard({ token, user, onLogout }: {
     } catch { setAuthMsg('Error de conexion'); }
   };
 
+  // ============================================
+  // PERMISOS: gestión de admins
+  // ============================================
+  const fetchAdmins = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/admins`, { headers });
+      if (res.ok) { const d = await res.json(); setAdmins(d.admins || []); }
+    } catch { /* silencioso */ }
+  };
+
+  const fetchMiPerfil = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/mi-perfil`, { headers });
+      if (res.ok) setMiPerfil(await res.json());
+    } catch { /* silencioso */ }
+  };
+
+  const handleMigrarPermisos = async () => {
+    setPermisoMsg('Ejecutando migracion...');
+    try {
+      const res = await fetch(`${API_URL}/admin/migrar-permisos`, { method: 'POST', headers });
+      const data = await res.json();
+      if (res.ok) {
+        setPermisoMsg('Migracion completada. ' + (data.superAdminInicial ? 'Pedro asignado como super-admin.' : ''));
+        setPermisosMigracionDone(true);
+        fetchAdmins(); fetchMiPerfil();
+      } else setPermisoMsg(data.error || 'Error');
+    } catch { setPermisoMsg('Error de conexion'); }
+  };
+
+  const handleBuscarPermiso = async (q: string) => {
+    setPermisoSearch(q);
+    if (q.trim().length < 2) { setPermisoResultados([]); return; }
+    setSearchingPermiso(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/admins/buscar?q=${encodeURIComponent(q)}`, { headers });
+      if (res.ok) { const d = await res.json(); setPermisoResultados(d.resultados || []); }
+    } catch { /* silencioso */ }
+    setSearchingPermiso(false);
+  };
+
+  const handleAsignarAdmin = async (beneficiarioId: string, rol: 'admin' | 'super_admin') => {
+    setPermisoMsg('');
+    try {
+      const res = await fetch(`${API_URL}/admin/admins/asignar`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ beneficiarioId, rol }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPermisoMsg(data.mensaje);
+        setPermisoSearch(''); setPermisoResultados([]);
+        fetchAdmins();
+      } else setPermisoMsg(data.error || 'Error');
+    } catch { setPermisoMsg('Error de conexion'); }
+  };
+
+  const handleRevocarAdmin = async (beneficiarioId: string, nombre: string) => {
+    if (!confirm(`Revocar permisos de admin a ${nombre}? Perderá acceso al panel.`)) return;
+    setPermisoMsg('');
+    try {
+      const res = await fetch(`${API_URL}/admin/admins/revocar`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ beneficiarioId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPermisoMsg(data.mensaje);
+        fetchAdmins();
+      } else setPermisoMsg(data.error || 'Error');
+    } catch { setPermisoMsg('Error de conexion'); }
+  };
+
   // Autorizaciones: logs
   const fetchAuthLogs = async () => {
     try {
@@ -409,6 +492,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
     { id: 'beneficiarios', label: 'Colaboradores', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
     { id: 'qrcodes', label: 'QR Codes', icon: 'M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z' },
     { id: 'autorizaciones', label: 'Autorizaciones', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
+    { id: 'permisos', label: 'Permisos', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
   ];
 
   const formatDate = (d: string) => new Date(d).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -1106,6 +1190,195 @@ export default function AdminDashboard({ token, user, onLogout }: {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ====== PERMISOS ====== */}
+        {activeTab === 'permisos' && (
+          <div className="space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-[20px] font-semibold text-white" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
+                  Permisos de Administracion
+                </h2>
+                <p className="text-[12px] mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  Otorga acceso al panel a colaboradores de RRHH. Inician sesion con su email y contrasena de Naaloo.
+                </p>
+              </div>
+              {miPerfil && (
+                <div className="flex items-center gap-3 px-4 py-2 rounded-xl" style={{ background: 'rgba(191,163,99,0.05)', border: '1px solid rgba(191,163,99,0.15)' }}>
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(191,163,99,0.1)', color: gold, fontWeight: 700 }}>
+                    {miPerfil.nombre?.[0]}{miPerfil.apellido?.[0]}
+                  </div>
+                  <div>
+                    <p className="text-[12px] text-white font-medium">{miPerfil.nombre} {miPerfil.apellido}</p>
+                    <p className="text-[10px]" style={{ color: gold }}>
+                      {miPerfil.esSuperAdmin ? 'Super Administrador' : (miPerfil.rol_admin || 'Administrador')}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Migracion */}
+            {!permisosMigracionDone && (
+              <div className="p-4 rounded-xl flex items-center justify-between" style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.15)' }}>
+                <div>
+                  <p className="text-[13px] font-semibold" style={{ color: '#fbbf24' }}>Primera vez: preparar la base de datos</p>
+                  <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    Agrega las columnas necesarias para gestionar permisos y asigna a Pedro (DNI 28348057) como super-admin inicial.
+                  </p>
+                </div>
+                <button onClick={handleMigrarPermisos}
+                  className="px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider"
+                  style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
+                  Preparar BD
+                </button>
+              </div>
+            )}
+
+            {permisoMsg && (
+              <div className="p-3 rounded-lg text-[12px]" style={{
+                background: permisoMsg.includes('Error') ? 'rgba(248,113,113,0.08)' : 'rgba(74,222,128,0.08)',
+                border: `1px solid ${permisoMsg.includes('Error') ? 'rgba(248,113,113,0.2)' : 'rgba(74,222,128,0.2)'}`,
+                color: permisoMsg.includes('Error') ? '#f87171' : '#4ade80',
+              }}>
+                {permisoMsg}
+              </div>
+            )}
+
+            {/* Buscador para asignar */}
+            <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-3" style={{ color: 'rgba(191,163,99,0.5)' }}>
+                Otorgar permiso a un colaborador
+              </p>
+              <p className="text-[11px] mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                Busca por nombre, apellido, DNI, email o legajo. Solo se muestran colaboradores activos.
+              </p>
+              <input
+                type="text"
+                value={permisoSearch}
+                onChange={(e) => handleBuscarPermiso(e.target.value)}
+                placeholder="Ej: Pedro Suarez, 28348057, pedro@..."
+                className="w-full px-4 py-3 rounded-lg text-[13px] text-white outline-none placeholder:text-white/15"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }} />
+
+              {searchingPermiso && (
+                <p className="text-[11px] mt-3" style={{ color: 'rgba(255,255,255,0.3)' }}>Buscando...</p>
+              )}
+
+              {permisoResultados.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {permisoResultados.map((b: any) => (
+                    <div key={b.id} className="flex items-center justify-between p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {b.foto ? (
+                          <img src={b.foto} alt="" className="w-10 h-10 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-bold" style={{ background: 'rgba(191,163,99,0.1)', color: gold }}>
+                            {b.nombre?.[0]}{b.apellido?.[0]}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-[13px] text-white font-medium truncate">{b.nombre} {b.apellido}</p>
+                          <p className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                            {b.email || 'Sin email'} &middot; {b.departamento || 'S/D'} &middot; DNI {b.dni}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {b.es_admin ? (
+                          <span className="px-3 py-1 rounded-full text-[9px] font-bold uppercase" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80' }}>
+                            Ya es {b.rol_admin}
+                          </span>
+                        ) : !b.email ? (
+                          <span className="text-[10px]" style={{ color: 'rgba(248,113,113,0.7)' }}>Falta email</span>
+                        ) : (
+                          <>
+                            <button onClick={() => handleAsignarAdmin(b.id, 'admin')}
+                              className="px-3 py-1.5 rounded text-[10px] font-semibold uppercase tracking-wider"
+                              style={{ background: 'rgba(191,163,99,0.1)', color: gold, border: '1px solid rgba(191,163,99,0.3)' }}>
+                              Admin
+                            </button>
+                            <button onClick={() => handleAsignarAdmin(b.id, 'super_admin')}
+                              className="px-3 py-1.5 rounded text-[10px] font-semibold uppercase tracking-wider"
+                              style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}>
+                              Super Admin
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {permisoSearch.length >= 2 && !searchingPermiso && permisoResultados.length === 0 && (
+                <p className="text-[12px] mt-4 text-center py-4" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  Sin resultados para "{permisoSearch}"
+                </p>
+              )}
+            </div>
+
+            {/* Listado de admins actuales */}
+            <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-4" style={{ color: 'rgba(191,163,99,0.5)' }}>
+                Administradores activos ({admins.length})
+              </p>
+              {admins.length === 0 ? (
+                <p className="text-center py-8 text-[13px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  No hay administradores asignados todavia.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {admins.map((a: any) => (
+                    <div key={a.id} className="flex items-center justify-between p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {a.foto ? (
+                          <img src={a.foto} alt="" className="w-12 h-12 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full flex items-center justify-center text-[14px] font-bold" style={{ background: 'rgba(191,163,99,0.1)', color: gold }}>
+                            {a.nombre?.[0]}{a.apellido?.[0]}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-[14px] text-white font-medium truncate">{a.nombre} {a.apellido}</p>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase"
+                              style={{
+                                background: a.rol_admin === 'super_admin' ? 'rgba(251,191,36,0.1)' : 'rgba(191,163,99,0.1)',
+                                color: a.rol_admin === 'super_admin' ? '#fbbf24' : gold,
+                              }}>
+                              {a.rol_admin === 'super_admin' ? 'Super Admin' : 'Admin'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                            {a.email} &middot; {a.cargo || a.departamento || 'S/D'} &middot; Desde {a.admin_desde ? formatDate(a.admin_desde) : 'S/D'}
+                          </p>
+                          {a.admin_por && (
+                            <p className="text-[9px] mt-0.5" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                              Asignado por: {a.admin_por}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      {miPerfil?.esSuperAdmin && miPerfil?.email !== a.email && (
+                        <button onClick={() => handleRevocarAdmin(a.id, `${a.nombre} ${a.apellido}`)}
+                          className="px-3 py-1.5 rounded text-[10px] font-semibold"
+                          style={{ color: '#f87171', border: '1px solid rgba(248,113,113,0.2)' }}>
+                          Revocar
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <p className="text-center text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              Los administradores inician sesion con su email y contrasena de Naaloo. Sus beneficios siguen disponibles al escanear QR como cualquier otro colaborador.
+            </p>
           </div>
         )}
       </div>

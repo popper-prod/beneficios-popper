@@ -54,13 +54,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setLoginError(null);
   };
 
-  const fillCredentials = (user: string, pass: string) => {
-    setUsername(user);
-    setPassword(pass);
-    setStep(2);
-    setLoginError(null);
-  };
-
   const gold = '#bfa363';
   const goldLight = '#d4b978';
   const goldDim = 'rgba(191,163,99,';
@@ -139,8 +132,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </h2>
               <p className="text-[13px] mb-7" style={{ color: 'rgba(255,255,255,0.35)' }}>
                 {step === 1
-                  ? 'Ingresa tu usuario o email corporativo.'
-                  : 'Ingresa tu contrasena para continuar.'
+                  ? 'Ingresa tu email de Naaloo para continuar.'
+                  : 'Usa la misma contrasena con la que accedes a Naaloo.'
                 }
               </p>
 
@@ -151,11 +144,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <div>
                       <label className="block text-[10px] font-semibold tracking-[0.2em] uppercase mb-2.5"
                         style={{ color: `${goldDim}0.45)` }}>
-                        Usuario
+                        Email
                       </label>
                       <input
                         type="text"
-                        placeholder="tu.usuario"
+                        placeholder="tu.email@grupopopper.com"
                         value={username}
                         onChange={(e) => { setUsername(e.target.value); setLoginError(null); }}
                         className="w-full px-5 py-4 rounded-xl text-[15px] text-white transition-all duration-300 focus:outline-none"
@@ -178,51 +171,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       />
                     </div>
 
-                    {/* Acceso rapido */}
+                    {/* Info Naaloo */}
                     <div className="pt-2">
-                      <p className="text-[9px] font-medium tracking-[0.15em] uppercase mb-3"
-                        style={{ color: 'rgba(255,255,255,0.15)' }}>
-                        Acceso rapido
-                      </p>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => fillCredentials('admin.popper', 'Admin2024!')}
-                          className="flex-1 py-2.5 px-3 rounded-lg text-[11px] font-medium transition-all duration-300 text-left"
-                          style={{
-                            background: 'rgba(255,255,255,0.02)',
-                            border: '1px solid rgba(255,255,255,0.05)',
-                            color: 'rgba(255,255,255,0.35)',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = `${goldDim}0.2)`;
-                            e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
-                            e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                          }}>
-                          <span style={{ color: `${goldDim}0.5)`, fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, fontWeight: 600 }}>Admin</span>
-                          <br />
-                          <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>admin.popper</span>
-                        </button>
-                        <button type="button" onClick={() => fillCredentials('sandra.perez', 'Sandra2024!')}
-                          className="flex-1 py-2.5 px-3 rounded-lg text-[11px] font-medium transition-all duration-300 text-left"
-                          style={{
-                            background: 'rgba(255,255,255,0.02)',
-                            border: '1px solid rgba(255,255,255,0.05)',
-                            color: 'rgba(255,255,255,0.35)',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = `${goldDim}0.2)`;
-                            e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
-                            e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                          }}>
-                          <span style={{ color: `${goldDim}0.5)`, fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase' as const, fontWeight: 600 }}>Empleado</span>
-                          <br />
-                          <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>sandra.perez</span>
-                        </button>
+                      <div className="flex items-start gap-2.5 p-3 rounded-lg" style={{ background: 'rgba(191,163,99,0.04)', border: '1px solid rgba(191,163,99,0.1)' }}>
+                        <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke={gold} strokeWidth={1.5} style={{ opacity: 0.7 }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                          <p className="text-[10px] font-semibold tracking-wide uppercase mb-1" style={{ color: `${goldDim}0.6)` }}>
+                            Acceso vinculado con Naaloo
+                          </p>
+                          <p className="text-[10.5px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                            Usa las mismas credenciales que en Naaloo. Solo los colaboradores con permisos asignados podran acceder al panel.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>

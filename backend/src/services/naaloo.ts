@@ -119,6 +119,100 @@ export async function obtenerTodosEmpleados(): Promise<NaalooEmpleado[]> {
   }
 }
 
+// ============================================
+// Autenticacion via Naaloo (multitenant)
+// Flujo: 1) /auth/tenants devuelve los tenants del usuario
+//        2) /auth/ con token=tenant valida y devuelve JWT + datos
+// ============================================
+export interface NaalooAuthUser {
+  id: number;
+  email: string;
+  userName: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  image?: string;
+  tenant?: string;
+  token: string;
+  validEmail?: boolean;
+}
+
+export async function loginNaaloo(userName: string, password: string): Promise<NaalooAuthUser | null> {
+  try {
+    // Paso 1: obtener tenants del usuario
+    const tenantsRes = await fetch(`${NAALOO_API_URL}/auth/tenants`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userName,
+        password,
+        applicationName: 'GrupoPopper Beneficios',
+        agent: 'Beneficios-Backend',
+      }),
+    });
+
+    if (!tenantsRes.ok) {
+      console.error('Naaloo /auth/tenants error:', tenantsRes.status);
+      return null;
+    }
+
+    const tenantsData: any = await tenantsRes.json();
+    const tenants = tenantsData?.tenants || [];
+    if (!Array.isArray(tenants) || tenants.length === 0) {
+      console.error('Naaloo: usuario sin tenants');
+      return null;
+    }
+
+    // Tomar el tenant que contenga "popper", o el primero
+    const tenant = tenants.find((t: any) =>
+      String(t?.tenant || t?.name || '').toLowerCase().includes('popper')
+    ) || tenants[0];
+
+    const tenantToken: string = tenant?.token || tenant?.tenant || String(tenant?.id || '');
+    if (!tenantToken) {
+      console.error('Naaloo: tenant sin token');
+      return null;
+    }
+
+    // Paso 2: autenticar contra el tenant
+    const authRes = await fetch(`${NAALOO_API_URL}/auth/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userName,
+        password,
+        token: tenantToken,
+        applicationName: 'GrupoPopper Beneficios',
+        agent: 'Beneficios-Backend',
+      }),
+    });
+
+    if (!authRes.ok) {
+      console.error('Naaloo /auth/ error:', authRes.status);
+      return null;
+    }
+
+    const auth: any = await authRes.json();
+    if (!auth?.token) return null;
+
+    return {
+      id: auth.id,
+      email: String(auth.email || '').toLowerCase(),
+      userName: auth.userName || userName,
+      firstName: auth.firstName || '',
+      lastName: auth.lastName || '',
+      fullName: auth.fullName || `${auth.firstName || ''} ${auth.lastName || ''}`.trim(),
+      image: auth.image,
+      tenant: auth.tenant,
+      token: auth.token,
+      validEmail: auth.validEmail,
+    };
+  } catch (error: any) {
+    console.error('Error login Naaloo:', error?.message || error);
+    return null;
+  }
+}
+
 // Convertir empleado de Naaloo al formato de beneficiario local
 export function naalooToBeneficiario(empleado: NaalooEmpleado) {
   // Asignar nivel según antigüedad

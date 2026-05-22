@@ -742,4 +742,214 @@ router.get('/autorizacion-logs', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ============================================
+// MODULO PERMISOS DE ADMINISTRACION
+// ============================================
+
+// POST /api/admin/migrar-permisos - Agrega columnas de admin a beneficiarios
+router.post('/migrar-permisos', async (req: AuthRequest, res: Response) => {
+  try {
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS es_admin BOOLEAN DEFAULT FALSE`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS rol_admin VARCHAR(20)`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS admin_desde TIMESTAMP`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS admin_por VARCHAR(100)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_beneficiarios_es_admin ON beneficiarios(es_admin) WHERE es_admin = TRUE`);
+
+    // Asignar Pedro (DNI 28348057) como super_admin inicial si existe
+    const pedro = await query(`SELECT id FROM beneficiarios WHERE dni = '28348057' LIMIT 1`);
+    let asignado = false;
+    if (pedro.rows.length > 0) {
+      await query(
+        `UPDATE beneficiarios SET es_admin = TRUE, rol_admin = 'super_admin', admin_desde = NOW(), admin_por = 'sistema'
+         WHERE id = $1 AND (es_admin IS NULL OR es_admin = FALSE)`,
+        [pedro.rows[0].id]
+      );
+      asignado = true;
+    }
+
+    res.json({ exito: true, mensaje: 'Migración de permisos completada', superAdminInicial: asignado });
+  } catch (error: any) {
+    console.error('Error migracion permisos:', error.message);
+    res.status(500).json({ error: 'Error en migración', detalle: error.message });
+  }
+});
+
+// GET /api/admin/admins - Lista de administradores actuales
+router.get('/admins', async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT id, dni, nombre, apellido, email, telefono, nivel, departamento, sector,
+             cargo, foto, rol_admin, admin_desde, admin_por
+      FROM beneficiarios
+      WHERE es_admin = TRUE AND activo = TRUE
+      ORDER BY rol_admin DESC, admin_desde ASC NULLS LAST
+    `);
+    res.json({ admins: result.rows });
+  } catch (error: any) {
+    console.error('Error listando admins:', error.message);
+    res.status(500).json({ error: 'Error listando admins' });
+  }
+});
+
+// GET /api/admin/admins/buscar?q=texto - Buscar beneficiarios candidatos para admin
+router.get('/admins/buscar', async (req: AuthRequest, res: Response) => {
+  try {
+    const q = (req.query.q as string || '').trim();
+    if (q.length < 2) {
+      return res.json({ resultados: [] });
+    }
+    const result = await query(`
+      SELECT id, dni, nombre, apellido, email, nivel, departamento, sector, cargo, foto, es_admin, rol_admin
+      FROM beneficiarios
+      WHERE activo = TRUE
+        AND (
+          LOWER(nombre) LIKE LOWER($1)
+          OR LOWER(apellido) LIKE LOWER($1)
+          OR LOWER(email) LIKE LOWER($1)
+          OR dni LIKE $1
+          OR legajo LIKE $1
+        )
+      ORDER BY apellido ASC, nombre ASC
+      LIMIT 30
+    `, [`%${q}%`]);
+    res.json({ resultados: result.rows });
+  } catch (error: any) {
+    console.error('Error buscando candidatos:', error.message);
+    res.status(500).json({ error: 'Error buscando' });
+  }
+});
+
+// POST /api/admin/admins/asignar - Otorgar permiso de admin
+router.post('/admins/asignar', async (req: AuthRequest, res: Response) => {
+  try {
+    const { beneficiarioId, rol } = req.body;
+    const rolFinal = (rol === 'super_admin') ? 'super_admin' : 'admin';
+
+    if (!beneficiarioId) {
+      return res.status(400).json({ error: 'beneficiarioId requerido' });
+    }
+
+    // Verificar que el que hace la accion sea super_admin
+    const me = await query(
+      `SELECT b.rol_admin FROM beneficiarios b WHERE LOWER(b.email) = LOWER($1) LIMIT 1`,
+      [req.user?.username || '']
+    );
+    const meRol = me.rows[0]?.rol_admin;
+    // admin.popper (rol='admin' en tabla usuarios) tambien puede gestionar
+    const esSuperLocal = req.user?.rol === 'admin' && !req.user?.username?.includes('@');
+    if (meRol !== 'super_admin' && !esSuperLocal) {
+      return res.status(403).json({ error: 'Solo super-administradores pueden asignar permisos' });
+    }
+
+    const targetRes = await query(
+      `SELECT id, email, nombre, apellido, activo FROM beneficiarios WHERE id = $1`,
+      [beneficiarioId]
+    );
+    if (targetRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Beneficiario no encontrado' });
+    }
+    const target = targetRes.rows[0];
+
+    if (!target.email) {
+      return res.status(400).json({ error: 'El beneficiario no tiene email registrado. No puede acceder vía Naaloo.' });
+    }
+
+    const adminNombre = req.user?.username || 'sistema';
+    await query(
+      `UPDATE beneficiarios SET es_admin = TRUE, rol_admin = $1, admin_desde = NOW(), admin_por = $2, updated_at = NOW() WHERE id = $3`,
+      [rolFinal, adminNombre, beneficiarioId]
+    );
+
+    await query(
+      `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, 'permiso_otorgado', $2, $3)`,
+      [beneficiarioId, `Rol asignado: ${rolFinal}`, adminNombre]
+    ).catch(() => {});
+
+    res.json({ exito: true, mensaje: `${target.nombre} ${target.apellido} ahora es ${rolFinal}` });
+  } catch (error: any) {
+    console.error('Error asignando admin:', error.message);
+    res.status(500).json({ error: 'Error asignando permiso', detalle: error.message });
+  }
+});
+
+// POST /api/admin/admins/revocar - Revocar permiso de admin
+router.post('/admins/revocar', async (req: AuthRequest, res: Response) => {
+  try {
+    const { beneficiarioId } = req.body;
+    if (!beneficiarioId) {
+      return res.status(400).json({ error: 'beneficiarioId requerido' });
+    }
+
+    // Solo super_admin puede revocar
+    const me = await query(
+      `SELECT b.id, b.rol_admin FROM beneficiarios b WHERE LOWER(b.email) = LOWER($1) LIMIT 1`,
+      [req.user?.username || '']
+    );
+    const meRol = me.rows[0]?.rol_admin;
+    const esSuperLocal = req.user?.rol === 'admin' && !req.user?.username?.includes('@');
+    if (meRol !== 'super_admin' && !esSuperLocal) {
+      return res.status(403).json({ error: 'Solo super-administradores pueden revocar permisos' });
+    }
+
+    // No puede revocarse a si mismo
+    if (me.rows[0]?.id === beneficiarioId) {
+      return res.status(400).json({ error: 'No puedes revocarte permisos a ti mismo' });
+    }
+
+    const targetRes = await query(
+      `SELECT id, nombre, apellido, rol_admin FROM beneficiarios WHERE id = $1`,
+      [beneficiarioId]
+    );
+    if (targetRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Beneficiario no encontrado' });
+    }
+    const target = targetRes.rows[0];
+
+    const adminNombre = req.user?.username || 'sistema';
+    await query(
+      `UPDATE beneficiarios SET es_admin = FALSE, rol_admin = NULL, admin_desde = NULL, admin_por = NULL, updated_at = NOW() WHERE id = $1`,
+      [beneficiarioId]
+    );
+
+    await query(
+      `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, 'permiso_revocado', $2, $3)`,
+      [beneficiarioId, `Rol revocado: ${target.rol_admin}`, adminNombre]
+    ).catch(() => {});
+
+    res.json({ exito: true, mensaje: `Permisos revocados a ${target.nombre} ${target.apellido}` });
+  } catch (error: any) {
+    console.error('Error revocando admin:', error.message);
+    res.status(500).json({ error: 'Error revocando permiso', detalle: error.message });
+  }
+});
+
+// GET /api/admin/mi-perfil - Datos del admin logueado (incluye si es super_admin)
+router.get('/mi-perfil', async (req: AuthRequest, res: Response) => {
+  try {
+    const username = req.user?.username || '';
+    if (username.includes('@')) {
+      const result = await query(
+        `SELECT id, dni, nombre, apellido, email, rol_admin, foto FROM beneficiarios
+         WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [username]
+      );
+      if (result.rows.length > 0) {
+        return res.json({ ...result.rows[0], esSuperAdmin: result.rows[0].rol_admin === 'super_admin', origen: 'naaloo' });
+      }
+    }
+    // fallback: admin.popper local
+    res.json({
+      id: req.user?.userId,
+      email: username,
+      nombre: 'Administrador',
+      apellido: 'Sistema',
+      rol_admin: 'super_admin',
+      esSuperAdmin: true,
+      origen: 'local',
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error obteniendo perfil' });
+  }
+});
+
 export default router;
