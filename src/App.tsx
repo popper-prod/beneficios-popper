@@ -1,27 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import useAuth from './hooks/useAuth';
 import useData from './hooks/useData';
 import LoginScreen from './components/auth/LoginScreen';
 import VerificationScreen from './components/verification/VerificationScreen';
+import QRPage from './pages/QRPage';
 
 type ScreenType = 'login' | 'verification' | 'dashboard';
 
+// Simple hash router
+function useHashRoute() {
+  const [hash, setHash] = useState(window.location.hash);
+
+  useEffect(() => {
+    const onHashChange = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  return hash;
+}
+
 export default function App() {
-  const { isAuthenticated, user, token, loading, error, login, logout } = useAuth();
-  const { commerce, getBeneficiaryByDni, getBenefitsForBeneficiary, processVerification } = useData();
-  const [currentScreen, setCurrentScreen] = useState<ScreenType>('login');
+  const hash = useHashRoute();
 
   // Ocultar la pantalla de carga HTML cuando React se monta
   useEffect(() => {
     const loadingScreen = document.getElementById('loading-screen');
     if (loadingScreen) {
       loadingScreen.classList.add('hidden');
-      // Remover del DOM después de la transición
-      setTimeout(() => {
-        loadingScreen.remove();
-      }, 600);
+      setTimeout(() => loadingScreen.remove(), 600);
     }
   }, []);
+
+  // Ruta publica: #/qr/CODIGO_QR
+  const qrMatch = hash.match(/^#\/qr\/(.+)$/);
+  if (qrMatch) {
+    return <QRPage qrCode={decodeURIComponent(qrMatch[1])} />;
+  }
+
+  // Ruta privada: login + admin
+  return <PrivateApp />;
+}
+
+function PrivateApp() {
+  const { isAuthenticated, user, token, loading, error, login, logout } = useAuth();
+  const { commerce, getBeneficiaryByDni, getBenefitsForBeneficiary, processVerification } = useData();
+  const [currentScreen, setCurrentScreen] = useState<ScreenType>('login');
 
   const handleLogin = async (username: string, password: string) => {
     const success = await login(username, password);
@@ -57,8 +81,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#1e3a5f] to-[#2d5a87]">
-        <div className="text-white text-xl">Cargando...</div>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#080e1a' }}>
+        <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(191,163,99,0.15)', borderTopColor: '#bfa363' }} />
       </div>
     );
   }
@@ -85,7 +109,7 @@ export default function App() {
                 onClick={handleLogout}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition"
               >
-                Cerrar Sesión
+                Cerrar Sesion
               </button>
             </div>
           </div>
