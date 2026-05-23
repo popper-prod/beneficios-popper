@@ -40,10 +40,15 @@ export default function App() {
 }
 
 function PrivateApp() {
-  const { isAuthenticated, user, token, loading, error, login, logout } = useAuth();
+  const { isAuthenticated, user, token, loading, error, login, loginWithGoogle, logout } = useAuth();
 
   const handleLogin = async (username: string, password: string) => {
     const success = await login(username, password);
+    return success;
+  };
+
+  const handleGoogleLogin = async (credential: string) => {
+    const success = await loginWithGoogle(credential);
     return success;
   };
 
@@ -56,7 +61,7 @@ function PrivateApp() {
   }
 
   if (!isAuthenticated || !token) {
-    return <LoginScreen onLogin={handleLogin} isLoading={loading} error={error} />;
+    return <LoginScreen onLogin={handleLogin} onGoogleLogin={handleGoogleLogin} isLoading={loading} error={error} />;
   }
 
   return <AdminDashboard token={token} user={user} onLogout={logout} />;

@@ -45,7 +45,21 @@ export const useAuth = () => {
     setLoading(false);
   }, []);
 
-  // Función de login - conectar al backend
+  // Helper para guardar la sesion tras login exitoso
+  const saveSession = (data: any) => {
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 8);
+    const newAuth: AuthState = {
+      isAuthenticated: true,
+      user: { ...data.user, ultimoAcceso: new Date() },
+      token: data.token,
+      expiresAt,
+    };
+    setAuthState(newAuth);
+    localStorage.setItem(AUTH_KEY, JSON.stringify(newAuth));
+  };
+
+  // Función de login - conectar al backend (email + password)
   const login = useCallback(async (username: string, password: string): Promise<boolean> => {
     setLoading(true);
     setError(null);
@@ -64,19 +78,36 @@ export const useAuth = () => {
         return false;
       }
 
-      const data = await response.json();
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 8);
+      saveSession(await response.json());
+      setLoading(false);
+      return true;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Error de conexión';
+      setError(errorMsg);
+      setLoading(false);
+      return false;
+    }
+  }, []);
 
-      const newAuth: AuthState = {
-        isAuthenticated: true,
-        user: { ...data.user, ultimoAcceso: new Date() },
-        token: data.token,
-        expiresAt,
-      };
+  // Login con Google: recibe el ID token (credential) que devuelve Google
+  const loginWithGoogle = useCallback(async (credential: string): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_URL}/auth/login-google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential }),
+      });
 
-      setAuthState(newAuth);
-      localStorage.setItem(AUTH_KEY, JSON.stringify(newAuth));
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || 'No tenés permisos para acceder al panel');
+        setLoading(false);
+        return false;
+      }
+
+      saveSession(await response.json());
       setLoading(false);
       return true;
     } catch (err) {
@@ -141,6 +172,7 @@ export const useAuth = () => {
     loading,
     error,
     login,
+    loginWithGoogle,
     logout,
     hasPermission,
     hasRole,

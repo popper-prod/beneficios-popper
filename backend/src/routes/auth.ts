@@ -1,12 +1,16 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import { OAuth2Client } from 'google-auth-library';
 import { query } from '../db';
 import { generateToken, AuthRequest } from '../middleware/auth';
 import { validate } from '../middleware/validation';
 import { loginNaaloo } from '../services/naaloo';
 
 const router = Router();
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const LoginSchema = z.object({
   username: z.string().min(1, 'Usuario o email requerido'),
@@ -118,6 +122,92 @@ router.post('/login', validate(LoginSchema), async (req: AuthRequest, res: Respo
   } catch (error: any) {
     console.error('Login error:', error?.message || error);
     console.error('Login error stack:', error?.stack);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// ============================================
+// LOGIN GOOGLE: el frontend envia el ID token (credential) que devuelve Google
+// El backend lo verifica con las claves publicas de Google, extrae el email
+// y comprueba que el beneficiario tenga es_admin = TRUE
+// ============================================
+router.post('/login-google', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!GOOGLE_CLIENT_ID) {
+      return res.status(500).json({ error: 'Google Sign-In no esta configurado en el servidor (falta GOOGLE_CLIENT_ID).' });
+    }
+    const { credential } = req.body || {};
+    if (!credential || typeof credential !== 'string') {
+      return res.status(400).json({ error: 'Falta el token de Google (credential)' });
+    }
+
+    // Verificar el ID token contra las claves publicas de Google
+    let payload: any;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (verifyErr: any) {
+      console.error('Google verifyIdToken error:', verifyErr?.message || verifyErr);
+      return res.status(401).json({ error: 'Token de Google invalido o expirado' });
+    }
+
+    if (!payload?.email || !payload?.email_verified) {
+      return res.status(401).json({ error: 'Email de Google no verificado' });
+    }
+
+    const email = String(payload.email).toLowerCase();
+
+    // Buscar beneficiario por email
+    const benefRes = await query(
+      `SELECT id, dni, nombre, apellido, email, es_admin, rol_admin, activo
+       FROM beneficiarios
+       WHERE LOWER(email) = LOWER($1)
+       LIMIT 1`,
+      [email]
+    );
+
+    if (benefRes.rows.length === 0) {
+      return res.status(403).json({ error: `No se encontró un colaborador registrado con el email ${email}.` });
+    }
+
+    const benef = benefRes.rows[0];
+
+    if (!benef.activo) {
+      return res.status(403).json({ error: 'Tu cuenta de colaborador está desactivada. Contactá a RRHH.' });
+    }
+
+    if (!benef.es_admin) {
+      return res.status(403).json({ error: 'Tu cuenta de Google es válida, pero no tenés permisos de administración en el sistema. Solicitalo a un super-administrador.' });
+    }
+
+    const rol = benef.rol_admin || 'admin';
+    const token = generateToken(benef.id, benef.email, rol);
+
+    // Audit log
+    await query(
+      `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por)
+       VALUES ($1, 'login_admin', $2, $3)`,
+      [benef.id, `Login con Google (${payload.name || ''})`, benef.email]
+    ).catch(() => {});
+
+    return res.json({
+      token,
+      user: {
+        id: benef.id,
+        username: benef.email,
+        email: benef.email,
+        nombre: benef.nombre,
+        apellido: benef.apellido,
+        rol,
+        origen: 'google',
+        avatar: payload.picture || null,
+      },
+    });
+  } catch (error: any) {
+    console.error('Login Google error:', error?.message || error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });

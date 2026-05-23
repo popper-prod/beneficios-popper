@@ -1,13 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface LoginScreenProps {
   onLogin: (username: string, password: string) => Promise<boolean>;
+  onGoogleLogin?: (credential: string) => Promise<boolean>;
   isLoading?: boolean;
   error?: string | null;
 }
 
+// Cliente OAuth de Google. Configurable via VITE_GOOGLE_CLIENT_ID.
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
+
 export const LoginScreen: React.FC<LoginScreenProps> = ({
   onLogin,
+  onGoogleLogin,
   isLoading = false,
   error,
 }) => {
@@ -17,6 +28,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [mounted, setMounted] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [step, setStep] = useState<1 | 2>(1);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     requestAnimationFrame(() => setMounted(true));
@@ -25,6 +38,46 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   useEffect(() => {
     if (error) setLoginError(error);
   }, [error]);
+
+  // Inicializar Google Identity Services una vez que el script este cargado
+  useEffect(() => {
+    if (!onGoogleLogin || !GOOGLE_CLIENT_ID || step !== 1) return;
+
+    let tries = 0;
+    const init = () => {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: async (response: any) => {
+            if (!response?.credential) return;
+            setGoogleLoading(true);
+            setLoginError(null);
+            const ok = await onGoogleLogin(response.credential);
+            if (!ok) setGoogleLoading(false);
+          },
+          ux_mode: 'popup',
+          auto_select: false,
+        });
+        if (googleButtonRef.current) {
+          // Limpiar antes de re-renderizar (StrictMode)
+          googleButtonRef.current.innerHTML = '';
+          window.google.accounts.id.renderButton(googleButtonRef.current, {
+            type: 'standard',
+            theme: 'filled_black',
+            size: 'large',
+            text: 'continue_with',
+            shape: 'pill',
+            logo_alignment: 'left',
+            width: 340,
+          });
+        }
+      } else if (tries < 40) {
+        tries++;
+        setTimeout(init, 100);
+      }
+    };
+    init();
+  }, [onGoogleLogin, step]);
 
   const handleNext = () => {
     if (username.trim()) {
@@ -132,10 +185,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </h2>
               <p className="text-[13px] mb-7" style={{ color: 'rgba(255,255,255,0.35)' }}>
                 {step === 1
-                  ? 'Ingresa tu email de Naaloo para continuar.'
-                  : 'Usa la misma contrasena con la que accedes a Naaloo.'
+                  ? (GOOGLE_CLIENT_ID && onGoogleLogin
+                      ? 'Continua con tu cuenta de Google o ingresa con tu email.'
+                      : 'Ingresa tu email para continuar.')
+                  : 'Ingresa tu contrasena para continuar.'
                 }
               </p>
+
+              {/* Boton de Google (solo en step 1, antes del formulario) */}
+              {step === 1 && onGoogleLogin && GOOGLE_CLIENT_ID && (
+                <div className="mb-5 animate-fadeIn">
+                  <div ref={googleButtonRef} className="flex justify-center" style={{ minHeight: '44px' }} />
+                  {googleLoading && (
+                    <p className="text-center text-[11px] mt-3" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                      Verificando con Google...
+                    </p>
+                  )}
+                  {/* Separador "o" */}
+                  <div className="flex items-center gap-3 my-5">
+                    <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                    <span className="text-[10px] tracking-[0.3em] uppercase" style={{ color: 'rgba(255,255,255,0.25)' }}>O</span>
+                    <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                  </div>
+                </div>
+              )}
 
               <form onSubmit={handleSubmit}>
                 {/* Step 1: Usuario */}
@@ -171,7 +244,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       />
                     </div>
 
-                    {/* Info Naaloo */}
+                    {/* Info acceso */}
                     <div className="pt-2">
                       <div className="flex items-start gap-2.5 p-3 rounded-lg" style={{ background: 'rgba(191,163,99,0.04)', border: '1px solid rgba(191,163,99,0.1)' }}>
                         <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke={gold} strokeWidth={1.5} style={{ opacity: 0.7 }}>
@@ -179,10 +252,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         </svg>
                         <div>
                           <p className="text-[10px] font-semibold tracking-wide uppercase mb-1" style={{ color: `${goldDim}0.6)` }}>
-                            Acceso vinculado con Naaloo
+                            Acceso solo para autorizados
                           </p>
                           <p className="text-[10.5px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                            Usa las mismas credenciales que en Naaloo. Solo los colaboradores con permisos asignados podran acceder al panel.
+                            Solo los colaboradores con permisos de administracion asignados podran acceder al panel.
                           </p>
                         </div>
                       </div>
