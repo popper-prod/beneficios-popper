@@ -518,18 +518,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
     </button>
   );
 
-  const actionBtns = (type: 'beneficio' | 'comercio' | 'beneficiario', item: any) => (
-    <div className="flex gap-1.5 mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-      <button onClick={() => openEdit(type, item)} className="flex-1 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-all"
-        style={{ color: gold, border: `1px solid rgba(191,163,99,0.2)`, background: 'rgba(191,163,99,0.05)' }}>
-        Editar
-      </button>
-      <button onClick={() => handleDelete(type, item.id, item.nombre)} className="flex-1 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-all"
-        style={{ color: '#f87171', border: '1px solid rgba(248,113,113,0.2)', background: 'rgba(248,113,113,0.05)' }}>
-        Eliminar
-      </button>
-    </div>
-  );
+  // actionBtns reemplazado por CardActions premium al final del archivo
 
   const userInitials = ((user?.nombre?.[0] || '') + (user?.apellido?.[0] || '')).toUpperCase() || 'GP';
 
@@ -741,148 +730,230 @@ export default function AdminDashboard({ token, user, onLogout }: {
 
         {/* ====== VERIFICACIONES ====== */}
         {activeTab === 'verificaciones' && (
-          <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(191,163,99,0.5)' }}>
-                Historial completo ({verificaciones.length})
-              </p>
+          <Section
+            eyebrow="Historial completo"
+            title={`${verificaciones.length} verificacion${verificaciones.length === 1 ? '' : 'es'} registrada${verificaciones.length === 1 ? '' : 's'}`}
+            action={
               <div className="flex items-center gap-2">
-                <button onClick={handleExportCSV}
-                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg font-medium transition-all"
-                  style={{ color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)', background: 'rgba(74,222,128,0.05)' }}>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Exportar CSV
-                </button>
-                <button onClick={handleCleanup} disabled={cleaningUp}
-                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg font-medium transition-all disabled:opacity-50"
-                  style={{ color: '#fb923c', border: '1px solid rgba(251,146,60,0.2)', background: 'rgba(251,146,60,0.05)' }}>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                  </svg>
-                  {cleaningUp ? 'Limpiando...' : 'Limpiar duplicados'}
-                </button>
-                <button onClick={fetchVerificaciones} className="text-[11px] px-3 py-1.5 rounded-lg"
-                  style={{ color: gold, border: `1px solid rgba(191,163,99,0.2)` }}>
-                  Actualizar
-                </button>
+                <GhostButton onClick={handleExportCSV} icon="download" tone="success">Exportar CSV</GhostButton>
+                <GhostButton onClick={handleCleanup} disabled={cleaningUp} icon="trash" tone="warning">
+                  {cleaningUp ? 'Limpiando…' : 'Limpiar duplicados'}
+                </GhostButton>
+                <GhostButton onClick={fetchVerificaciones} icon="refresh" tone="gold">Actualizar</GhostButton>
               </div>
-            </div>
+            }
+          >
             {cleanupMsg && (
-              <div className="mb-4 p-3 rounded-lg" style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.15)' }}>
-                <p className="text-[12px] text-center" style={{ color: '#fb923c' }}>{cleanupMsg}</p>
+              <div
+                className="mb-4 p-3 rounded-lg"
+                style={{ background: 'rgba(224,183,108,0.06)', border: '1px solid rgba(224,183,108,0.18)' }}
+              >
+                <p className="text-[12.5px] text-center" style={{ color: '#e0b76c' }}>{cleanupMsg}</p>
               </div>
             )}
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
-                <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    {['Fecha', 'Colaborador', 'DNI', 'Nivel', 'Beneficio', 'Comercio', 'Estado', 'Codigo'].map(h => (
-                      <th key={h} className="text-left py-2 px-2 font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {verificaciones.map(v => (
-                    <tr key={v.id} className="hover:bg-white/[0.02] transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                      <td className="py-2.5 px-2" style={{ color: 'rgba(255,255,255,0.5)' }}>{formatDate(v.fecha_verificacion)}</td>
-                      <td className="py-2.5 px-2 text-white font-medium">{v.beneficiario_nombre} {v.beneficiario_apellido}</td>
-                      <td className="py-2.5 px-2 font-mono" style={{ color: 'rgba(255,255,255,0.4)' }}>{v.dni}</td>
-                      <td className="py-2.5 px-2">
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: 'rgba(191,163,99,0.1)', color: gold }}>
-                          {v.nivel}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-2" style={{ color: gold }}>{v.beneficio_nombre}</td>
-                      <td className="py-2.5 px-2" style={{ color: 'rgba(255,255,255,0.5)' }}>{v.comercio_nombre}</td>
-                      <td className="py-2.5 px-2">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                          style={{ background: v.estado === 'exitoso' ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)', color: v.estado === 'exitoso' ? '#4ade80' : '#f87171' }}>
-                          {v.estado}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-2 font-mono text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{v.codigo_referencia}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {verificaciones.length === 0 && (
-                <p className="text-center py-12 text-[13px]" style={{ color: 'rgba(255,255,255,0.2)' }}>No hay verificaciones registradas</p>
-              )}
-            </div>
-          </div>
+            {verificaciones.length === 0 ? (
+              <Empty
+                title="Sin verificaciones aún"
+                description="Las verificaciones de tus colaboradores en los comercios adheridos aparecerán acá."
+                icon={
+                  <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                }
+              />
+            ) : (
+              <PremiumTable
+                columns={[
+                  { key: 'fecha', label: 'Fecha' },
+                  { key: 'colaborador', label: 'Colaborador' },
+                  { key: 'dni', label: 'DNI', mono: true },
+                  { key: 'nivel', label: 'Nivel' },
+                  { key: 'beneficio', label: 'Beneficio', accent: true },
+                  { key: 'comercio', label: 'Comercio' },
+                  { key: 'estado', label: 'Estado' },
+                  { key: 'codigo', label: 'Código', mono: true },
+                ]}
+                rows={verificaciones.map((v: any) => ({
+                  id: v.id,
+                  fecha: formatDate(v.fecha_verificacion),
+                  colaborador: `${v.beneficiario_nombre} ${v.beneficiario_apellido || ''}`.trim(),
+                  dni: v.dni,
+                  nivel: <TierBadge nivel={v.nivel} />,
+                  beneficio: v.beneficio_nombre,
+                  comercio: v.comercio_nombre,
+                  estado: <StatusBadge estado={v.estado} />,
+                  codigo: v.codigo_referencia,
+                }))}
+              />
+            )}
+          </Section>
         )}
 
         {/* ====== BENEFICIOS ====== */}
         {activeTab === 'beneficios' && (
           <div>
-            <div className="flex items-center justify-between mb-5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(191,163,99,0.5)' }}>
-                Beneficios ({beneficios.length})
-              </p>
-              {addBtn('Nuevo beneficio', () => openCreate('beneficio'))}
-            </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {beneficios.map(b => (
-                <div key={b.id} className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div className="flex items-start justify-between mb-3">
-                    <h3 className="text-[14px] font-semibold text-white pr-2">{b.nombre}</h3>
-                    <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase"
-                      style={{ background: b.activo ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)', color: b.activo ? '#4ade80' : '#f87171' }}>
-                      {b.activo ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </div>
-                  <p className="text-[12px] mb-3" style={{ color: 'rgba(255,255,255,0.35)' }}>{b.descripcion}</p>
-                  <div className="space-y-1.5 text-[11px]">
-                    <div className="flex justify-between"><span style={{ color: 'rgba(255,255,255,0.3)' }}>Nivel min.</span><span style={{ color: gold }}>{b.nivel_minimo}</span></div>
-                    {b.descuento && <div className="flex justify-between"><span style={{ color: 'rgba(255,255,255,0.3)' }}>Descuento</span><span className="font-bold" style={{ color: '#4ade80' }}>{b.descuento}%</span></div>}
-                    <div className="flex justify-between"><span style={{ color: 'rgba(255,255,255,0.3)' }}>Usos</span><span className="text-white font-medium">{b.uso_actual || 0}</span></div>
-                    <div className="flex justify-between"><span style={{ color: 'rgba(255,255,255,0.3)' }}>Horario</span><span style={{ color: 'rgba(255,255,255,0.5)' }}>{b.horario_inicio || '-'} a {b.horario_fin || '-'}</span></div>
-                  </div>
-                  {actionBtns('beneficio', b)}
-                </div>
-              ))}
-              {beneficios.length === 0 && (
-                <p className="col-span-full text-center py-12 text-[13px]" style={{ color: 'rgba(255,255,255,0.2)' }}>No hay beneficios</p>
-              )}
-            </div>
+            <PageHeader
+              eyebrow="Catálogo"
+              title={`${beneficios.length} beneficio${beneficios.length === 1 ? '' : 's'} configurado${beneficios.length === 1 ? '' : 's'}`}
+              action={<PrimaryActionButton onClick={() => openCreate('beneficio')}>Nuevo beneficio</PrimaryActionButton>}
+            />
+            {beneficios.length === 0 ? (
+              <Empty
+                title="No hay beneficios todavía"
+                description="Creá el primer beneficio para que tus colaboradores puedan empezar a canjearlo en los comercios adheridos."
+                icon={
+                  <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                  </svg>
+                }
+                action={<PrimaryActionButton onClick={() => openCreate('beneficio')}>Crear primer beneficio</PrimaryActionButton>}
+              />
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {beneficios.map(b => (
+                  <PremiumCard key={b.id} active={b.activo}>
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <h3
+                        className="leading-tight"
+                        style={{
+                          fontFamily: "'Playfair Display', Georgia, serif",
+                          fontSize: '17px',
+                          fontWeight: 600,
+                          color: 'rgba(255,255,255,0.95)',
+                        }}
+                      >
+                        {b.nombre}
+                      </h3>
+                      <ActiveBadge active={b.activo} />
+                    </div>
+                    {b.descripcion && (
+                      <p className="text-[12px] mb-4 leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                        {b.descripcion}
+                      </p>
+                    )}
+                    {b.descuento && (
+                      <div className="mb-4 flex items-baseline gap-1.5">
+                        <span
+                          style={{
+                            fontFamily: "'Playfair Display', Georgia, serif",
+                            fontSize: '34px',
+                            fontWeight: 600,
+                            color: '#d4b978',
+                            fontVariantNumeric: 'tabular-nums',
+                            letterSpacing: '-0.02em',
+                            lineHeight: 1,
+                          }}
+                        >
+                          {b.descuento}
+                          <span style={{ fontSize: '18px' }}>%</span>
+                        </span>
+                        <span
+                          className="text-[10px] font-semibold"
+                          style={{ color: 'rgba(212,185,120,0.55)', letterSpacing: '0.22em', textTransform: 'uppercase' }}
+                        >
+                          Descuento
+                        </span>
+                      </div>
+                    )}
+                    <div className="space-y-2 text-[11.5px] mb-3">
+                      <DataRow label="Nivel mínimo" value={<TierBadge nivel={b.nivel_minimo} />} />
+                      <DataRow label="Usos acumulados" value={<span style={{ color: 'rgba(255,255,255,0.85)', fontVariantNumeric: 'tabular-nums' }}>{b.uso_actual || 0}</span>} />
+                      <DataRow label="Horario" value={<span style={{ color: 'rgba(255,255,255,0.6)', fontVariantNumeric: 'tabular-nums' }}>{b.horario_inicio || '—'} a {b.horario_fin || '—'}</span>} />
+                    </div>
+                    <CardActions onEdit={() => openEdit('beneficio', b)} onDelete={() => handleDelete('beneficio', b.id, b.nombre)} />
+                  </PremiumCard>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {/* ====== COMERCIOS ====== */}
         {activeTab === 'comercios' && (
           <div>
-            <div className="flex items-center justify-between mb-5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(191,163,99,0.5)' }}>
-                Comercios ({comercios.length})
-              </p>
-              {addBtn('Nuevo comercio', () => openCreate('comercio'))}
-            </div>
-            <div className="grid md:grid-cols-2 gap-4">
-              {comercios.map(c => (
-                <div key={c.id} className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="text-[14px] font-semibold text-white">{c.nombre}</h3>
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase"
-                      style={{ background: c.activo ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)', color: c.activo ? '#4ade80' : '#f87171' }}>
-                      {c.activo ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-[11px] mb-3">
-                    <p style={{ color: 'rgba(255,255,255,0.4)' }}>{c.direccion}, {c.ciudad}</p>
-                    <p style={{ color: 'rgba(255,255,255,0.3)' }}>Responsable: {c.responsable}</p>
-                    <p style={{ color: 'rgba(255,255,255,0.3)' }}>Horario: {c.horario_apertura} - {c.horario_cierre}</p>
-                    {c.telefono && <p style={{ color: 'rgba(255,255,255,0.3)' }}>Tel: {c.telefono}</p>}
-                  </div>
-                  <div className="p-2.5 rounded-lg" style={{ background: 'rgba(191,163,99,0.05)', border: '1px solid rgba(191,163,99,0.1)' }}>
-                    <p className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(191,163,99,0.5)' }}>Codigo QR</p>
-                    <p className="text-[12px] font-mono mt-0.5" style={{ color: gold }}>{c.qr_code}</p>
-                  </div>
-                  {actionBtns('comercio', c)}
-                </div>
-              ))}
-            </div>
+            <PageHeader
+              eyebrow="Red de comercios"
+              title={`${comercios.length} comercio${comercios.length === 1 ? '' : 's'} adherido${comercios.length === 1 ? '' : 's'}`}
+              action={<PrimaryActionButton onClick={() => openCreate('comercio')}>Nuevo comercio</PrimaryActionButton>}
+            />
+            {comercios.length === 0 ? (
+              <Empty
+                title="Aún no hay comercios"
+                description="Agregá el primer comercio para empezar a generar códigos QR que tus colaboradores puedan escanear."
+                icon={
+                  <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
+                  </svg>
+                }
+                action={<PrimaryActionButton onClick={() => openCreate('comercio')}>Agregar primer comercio</PrimaryActionButton>}
+              />
+            ) : (
+              <div className="grid md:grid-cols-2 gap-4">
+                {comercios.map(c => (
+                  <PremiumCard key={c.id} active={c.activo}>
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="min-w-0 flex-1">
+                        <h3
+                          className="leading-tight"
+                          style={{
+                            fontFamily: "'Playfair Display', Georgia, serif",
+                            fontSize: '18px',
+                            fontWeight: 600,
+                            color: 'rgba(255,255,255,0.95)',
+                          }}
+                        >
+                          {c.nombre}
+                        </h3>
+                        <p className="text-[12px] mt-1" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                          {c.direccion}, {c.ciudad}
+                        </p>
+                      </div>
+                      <ActiveBadge active={c.activo} />
+                    </div>
+                    <div className="space-y-1.5 text-[11.5px] mb-4">
+                      {c.responsable && <DataRow label="Responsable" value={<span style={{ color: 'rgba(255,255,255,0.75)' }}>{c.responsable}</span>} />}
+                      <DataRow
+                        label="Horario"
+                        value={<span style={{ color: 'rgba(255,255,255,0.6)', fontVariantNumeric: 'tabular-nums' }}>{c.horario_apertura} – {c.horario_cierre}</span>}
+                      />
+                      {c.telefono && (
+                        <DataRow label="Teléfono" value={<span style={{ color: 'rgba(255,255,255,0.6)', fontVariantNumeric: 'tabular-nums' }}>{c.telefono}</span>} />
+                      )}
+                    </div>
+                    <div
+                      className="relative p-3 rounded-xl overflow-hidden"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(212,185,120,0.06) 0%, rgba(191,163,99,0.03) 100%)',
+                        border: '1px solid rgba(191,163,99,0.18)',
+                      }}
+                    >
+                      <div
+                        className="absolute top-0 left-0 right-0 h-px"
+                        style={{ background: 'linear-gradient(90deg, transparent, rgba(212,185,120,0.4), transparent)' }}
+                      />
+                      <p
+                        className="text-[9.5px] font-semibold mb-1"
+                        style={{ color: 'rgba(191,163,99,0.6)', letterSpacing: '0.22em', textTransform: 'uppercase' }}
+                      >
+                        Código QR
+                      </p>
+                      <p
+                        className="text-[13px]"
+                        style={{
+                          fontFamily: "'JetBrains Mono', monospace",
+                          color: '#d4b978',
+                          letterSpacing: '0.1em',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {c.qr_code}
+                      </p>
+                    </div>
+                    <CardActions onEdit={() => openEdit('comercio', c)} onDelete={() => handleDelete('comercio', c.id, c.nombre)} />
+                  </PremiumCard>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1883,6 +1954,279 @@ function DashboardSkeleton() {
         <div className="skeleton h-5 w-72 mb-6" />
         <div className="skeleton h-60 w-full" />
       </div>
+    </div>
+  );
+}
+
+// ============================================
+// UI HELPERS reutilizables dentro de AdminDashboard
+// ============================================
+
+function PageHeader({ eyebrow, title, action }: { eyebrow: string; title: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex items-end justify-between gap-4 mb-7 flex-wrap">
+      <div>
+        <p
+          className="text-[10px] font-semibold mb-2"
+          style={{ color: 'rgba(191,163,99,0.55)', letterSpacing: '0.32em', textTransform: 'uppercase' }}
+        >
+          {eyebrow}
+        </p>
+        <h1
+          className="leading-tight"
+          style={{
+            fontFamily: "'Playfair Display', Georgia, serif",
+            fontSize: '28px',
+            fontWeight: 600,
+            color: 'rgba(255,255,255,0.95)',
+            letterSpacing: '-0.01em',
+          }}
+        >
+          {title}
+        </h1>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function PrimaryActionButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-[11.5px] font-semibold overflow-hidden transition-all group"
+      style={{
+        background: 'linear-gradient(135deg, #d4b978 0%, #bfa363 50%, #9d8649 100%)',
+        color: '#0a0e14',
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+        boxShadow: '0 6px 20px rgba(191,163,99,0.18), inset 0 1px 0 rgba(255,255,255,0.15)',
+        transitionDuration: '500ms',
+        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+      onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-1px)')}
+      onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}
+    >
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+      </svg>
+      <span>{children}</span>
+    </button>
+  );
+}
+
+function GhostButton({
+  children,
+  onClick,
+  disabled,
+  icon,
+  tone = 'default',
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  icon?: 'download' | 'trash' | 'refresh';
+  tone?: 'default' | 'gold' | 'success' | 'warning' | 'danger';
+}) {
+  const toneColor = {
+    default: 'rgba(255,255,255,0.55)',
+    gold: '#d4b978',
+    success: '#7fc99f',
+    warning: '#e0b76c',
+    danger: '#e89089',
+  }[tone];
+  const toneBorder = {
+    default: 'rgba(255,255,255,0.1)',
+    gold: 'rgba(212,185,120,0.25)',
+    success: 'rgba(127,201,159,0.22)',
+    warning: 'rgba(224,183,108,0.22)',
+    danger: 'rgba(232,144,137,0.22)',
+  }[tone];
+
+  const iconPath = {
+    download: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4',
+    trash: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+    refresh: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[10.5px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{
+        color: toneColor,
+        border: `1px solid ${toneBorder}`,
+        background: 'rgba(255,255,255,0.01)',
+        letterSpacing: '0.15em',
+        textTransform: 'uppercase',
+      }}
+      onMouseEnter={e => {
+        if (!disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+      }}
+      onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.01)')}
+    >
+      {icon && (
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d={iconPath[icon]} />
+        </svg>
+      )}
+      {children}
+    </button>
+  );
+}
+
+function ActiveBadge({ active }: { active: boolean }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-semibold flex-shrink-0"
+      style={{
+        background: active ? 'rgba(127,201,159,0.08)' : 'rgba(232,144,137,0.08)',
+        border: `1px solid ${active ? 'rgba(127,201,159,0.22)' : 'rgba(232,144,137,0.22)'}`,
+        color: active ? '#7fc99f' : '#e89089',
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+      }}
+    >
+      <span
+        className="w-1.5 h-1.5 rounded-full"
+        style={{
+          background: active ? '#7fc99f' : '#e89089',
+          boxShadow: active ? '0 0 4px rgba(127,201,159,0.6)' : 'none',
+        }}
+      />
+      {active ? 'Activo' : 'Inactivo'}
+    </span>
+  );
+}
+
+function StatusBadge({ estado }: { estado: string }) {
+  const ok = estado === 'exitoso';
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold"
+      style={{
+        background: ok ? 'rgba(127,201,159,0.08)' : 'rgba(232,144,137,0.08)',
+        border: `1px solid ${ok ? 'rgba(127,201,159,0.22)' : 'rgba(232,144,137,0.22)'}`,
+        color: ok ? '#7fc99f' : '#e89089',
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+      }}
+    >
+      <span
+        className="w-1.5 h-1.5 rounded-full"
+        style={{ background: ok ? '#7fc99f' : '#e89089' }}
+      />
+      {estado}
+    </span>
+  );
+}
+
+function TierBadge({ nivel }: { nivel: string }) {
+  const tiers: Record<string, { color: string; bg: string; label: string }> = {
+    bronce: { color: '#d4a76a', bg: 'rgba(180,130,70,0.12)', label: 'Bronce' },
+    plata: { color: '#c8d0d8', bg: 'rgba(184,192,200,0.12)', label: 'Plata' },
+    oro: { color: '#d4b978', bg: 'rgba(191,163,99,0.12)', label: 'Oro' },
+    platinum: { color: '#e8e6e3', bg: 'rgba(232,230,227,0.10)', label: 'Platinum' },
+  };
+  const t = tiers[nivel] || tiers.bronce;
+  return (
+    <span
+      className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold"
+      style={{
+        background: t.bg,
+        color: t.color,
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+        border: `1px solid ${t.color}33`,
+      }}
+    >
+      {t.label}
+    </span>
+  );
+}
+
+function PremiumCard({ children, active = true }: { children: React.ReactNode; active?: boolean }) {
+  return (
+    <div
+      className="relative p-5 rounded-2xl transition-all group overflow-hidden"
+      style={{
+        background: 'linear-gradient(180deg, rgba(15,25,42,0.7) 0%, rgba(10,16,28,0.85) 100%)',
+        border: '1px solid rgba(255,255,255,0.05)',
+        boxShadow: '0 4px 16px rgba(8,14,26,0.15)',
+        opacity: active ? 1 : 0.65,
+        transitionDuration: '320ms',
+        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = 'rgba(191,163,99,0.2)';
+        e.currentTarget.style.transform = 'translateY(-2px)';
+        e.currentTarget.style.boxShadow = '0 12px 32px rgba(8,14,26,0.3), 0 0 24px rgba(191,163,99,0.05)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = '0 4px 16px rgba(8,14,26,0.15)';
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span
+        className="text-[10px] font-semibold flex-shrink-0"
+        style={{ color: 'rgba(191,163,99,0.5)', letterSpacing: '0.18em', textTransform: 'uppercase' }}
+      >
+        {label}
+      </span>
+      <span className="text-[12px] text-right truncate">{value}</span>
+    </div>
+  );
+}
+
+function CardActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div className="flex gap-1.5 mt-4 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+      <button
+        onClick={onEdit}
+        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-semibold transition-all"
+        style={{
+          color: '#d4b978',
+          border: '1px solid rgba(212,185,120,0.2)',
+          background: 'rgba(212,185,120,0.04)',
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(212,185,120,0.1)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(212,185,120,0.04)')}
+      >
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+        Editar
+      </button>
+      <button
+        onClick={onDelete}
+        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-semibold transition-all"
+        style={{
+          color: '#e89089',
+          border: '1px solid rgba(232,144,137,0.2)',
+          background: 'rgba(232,144,137,0.04)',
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(232,144,137,0.1)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(232,144,137,0.04)')}
+      >
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+        Eliminar
+      </button>
     </div>
   );
 }
