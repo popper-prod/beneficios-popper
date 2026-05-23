@@ -1,4 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Stat } from '../components/ui/Stat';
+import { Section } from '../components/ui/Section';
+import { Empty } from '../components/ui/Empty';
+import { PremiumAreaChart, PremiumBarChart } from '../components/ui/Chart';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://beneficios-backend-jfpx.onrender.com/api';
 
@@ -527,149 +531,211 @@ export default function AdminDashboard({ token, user, onLogout }: {
     </div>
   );
 
+  const userInitials = ((user?.nombre?.[0] || '') + (user?.apellido?.[0] || '')).toUpperCase() || 'GP';
+
   return (
-    <div className="min-h-screen" style={{ background: '#080e1a' }}>
-      {/* Top bar */}
-      <div className="border-b" style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(15,25,42,0.8)', backdropFilter: 'blur(20px)' }}>
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen relative" style={{ background: '#080e1a' }}>
+      {/* Glow dorado superior sutil */}
+      <div
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[300px] rounded-full pointer-events-none"
+        style={{
+          background: 'radial-gradient(ellipse, rgba(191,163,99,0.05), transparent 65%)',
+          filter: 'blur(40px)',
+        }}
+      />
+
+      {/* ====== TOP BAR PREMIUM ====== */}
+      <header
+        className="sticky top-0 z-20 border-b"
+        style={{
+          borderColor: 'rgba(255,255,255,0.05)',
+          background: 'linear-gradient(180deg, rgba(15,25,42,0.92) 0%, rgba(8,14,26,0.85) 100%)',
+          backdropFilter: 'blur(24px)',
+        }}
+      >
+        {/* Edge dorado superior */}
+        <div
+          className="absolute top-0 left-0 right-0 h-px"
+          style={{ background: 'linear-gradient(90deg, transparent, rgba(212,185,120,0.25) 30%, rgba(212,185,120,0.25) 70%, transparent)' }}
+        />
+        <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between gap-4">
+          {/* Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ border: `1px solid rgba(191,163,99,0.25)` }}>
-              <span className="text-[11px] font-bold" style={{ color: gold }}>GP</span>
+            <div className="relative">
+              <div
+                className="absolute inset-0 rounded-full"
+                style={{
+                  background: 'radial-gradient(circle, rgba(191,163,99,0.18), transparent 70%)',
+                  filter: 'blur(6px)',
+                  transform: 'scale(1.4)',
+                }}
+              />
+              <div
+                className="relative w-9 h-9 rounded-full flex items-center justify-center"
+                style={{
+                  border: '1px solid rgba(191,163,99,0.4)',
+                  background: 'radial-gradient(circle at 30% 30%, rgba(212,185,120,0.08), rgba(8,14,26,0.4))',
+                  boxShadow: '0 0 16px rgba(191,163,99,0.1), inset 0 1px 0 rgba(212,185,120,0.15)',
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "'Playfair Display', Georgia, serif",
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: '#d4b978',
+                    letterSpacing: '-0.02em',
+                  }}
+                >
+                  GP
+                </span>
+              </div>
             </div>
-            <div>
-              <p className="text-[13px] font-semibold text-white">Panel RRHH</p>
-              <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>Grupo Popper</p>
+            <div className="hidden sm:block">
+              <p
+                className="leading-tight"
+                style={{
+                  fontFamily: "'Playfair Display', Georgia, serif",
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: 'rgba(245,241,232,0.95)',
+                  letterSpacing: '0.02em',
+                }}
+              >
+                Grupo Popper
+              </p>
+              <p
+                className="text-[9px] mt-0.5"
+                style={{
+                  color: 'rgba(191,163,99,0.55)',
+                  letterSpacing: '0.32em',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                }}
+              >
+                Panel Administrativo
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              {user?.nombre} {user?.apellido}
-            </p>
-            <button onClick={onLogout} className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
-              style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(220,38,38,0.3)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}>
+
+          {/* User + Logout */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(212,185,120,0.15), rgba(191,163,99,0.08))',
+                  border: '1px solid rgba(191,163,99,0.25)',
+                  color: '#d4b978',
+                  fontWeight: 600,
+                  fontSize: '12px',
+                  fontFamily: "'Playfair Display', Georgia, serif",
+                }}
+              >
+                {userInitials}
+              </div>
+              <div className="hidden md:block text-right">
+                <p
+                  className="text-[13px] leading-tight"
+                  style={{ color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}
+                >
+                  {user?.nombre} {user?.apellido}
+                </p>
+                <p
+                  className="text-[10px] mt-0.5"
+                  style={{ color: 'rgba(191,163,99,0.55)', letterSpacing: '0.18em', textTransform: 'uppercase', fontWeight: 600 }}
+                >
+                  {user?.rol === 'super_admin' ? 'Super Admin' : user?.rol === 'admin' ? 'Administrador' : 'Usuario'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-semibold transition-all"
+              style={{
+                color: 'rgba(255,255,255,0.5)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                letterSpacing: '0.15em',
+                textTransform: 'uppercase',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = 'rgba(232,144,137,0.3)';
+                e.currentTarget.style.color = 'rgba(232,144,137,0.9)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                e.currentTarget.style.color = 'rgba(255,255,255,0.5)';
+              }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
               Salir
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Tabs */}
-      <div className="border-b overflow-x-auto" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-        <div className="max-w-7xl mx-auto px-4 flex gap-1">
-          {tabs.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className="flex items-center gap-2 px-4 py-3 text-[12px] font-medium transition-all whitespace-nowrap"
-              style={{
-                color: activeTab === tab.id ? gold : 'rgba(255,255,255,0.35)',
-                borderBottom: activeTab === tab.id ? `2px solid ${gold}` : '2px solid transparent',
-              }}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d={tab.icon} />
-              </svg>
-              {tab.label}
-            </button>
-          ))}
+      {/* ====== TABS PREMIUM ====== */}
+      <nav
+        className="sticky top-[64px] z-10 border-b overflow-x-auto"
+        style={{
+          borderColor: 'rgba(255,255,255,0.04)',
+          background: 'rgba(8,14,26,0.85)',
+          backdropFilter: 'blur(20px)',
+        }}
+      >
+        <div className="max-w-7xl mx-auto px-6 flex gap-0.5">
+          {tabs.map(tab => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className="relative flex items-center gap-2 px-4 py-3.5 text-[12px] font-medium whitespace-nowrap transition-all group"
+                style={{
+                  color: active ? '#d4b978' : 'rgba(255,255,255,0.4)',
+                  letterSpacing: '0.04em',
+                  transitionDuration: '320ms',
+                  transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+                }}
+                onMouseEnter={e => {
+                  if (!active) e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
+                }}
+                onMouseLeave={e => {
+                  if (!active) e.currentTarget.style.color = 'rgba(255,255,255,0.4)';
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d={tab.icon} />
+                </svg>
+                <span>{tab.label}</span>
+                {/* Underline animado */}
+                <span
+                  className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[2px] rounded-full transition-all"
+                  style={{
+                    width: active ? '60%' : '0%',
+                    background: 'linear-gradient(90deg, transparent, #d4b978, transparent)',
+                    boxShadow: active ? '0 0 8px rgba(212,185,120,0.4)' : 'none',
+                    transitionDuration: '500ms',
+                    transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+                  }}
+                />
+              </button>
+            );
+          })}
         </div>
-      </div>
+      </nav>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="relative max-w-7xl mx-auto px-6 py-8">
 
         {/* ====== DASHBOARD ====== */}
         {activeTab === 'dashboard' && (
           loading ? (
-            <div className="flex justify-center py-20">
-              <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(191,163,99,0.15)', borderTopColor: gold }} />
-            </div>
+            <DashboardSkeleton />
           ) : data && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                {[
-                  { label: 'Hoy', value: data.stats.verificacionesHoy, color: '#4ade80' },
-                  { label: 'Semana', value: data.stats.verificacionesSemana, color: '#60a5fa' },
-                  { label: 'Mes', value: data.stats.verificacionesMes, color: gold },
-                  { label: 'Colaboradores', value: data.stats.totalBeneficiarios, color: '#a78bfa' },
-                  { label: 'Comercios', value: data.stats.totalComercios, color: '#f472b6' },
-                  { label: 'Beneficios', value: data.stats.totalBeneficios, color: '#fb923c' },
-                ].map(s => (
-                  <div key={s.label} className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)' }}>{s.label}</p>
-                    <p className="text-[28px] font-bold mt-1" style={{ color: s.color }}>{s.value}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-4" style={{ color: 'rgba(191,163,99,0.5)' }}>Top beneficios (30 dias)</p>
-                  {data.topBeneficios.length === 0 ? (
-                    <p className="text-[13px] py-4" style={{ color: 'rgba(255,255,255,0.2)' }}>Sin datos aun</p>
-                  ) : data.topBeneficios.map((b, i) => (
-                    <div key={i} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[11px] font-bold w-5 text-center" style={{ color: gold }}>{i + 1}</span>
-                        <span className="text-[13px] text-white">{b.nombre}</span>
-                      </div>
-                      <span className="text-[13px] font-semibold" style={{ color: '#4ade80' }}>{b.total_usos}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-4" style={{ color: 'rgba(191,163,99,0.5)' }}>Top comercios (30 dias)</p>
-                  {data.topComercios.length === 0 ? (
-                    <p className="text-[13px] py-4" style={{ color: 'rgba(255,255,255,0.2)' }}>Sin datos aun</p>
-                  ) : data.topComercios.map((c, i) => (
-                    <div key={i} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[11px] font-bold w-5 text-center" style={{ color: gold }}>{i + 1}</span>
-                        <span className="text-[13px] text-white">{c.nombre}</span>
-                      </div>
-                      <span className="text-[13px] font-semibold" style={{ color: '#60a5fa' }}>{c.total_usos}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="p-5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <p className="text-[10px] font-semibold uppercase tracking-wider mb-4" style={{ color: 'rgba(191,163,99,0.5)' }}>Ultimo movimiento</p>
-                {data.ultimasVerificaciones.length === 0 ? (
-                  <p className="text-[13px] py-8 text-center" style={{ color: 'rgba(255,255,255,0.2)' }}>No hay verificaciones registradas</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-[12px]">
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                          {['Fecha', 'Colaborador', 'DNI', 'Beneficio', 'Comercio', 'Estado', 'Codigo'].map(h => (
-                            <th key={h} className="text-left py-2 px-2 font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.ultimasVerificaciones.map(v => (
-                          <tr key={v.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                            <td className="py-2.5 px-2" style={{ color: 'rgba(255,255,255,0.5)' }}>{formatDate(v.fecha_verificacion)}</td>
-                            <td className="py-2.5 px-2 text-white font-medium">{v.beneficiario_nombre} {v.beneficiario_apellido}</td>
-                            <td className="py-2.5 px-2 font-mono" style={{ color: 'rgba(255,255,255,0.4)' }}>{v.dni}</td>
-                            <td className="py-2.5 px-2" style={{ color: gold }}>{v.beneficio_nombre}</td>
-                            <td className="py-2.5 px-2" style={{ color: 'rgba(255,255,255,0.5)' }}>{v.comercio_nombre}</td>
-                            <td className="py-2.5 px-2">
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                                style={{ background: v.estado === 'exitoso' ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)', color: v.estado === 'exitoso' ? '#4ade80' : '#f87171' }}>
-                                {v.estado}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-2 font-mono text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{v.codigo_referencia}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
+            <PremiumDashboard data={data} user={user} formatDate={formatDate} />
           )
         )}
 
@@ -1491,6 +1557,332 @@ export default function AdminDashboard({ token, user, onLogout }: {
           </button>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+// ============================================
+// PREMIUM DASHBOARD - vista del tab dashboard
+// ============================================
+function PremiumDashboard({ data, user, formatDate }: { data: DashboardData; user: any; formatDate: (d: string) => string }) {
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const firstName = (user?.nombre || '').split(' ')[0] || 'Bienvenido';
+
+  // Transformar verificaciones por día para el chart
+  const chartData = (data.verificacionesPorDia || []).map((d: any) => ({
+    label: new Date(d.fecha).toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit' }),
+    value: parseInt(d.total),
+  }));
+
+  // Top beneficios y comercios como bar charts
+  const topBeneficiosChart = data.topBeneficios.slice(0, 5).map((b: any) => ({
+    label: b.nombre.length > 18 ? b.nombre.substring(0, 16) + '…' : b.nombre,
+    value: parseInt(b.total_usos),
+  }));
+  const topComerciosChart = data.topComercios.slice(0, 5).map((c: any) => ({
+    label: c.nombre.length > 18 ? c.nombre.substring(0, 16) + '…' : c.nombre,
+    value: parseInt(c.total_usos),
+  }));
+
+  // Trend data para sparklines (últimos 7 días)
+  const trendValues = chartData.slice(-7).map(d => d.value);
+
+  return (
+    <div className="space-y-8 stagger">
+      {/* Greeting */}
+      <div>
+        <p
+          className="text-[10px] font-semibold mb-2"
+          style={{ color: 'rgba(191,163,99,0.55)', letterSpacing: '0.32em', textTransform: 'uppercase' }}
+        >
+          {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        </p>
+        <h1
+          className="leading-tight"
+          style={{
+            fontFamily: "'Playfair Display', Georgia, serif",
+            fontSize: '38px',
+            fontWeight: 600,
+            color: 'rgba(255,255,255,0.97)',
+            letterSpacing: '-0.02em',
+          }}
+        >
+          {greeting},{' '}
+          <span style={{ color: '#d4b978', fontStyle: 'italic' }}>{firstName}</span>
+        </h1>
+        <p className="text-[14px] mt-2" style={{ color: 'rgba(255,255,255,0.5)' }}>
+          Resumen ejecutivo del programa de beneficios.
+        </p>
+      </div>
+
+      {/* KPIs principales */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Stat
+          label="Verificaciones hoy"
+          value={data.stats.verificacionesHoy}
+          variant="gold"
+          trend={trendValues.length > 1 ? trendValues : undefined}
+          icon={
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          }
+        />
+        <Stat
+          label="Esta semana"
+          value={data.stats.verificacionesSemana}
+          icon={
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          }
+        />
+        <Stat
+          label="Este mes"
+          value={data.stats.verificacionesMes}
+          icon={
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          }
+        />
+      </div>
+
+      {/* KPIs catálogo */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Stat
+          label="Colaboradores"
+          value={data.stats.totalBeneficiarios}
+          variant="subtle"
+          icon={
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          }
+        />
+        <Stat
+          label="Comercios adheridos"
+          value={data.stats.totalComercios}
+          variant="subtle"
+          icon={
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+          }
+        />
+        <Stat
+          label="Beneficios activos"
+          value={data.stats.totalBeneficios}
+          variant="subtle"
+          icon={
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+            </svg>
+          }
+        />
+      </div>
+
+      {/* Gráfico principal - tendencia 7 días */}
+      <Section eyebrow="Tendencia" title="Verificaciones de la última semana">
+        <PremiumAreaChart data={chartData} dataKey="value" xKey="label" height={260} />
+      </Section>
+
+      {/* Top beneficios + comercios */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Section eyebrow="Top 5 · 30 días" title="Beneficios más canjeados">
+          {topBeneficiosChart.length === 0 ? (
+            <Empty
+              title="Sin canjes registrados"
+              description="Apenas tus colaboradores empiecen a canjear, los beneficios más populares aparecerán acá."
+              icon={
+                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              }
+            />
+          ) : (
+            <PremiumBarChart data={topBeneficiosChart} height={220} />
+          )}
+        </Section>
+
+        <Section eyebrow="Top 5 · 30 días" title="Comercios más visitados">
+          {topComerciosChart.length === 0 ? (
+            <Empty
+              title="Sin actividad reciente"
+              description="Cuando los colaboradores empiecen a canjear, vas a ver los comercios más activos acá."
+              icon={
+                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
+                </svg>
+              }
+            />
+          ) : (
+            <PremiumBarChart data={topComerciosChart} height={220} />
+          )}
+        </Section>
+      </div>
+
+      {/* Movimiento reciente */}
+      <Section
+        eyebrow="Tiempo real"
+        title="Movimiento reciente"
+        action={
+          <span
+            className="text-[11px] px-3 py-1 rounded-full"
+            style={{ background: 'rgba(127,201,159,0.06)', border: '1px solid rgba(127,201,159,0.2)', color: '#7fc99f', letterSpacing: '0.15em', textTransform: 'uppercase', fontWeight: 600 }}
+          >
+            En vivo
+          </span>
+        }
+      >
+        {data.ultimasVerificaciones.length === 0 ? (
+          <Empty
+            title="Aún no hay movimiento"
+            description="Las verificaciones de tus colaboradores en los comercios adheridos aparecerán acá en tiempo real."
+            icon={
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            }
+          />
+        ) : (
+          <PremiumTable
+            columns={[
+              { key: 'fecha', label: 'Fecha' },
+              { key: 'colaborador', label: 'Colaborador' },
+              { key: 'dni', label: 'DNI', mono: true },
+              { key: 'beneficio', label: 'Beneficio', accent: true },
+              { key: 'comercio', label: 'Comercio' },
+              { key: 'estado', label: 'Estado' },
+              { key: 'codigo', label: 'Código', mono: true },
+            ]}
+            rows={data.ultimasVerificaciones.map((v: any) => ({
+              id: v.id,
+              fecha: formatDate(v.fecha_verificacion),
+              colaborador: `${v.beneficiario_nombre} ${v.beneficiario_apellido || ''}`.trim(),
+              dni: v.dni,
+              beneficio: v.beneficio_nombre,
+              comercio: v.comercio_nombre,
+              estado: (
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold"
+                  style={{
+                    background: v.estado === 'exitoso' ? 'rgba(127,201,159,0.08)' : 'rgba(232,144,137,0.08)',
+                    border: `1px solid ${v.estado === 'exitoso' ? 'rgba(127,201,159,0.22)' : 'rgba(232,144,137,0.22)'}`,
+                    color: v.estado === 'exitoso' ? '#7fc99f' : '#e89089',
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: v.estado === 'exitoso' ? '#7fc99f' : '#e89089' }} />
+                  {v.estado}
+                </span>
+              ),
+              codigo: v.codigo_referencia,
+            }))}
+          />
+        )}
+      </Section>
+    </div>
+  );
+}
+
+// ============================================
+// PREMIUM TABLE - tabla reutilizable
+// ============================================
+function PremiumTable({
+  columns,
+  rows,
+}: {
+  columns: { key: string; label: string; mono?: boolean; accent?: boolean }[];
+  rows: any[];
+}) {
+  return (
+    <div className="overflow-x-auto -mx-5 px-5">
+      <table className="w-full text-[12.5px]" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+        <thead>
+          <tr>
+            {columns.map(c => (
+              <th
+                key={c.key}
+                className="text-left py-3 px-3 font-semibold"
+                style={{
+                  color: 'rgba(191,163,99,0.55)',
+                  letterSpacing: '0.18em',
+                  textTransform: 'uppercase',
+                  fontSize: '10px',
+                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                }}
+              >
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr
+              key={row.id || ri}
+              className="transition-colors group"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+            >
+              {columns.map(c => (
+                <td
+                  key={c.key}
+                  className="py-3 px-3 group-hover:bg-white/[0.02] transition-colors"
+                  style={{
+                    color: c.accent ? '#d4b978' : 'rgba(255,255,255,0.78)',
+                    fontFamily: c.mono ? "'JetBrains Mono', 'SF Mono', monospace" : undefined,
+                    fontVariantNumeric: c.mono ? 'tabular-nums' : undefined,
+                    fontSize: c.mono ? '11.5px' : '12.5px',
+                  }}
+                >
+                  {row[c.key]}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================
+// Skeleton del Dashboard mientras carga
+// ============================================
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-8 animate-fadeIn">
+      {/* Greeting skeleton */}
+      <div>
+        <div className="skeleton h-3 w-40 mb-3" />
+        <div className="skeleton h-10 w-72 mb-3" />
+        <div className="skeleton h-4 w-56" />
+      </div>
+      {/* KPIs skeleton */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[0, 1, 2].map(i => (
+          <div key={i} className="p-6 rounded-2xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="skeleton h-3 w-24 mb-4" />
+            <div className="skeleton h-10 w-20" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[0, 1, 2].map(i => (
+          <div key={i} className="p-6 rounded-2xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="skeleton h-3 w-24 mb-4" />
+            <div className="skeleton h-10 w-20" />
+          </div>
+        ))}
+      </div>
+      <div className="p-6 rounded-2xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="skeleton h-3 w-32 mb-4" />
+        <div className="skeleton h-5 w-72 mb-6" />
+        <div className="skeleton h-60 w-full" />
+      </div>
     </div>
   );
 }
