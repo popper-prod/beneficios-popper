@@ -1,161 +1,137 @@
+import { ReactNode } from 'react';
+
 // ============================================
-// GRUPO POPPER - Componente Badge Premium
+// Badge — pequeño, denso, con dot opcional
 // ============================================
 
-import React from 'react';
-import { cn } from '../../utils/cn';
-import { BenefitLevel, TransactionStatus, UserRole } from '../../types';
-import { BENEFIT_LEVELS, STATUS_LABELS, ROLE_LABELS } from '../../types';
+type Tone = 'neutral' | 'brand' | 'success' | 'danger' | 'warning' | 'info';
 
-export interface BadgeProps {
-  children: React.ReactNode;
-  variant?: 'primary' | 'secondary' | 'accent' | 'success' | 'warning' | 'danger' | 'info';
-  size?: 'sm' | 'md' | 'lg';
+interface BadgeProps {
+  tone?: Tone;
+  size?: 'sm' | 'md';
   dot?: boolean;
-  className?: string;
+  children: ReactNode;
 }
 
-export const Badge: React.FC<BadgeProps> = ({
-  children,
-  variant = 'primary',
-  size = 'md',
-  dot = false,
-  className,
-}) => {
-  const variantStyles = {
-    primary: 'bg-[#1e3a5f]/10 text-[#1e3a5f] border-[#1e3a5f]/20',
-    secondary: 'bg-gray-100 text-gray-700 border-gray-200',
-    accent: 'bg-[#ffd700]/20 text-amber-700 border-[#ffd700]/30',
-    success: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    warning: 'bg-amber-100 text-amber-700 border-amber-200',
-    danger: 'bg-red-100 text-red-700 border-red-200',
-    info: 'bg-blue-100 text-blue-700 border-blue-200',
-  };
+const tones: Record<Tone, { bg: string; border: string; text: string; dot: string }> = {
+  neutral: {
+    bg: 'rgba(255, 255, 255, 0.06)',
+    border: 'rgba(255, 255, 255, 0.12)',
+    text: 'var(--text-2)',
+    dot: 'var(--text-3)',
+  },
+  brand: {
+    bg: 'var(--brand-muted)',
+    border: 'var(--brand-border)',
+    text: 'var(--brand)',
+    dot: 'var(--brand)',
+  },
+  success: {
+    bg: 'var(--success-bg)',
+    border: 'var(--success-border)',
+    text: 'var(--success-text)',
+    dot: 'var(--success)',
+  },
+  danger: {
+    bg: 'var(--danger-bg)',
+    border: 'var(--danger-border)',
+    text: 'var(--danger-text)',
+    dot: 'var(--danger)',
+  },
+  warning: {
+    bg: 'var(--warning-bg)',
+    border: 'var(--warning-border)',
+    text: 'var(--warning-text)',
+    dot: 'var(--warning)',
+  },
+  info: {
+    bg: 'var(--info-bg)',
+    border: 'var(--info-border)',
+    text: 'var(--info-text)',
+    dot: 'var(--info)',
+  },
+};
 
-  const sizeStyles = {
-    sm: 'px-2 py-0.5 text-xs',
-    md: 'px-3 py-1 text-sm',
-    lg: 'px-4 py-1.5 text-base',
-  };
-
-  const dotStyles = {
-    primary: 'bg-[#1e3a5f]',
-    secondary: 'bg-gray-500',
-    accent: 'bg-amber-500',
-    success: 'bg-emerald-500',
-    warning: 'bg-amber-500',
-    danger: 'bg-red-500',
-    info: 'bg-blue-500',
-  };
+export function Badge({ tone = 'neutral', size = 'md', dot, children }: BadgeProps) {
+  const t = tones[tone];
+  const isSmall = size === 'sm';
 
   return (
     <span
-      className={cn(
-        'inline-flex items-center font-semibold border rounded-full',
-        variantStyles[variant],
-        sizeStyles[size],
-        className
-      )}
+      className="inline-flex items-center font-medium rounded-md"
+      style={{
+        background: t.bg,
+        color: t.text,
+        border: `1px solid ${t.border}`,
+        padding: isSmall ? '1px 6px' : '2px 8px',
+        fontSize: isSmall ? '10.5px' : '11.5px',
+        lineHeight: 1.4,
+        gap: 6,
+      }}
     >
       {dot && (
         <span
-          className={cn(
-            'w-2 h-2 rounded-full mr-1.5 animate-pulse',
-            dotStyles[variant]
-          )}
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: t.dot,
+            flexShrink: 0,
+          }}
         />
       )}
       {children}
     </span>
   );
-};
-
-// ============================================
-// Badge de Nivel de Beneficio
-// ============================================
-export interface BenefitLevelBadgeProps {
-  level: BenefitLevel;
-  size?: 'sm' | 'md' | 'lg';
-  showIcon?: boolean;
 }
 
-export const BenefitLevelBadge: React.FC<BenefitLevelBadgeProps> = ({
-  level,
-  size = 'md',
-  showIcon = true,
-}) => {
-  const levelConfig = BENEFIT_LEVELS.find((l) => l.value === level);
-  if (!levelConfig) return null;
+// Tier badge específico para niveles de colaborador
+type Tier = 'bronce' | 'plata' | 'oro' | 'platinum';
 
-  const variantMap: Record<BenefitLevel, BadgeProps['variant']> = {
-    bronce: 'warning',
-    plata: 'secondary',
-    oro: 'accent',
-    platinum: 'info',
-  };
-
-  return (
-    <Badge variant={variantMap[level]} size={size}>
-      {showIcon && <span className="mr-1">{levelConfig.icon}</span>}
-      {levelConfig.label}
-    </Badge>
-  );
+const tierStyles: Record<Tier, { bg: string; color: string; border: string; label: string }> = {
+  bronce: {
+    bg: 'rgba(185, 120, 66, 0.10)',
+    color: '#cd8d57',
+    border: 'rgba(185, 120, 66, 0.25)',
+    label: 'Bronce',
+  },
+  plata: {
+    bg: 'rgba(148, 163, 184, 0.10)',
+    color: '#cbd5e1',
+    border: 'rgba(148, 163, 184, 0.25)',
+    label: 'Plata',
+  },
+  oro: {
+    bg: 'rgba(212, 160, 23, 0.12)',
+    color: '#e0ad22',
+    border: 'rgba(212, 160, 23, 0.30)',
+    label: 'Oro',
+  },
+  platinum: {
+    bg: 'rgba(228, 228, 231, 0.08)',
+    color: '#f4f4f5',
+    border: 'rgba(228, 228, 231, 0.25)',
+    label: 'Platinum',
+  },
 };
 
-// ============================================
-// Badge de Estado de Transacción
-// ============================================
-export interface TransactionStatusBadgeProps {
-  status: TransactionStatus;
-  size?: 'sm' | 'md' | 'lg';
-  showDot?: boolean;
+export function TierBadge({ tier }: { tier: string }) {
+  const t = tierStyles[tier as Tier] || tierStyles.bronce;
+  return (
+    <span
+      className="inline-flex items-center font-medium rounded-md"
+      style={{
+        background: t.bg,
+        color: t.color,
+        border: `1px solid ${t.border}`,
+        padding: '1px 6px',
+        fontSize: '10.5px',
+        lineHeight: 1.4,
+      }}
+    >
+      {t.label}
+    </span>
+  );
 }
-
-export const TransactionStatusBadge: React.FC<TransactionStatusBadgeProps> = ({
-  status,
-  size = 'md',
-  showDot = true,
-}) => {
-  const statusConfig = STATUS_LABELS[status];
-
-  const variantMap: Record<TransactionStatus, BadgeProps['variant']> = {
-    exitoso: 'success',
-    fallido: 'danger',
-    pendiente: 'warning',
-    cancelado: 'secondary',
-  };
-
-  return (
-    <Badge variant={variantMap[status]} size={size} dot={showDot}>
-      {statusConfig.label}
-    </Badge>
-  );
-};
-
-// ============================================
-// Badge de Rol de Usuario
-// ============================================
-export interface UserRoleBadgeProps {
-  role: UserRole;
-  size?: 'sm' | 'md' | 'lg';
-}
-
-export const UserRoleBadge: React.FC<UserRoleBadgeProps> = ({
-  role,
-  size = 'md',
-}) => {
-  const variantMap: Record<UserRole, BadgeProps['variant']> = {
-    admin: 'danger',
-    supervisor: 'accent',
-    employee: 'primary',
-    auditor: 'info',
-  };
-
-  return (
-    <Badge variant={variantMap[role]} size={size}>
-      {ROLE_LABELS[role]}
-    </Badge>
-  );
-};
 
 export default Badge;

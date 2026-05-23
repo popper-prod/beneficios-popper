@@ -1,240 +1,194 @@
 // ============================================
-// GRUPO POPPER - Design Tokens (Premium private bank)
-// ============================================
-// Sistema de design tokens centralizado. Toda decisión visual nace acá.
-// Filosofía: elegancia restringida, jerarquía clara, animaciones suizas.
+// GRUPO POPPER — Design Tokens v2
+// Filosofía: Linear + Vercel. Semántica clara, sin decoración.
+// El acento (--brand) se usa con criterio, NO en todos lados.
 // ============================================
 
 export const colors = {
-  // Paleta principal - oro acuñado de Grupo Popper
-  gold: '#bfa363',
-  goldLight: '#d4b978',
-  goldDeep: '#9d8649',
-  goldPale: '#e8d9b3',
-
-  // Carbón - los grises oscuros base
-  carbon: '#0a0e14',
-  carbonLight: '#0f1929',
-  carbonDeep: '#06090f',
-  carbonRich: '#13192a',
-
-  // Crema - para acentos cálidos
-  cream: '#f5f1e8',
-  creamMuted: '#e8e0cf',
-
-  // Texto - jerarquía precisa
-  text: {
-    primary: 'rgba(255, 255, 255, 0.95)',
-    secondary: 'rgba(255, 255, 255, 0.65)',
-    tertiary: 'rgba(255, 255, 255, 0.40)',
-    quaternary: 'rgba(255, 255, 255, 0.22)',
-    whisper: 'rgba(255, 255, 255, 0.10)',
+  // ===== Backgrounds (jerarquía de profundidad) =====
+  bg: {
+    canvas: '#080809',       // Fondo más profundo (body)
+    surface: '#0e0e10',      // Paneles principales
+    elevated: '#16161a',     // Cards elevados
+    raised: '#1c1c22',       // Hover sobre elevated
+    overlay: 'rgba(8, 8, 9, 0.7)', // Backdrop modales
   },
 
-  // Bordes - hairlines casi imperceptibles
+  // ===== Bordes (hairlines) =====
   border: {
-    whisper: 'rgba(255, 255, 255, 0.04)',
-    subtle: 'rgba(255, 255, 255, 0.06)',
-    default: 'rgba(255, 255, 255, 0.10)',
-    gold: 'rgba(191, 163, 99, 0.18)',
-    goldStrong: 'rgba(191, 163, 99, 0.35)',
+    subtle: 'rgba(255, 255, 255, 0.06)',  // bordes default
+    default: 'rgba(255, 255, 255, 0.10)', // bordes cards
+    strong: 'rgba(255, 255, 255, 0.18)',  // bordes input focus
+    brand: 'rgba(212, 160, 23, 0.30)',    // borde accent
   },
 
-  // Estados - paleta restringida y suave
+  // ===== Text (jerarquía) =====
+  text: {
+    primary: 'rgba(237, 237, 238, 1)',    // títulos, contenido principal
+    secondary: 'rgba(237, 237, 238, 0.72)', // body, descripciones
+    tertiary: 'rgba(237, 237, 238, 0.48)', // labels, metadata
+    quaternary: 'rgba(237, 237, 238, 0.30)', // placeholders, deshabilitado
+    quinary: 'rgba(237, 237, 238, 0.16)',  // hints muy sutiles
+  },
+
+  // ===== Acento brand (oro, pero CON CRITERIO) =====
+  brand: {
+    DEFAULT: '#d4a017',     // acento principal
+    hover: '#e0ad22',       // hover
+    muted: 'rgba(212, 160, 23, 0.12)', // bg sutil
+    subtle: 'rgba(212, 160, 23, 0.08)',
+    border: 'rgba(212, 160, 23, 0.25)',
+    foreground: '#0a0a0a', // texto sobre botón brand
+  },
+
+  // ===== Semántica funcional =====
   success: {
-    base: '#7fc99f',
-    bg: 'rgba(127, 201, 159, 0.08)',
-    border: 'rgba(127, 201, 159, 0.20)',
+    DEFAULT: '#22c55e',
+    bg: 'rgba(34, 197, 94, 0.10)',
+    border: 'rgba(34, 197, 94, 0.25)',
+    text: '#4ade80',
   },
   danger: {
-    base: '#e89089',
-    bg: 'rgba(232, 144, 137, 0.08)',
-    border: 'rgba(232, 144, 137, 0.22)',
+    DEFAULT: '#ef4444',
+    bg: 'rgba(239, 68, 68, 0.10)',
+    border: 'rgba(239, 68, 68, 0.25)',
+    text: '#f87171',
   },
   warning: {
-    base: '#e0b76c',
-    bg: 'rgba(224, 183, 108, 0.08)',
-    border: 'rgba(224, 183, 108, 0.22)',
+    DEFAULT: '#f59e0b',
+    bg: 'rgba(245, 158, 11, 0.10)',
+    border: 'rgba(245, 158, 11, 0.25)',
+    text: '#fbbf24',
+  },
+  info: {
+    DEFAULT: '#3b82f6',
+    bg: 'rgba(59, 130, 246, 0.10)',
+    border: 'rgba(59, 130, 246, 0.25)',
+    text: '#60a5fa',
   },
 
-  // Gradientes premium
-  gradient: {
-    gold: 'linear-gradient(135deg, #bfa363 0%, #d4b978 50%, #bfa363 100%)',
-    goldVertical: 'linear-gradient(180deg, #d4b978 0%, #bfa363 100%)',
-    radialBackground: 'radial-gradient(ellipse at 50% 0%, #0f1b2e 0%, #080e1a 70%)',
-    cardElevated: 'linear-gradient(180deg, rgba(15,25,42,0.95) 0%, rgba(10,16,28,0.98) 100%)',
-    goldGlow: 'radial-gradient(ellipse, rgba(191,163,99,0.12), transparent 70%)',
-    creamSheen: 'linear-gradient(180deg, rgba(245,241,232,0.04) 0%, transparent 100%)',
+  // ===== Niveles de colaborador (cada nivel tiene su color, NO todos dorados) =====
+  tier: {
+    bronce: { DEFAULT: '#b97842', bg: 'rgba(185, 120, 66, 0.12)', text: '#cd8d57' },
+    plata: { DEFAULT: '#94a3b8', bg: 'rgba(148, 163, 184, 0.12)', text: '#cbd5e1' },
+    oro: { DEFAULT: '#d4a017', bg: 'rgba(212, 160, 23, 0.12)', text: '#e0ad22' },
+    platinum: { DEFAULT: '#e4e4e7', bg: 'rgba(228, 228, 231, 0.08)', text: '#f4f4f5' },
   },
 };
 
 // ============================================
-// Typography - jerarquía premium
+// Typography — Geist Variable (Vercel)
+// Una sola familia, jerarquía con peso + tamaño
 // ============================================
 export const fonts = {
-  serif: "'Playfair Display', Georgia, 'Times New Roman', serif",
-  sans: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono: "'JetBrains Mono', 'SF Mono', Menlo, Monaco, monospace",
+  sans: 'var(--font-geist), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  mono: 'var(--font-geist-mono), "SF Mono", Menlo, Monaco, "Courier New", monospace',
 };
 
-export const typography = {
-  // Display - momentos heroicos
-  display: {
-    fontFamily: fonts.serif,
-    fontSize: 'clamp(36px, 6vw, 56px)',
-    fontWeight: 600,
-    letterSpacing: '-0.02em',
-    lineHeight: 1.08,
-  },
-  // Title - encabezados de pantalla
-  title: {
-    fontFamily: fonts.serif,
-    fontSize: '32px',
-    fontWeight: 600,
-    letterSpacing: '-0.01em',
-    lineHeight: 1.15,
-  },
-  // Heading - secciones
-  heading: {
-    fontFamily: fonts.serif,
-    fontSize: '22px',
-    fontWeight: 600,
-    letterSpacing: '-0.005em',
-    lineHeight: 1.25,
-  },
-  // Subheading - subsecciones
-  subheading: {
-    fontFamily: fonts.sans,
-    fontSize: '15px',
-    fontWeight: 500,
-    letterSpacing: '0.005em',
-    lineHeight: 1.45,
-  },
-  // Body
-  body: {
-    fontFamily: fonts.sans,
-    fontSize: '14px',
-    fontWeight: 400,
-    letterSpacing: '0.005em',
-    lineHeight: 1.55,
-  },
-  // Small
-  small: {
-    fontFamily: fonts.sans,
-    fontSize: '12px',
-    fontWeight: 400,
-    letterSpacing: '0.01em',
-    lineHeight: 1.5,
-  },
-  // Eyebrow - micro labels uppercase
-  eyebrow: {
-    fontFamily: fonts.sans,
-    fontSize: '10px',
-    fontWeight: 600,
-    letterSpacing: '0.22em',
-    textTransform: 'uppercase' as const,
-    lineHeight: 1,
-  },
-  // Numeric - cifras con tabular nums
-  numeric: {
-    fontFamily: fonts.sans,
-    fontVariantNumeric: 'tabular-nums' as const,
-    fontFeatureSettings: '"tnum" 1, "ss01" 1',
-  },
-  // Display numeric - cifras grandes serif
-  numericDisplay: {
-    fontFamily: fonts.serif,
-    fontWeight: 600,
-    fontVariantNumeric: 'tabular-nums' as const,
-    fontFeatureSettings: '"tnum" 1, "lnum" 1',
-    letterSpacing: '-0.02em',
-  },
+// Type scale (rem para accesibilidad)
+export const type = {
+  // UI sizes (denso, eficiente)
+  xs: '11px',     // micro labels, eyebrow
+  sm: '12px',     // metadata, captions
+  base: '13px',   // body UI, default
+  md: '14px',     // body lectura
+  lg: '15px',     // labels destacados
+  xl: '18px',     // títulos sección
+  '2xl': '22px',  // títulos página
+  '3xl': '28px',  // hero numbers
+  '4xl': '36px',  // display
+  '5xl': '48px',  // hero display
+};
+
+export const weight = {
+  normal: 400,
+  medium: 500,
+  semibold: 600,
+  bold: 700,
 };
 
 // ============================================
-// Spacing - escala basada en 4px
+// Spacing — escala 4px (Linear-style densa)
 // ============================================
-export const spacing = {
-  xs: '4px',
-  sm: '8px',
-  md: '12px',
-  lg: '16px',
-  xl: '24px',
-  '2xl': '32px',
-  '3xl': '48px',
-  '4xl': '64px',
-  '5xl': '96px',
+export const space = {
+  px: '1px',
+  0: '0',
+  0.5: '2px',
+  1: '4px',
+  1.5: '6px',
+  2: '8px',
+  2.5: '10px',
+  3: '12px',
+  4: '16px',
+  5: '20px',
+  6: '24px',
+  8: '32px',
+  10: '40px',
+  12: '48px',
+  16: '64px',
+  20: '80px',
 };
 
 // ============================================
 // Border radius
 // ============================================
 export const radius = {
-  sm: '6px',
-  md: '10px',
-  lg: '14px',
-  xl: '18px',
-  '2xl': '24px',
+  none: '0',
+  xs: '3px',
+  sm: '4px',
+  md: '6px',
+  lg: '8px',
+  xl: '12px',
+  '2xl': '16px',
+  '3xl': '20px',
   full: '9999px',
 };
 
 // ============================================
-// Shadows - con toque cálido (no negro puro)
+// Shadows — minimalistas (solo cuando importa)
 // ============================================
-export const shadows = {
-  whisper: '0 1px 2px rgba(0, 0, 0, 0.04)',
-  subtle: '0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04)',
-  card: '0 8px 28px rgba(8, 14, 26, 0.35), 0 2px 6px rgba(0, 0, 0, 0.15)',
-  elevated: '0 20px 60px rgba(8, 14, 26, 0.5), 0 4px 12px rgba(0, 0, 0, 0.2)',
-  goldGlow: '0 0 40px rgba(191, 163, 99, 0.12), 0 0 80px rgba(191, 163, 99, 0.06)',
-  goldGlowIntense: '0 0 60px rgba(191, 163, 99, 0.22), 0 8px 32px rgba(191, 163, 99, 0.18)',
-  innerGold: 'inset 0 1px 0 rgba(212, 185, 120, 0.12)',
+export const shadow = {
+  none: 'none',
+  xs: '0 1px 2px rgba(0, 0, 0, 0.20)',
+  sm: '0 2px 4px rgba(0, 0, 0, 0.25)',
+  md: '0 4px 12px rgba(0, 0, 0, 0.30)',
+  lg: '0 8px 24px rgba(0, 0, 0, 0.40)',
+  xl: '0 16px 48px rgba(0, 0, 0, 0.50)',
+  // overlays especiales
+  brand: '0 0 0 1px rgba(212, 160, 23, 0.20), 0 1px 2px rgba(212, 160, 23, 0.10)',
+  focus: '0 0 0 2px #08090A, 0 0 0 4px rgba(212, 160, 23, 0.40)',
 };
 
 // ============================================
-// Animation - timing y easing de banco suizo
+// Motion — duraciones cortas, easing funcional
 // ============================================
 export const ease = {
-  // Curvas premium - lentas, naturales, "swiss precision"
-  swift: 'cubic-bezier(0.32, 0.72, 0, 1)',       // entrada rápida y elegante
-  smooth: 'cubic-bezier(0.4, 0, 0.2, 1)',        // transición universal
-  swiss: 'cubic-bezier(0.65, 0, 0.35, 1)',       // refinada
-  luxury: 'cubic-bezier(0.16, 1, 0.3, 1)',       // muy lenta, premium
-  bounce: 'cubic-bezier(0.34, 1.56, 0.64, 1)',   // bounce suave
+  // No "luxury" 1600ms BS. Usuarios necesitan feedback rápido.
+  out: 'cubic-bezier(0.16, 1, 0.3, 1)',
+  inOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  in: 'cubic-bezier(0.4, 0, 1, 1)',
+  spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
 };
 
 export const duration = {
-  instant: '120ms',
-  fast: '200ms',
-  base: '320ms',
-  slow: '500ms',
-  slower: '800ms',
-  cinematic: '1200ms',
-  premium: '1600ms',
+  instant: '80ms',     // hover, focus
+  fast: '160ms',       // default UI
+  base: '240ms',       // transiciones complejas
+  slow: '400ms',       // enter/exit
+  slower: '600ms',     // cinematográfico (raro)
 };
 
 // ============================================
-// Z-index scale
+// z-index scale
 // ============================================
 export const z = {
   base: 0,
   raised: 10,
-  dropdown: 100,
-  sticky: 200,
-  overlay: 800,
-  modal: 1000,
-  toast: 1100,
-  tooltip: 1200,
+  sticky: 20,
+  dropdown: 30,
+  drawer: 40,
+  modal: 50,
+  popover: 60,
+  toast: 70,
+  tooltip: 80,
 };
-
-// ============================================
-// Atajos compuestos para usar directo
-// ============================================
-export const t = {
-  primary: colors.text.primary,
-  secondary: colors.text.secondary,
-  tertiary: colors.text.tertiary,
-  quaternary: colors.text.quaternary,
-};
-
-export const c = colors;

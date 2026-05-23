@@ -12,118 +12,84 @@ import {
 } from 'recharts';
 
 // ============================================
-// Chart - wrappers premium sobre recharts
-// Filosofía: gráficos discretos, dorado sutil, sin colores chillones
+// Chart — wrappers recharts, paleta neutra
 // ============================================
 
-const gold = '#bfa363';
-const goldLight = '#d4b978';
+const brand = '#d4a017';
+const brandLight = '#e0ad22';
 
-// ============================================
-// AreaChart elegante para series temporales
-// ============================================
-export function PremiumAreaChart({
-  data,
-  dataKey = 'value',
-  xKey = 'label',
-  height = 220,
-}: {
+interface SeriesProps {
   data: any[];
   dataKey?: string;
   xKey?: string;
   height?: number;
-}) {
-  if (!data || data.length === 0) {
-    return (
-      <div className="flex items-center justify-center text-[12px]" style={{ height, color: 'rgba(255,255,255,0.25)' }}>
-        Sin datos para mostrar
-      </div>
-    );
-  }
+}
+
+export function AreaChartCard({ data, dataKey = 'value', xKey = 'label', height = 200 }: SeriesProps) {
+  if (!data || data.length === 0) return <EmptyChart height={height} />;
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+      <AreaChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
         <defs>
-          <linearGradient id="goldFillGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={goldLight} stopOpacity={0.35} />
-            <stop offset="50%" stopColor={gold} stopOpacity={0.15} />
-            <stop offset="100%" stopColor={gold} stopOpacity={0} />
+          <linearGradient id="areaBrandGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={brand} stopOpacity={0.20} />
+            <stop offset="100%" stopColor={brand} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.04)" vertical={false} />
+        <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" vertical={false} />
         <XAxis
           dataKey={xKey}
           axisLine={false}
           tickLine={false}
-          tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: "'Inter', sans-serif" }}
+          tick={{ fill: 'rgba(237,237,238,0.40)', fontSize: 11 }}
           interval="preserveStartEnd"
         />
         <YAxis
           axisLine={false}
           tickLine={false}
-          tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 11, fontFamily: "'Inter', sans-serif" }}
-          width={40}
+          tick={{ fill: 'rgba(237,237,238,0.30)', fontSize: 11 }}
+          width={36}
         />
-        <Tooltip content={<PremiumTooltip />} cursor={{ stroke: 'rgba(191,163,99,0.25)', strokeWidth: 1 }} />
+        <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(212,160,23,0.25)', strokeWidth: 1 }} />
         <Area
           type="monotone"
           dataKey={dataKey}
-          stroke={gold}
-          strokeWidth={2}
-          fill="url(#goldFillGradient)"
-          activeDot={{ r: 4, fill: goldLight, stroke: '#0a0e14', strokeWidth: 2 }}
+          stroke={brand}
+          strokeWidth={1.5}
+          fill="url(#areaBrandGrad)"
+          activeDot={{ r: 4, fill: brandLight, stroke: '#08090a', strokeWidth: 2 }}
         />
       </AreaChart>
     </ResponsiveContainer>
   );
 }
 
-// ============================================
-// BarChart horizontal con gradiente
-// ============================================
-export function PremiumBarChart({
-  data,
-  dataKey = 'value',
-  xKey = 'label',
-  height = 220,
-}: {
-  data: any[];
-  dataKey?: string;
-  xKey?: string;
-  height?: number;
-}) {
-  if (!data || data.length === 0) {
-    return (
-      <div className="flex items-center justify-center text-[12px]" style={{ height, color: 'rgba(255,255,255,0.25)' }}>
-        Sin datos para mostrar
-      </div>
-    );
-  }
+export function BarChartCard({ data, dataKey = 'value', xKey = 'label', height = 220 }: SeriesProps) {
+  if (!data || data.length === 0) return <EmptyChart height={height} />;
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
-        <defs>
-          <linearGradient id="goldBarGradient" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={gold} stopOpacity={0.85} />
-            <stop offset="100%" stopColor={goldLight} stopOpacity={0.95} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.04)" horizontal={false} />
-        <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 11 }} />
+      <BarChart data={data} layout="vertical" margin={{ top: 0, right: 24, left: 0, bottom: 0 }}>
+        <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" horizontal={false} />
+        <XAxis
+          type="number"
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: 'rgba(237,237,238,0.30)', fontSize: 11 }}
+        />
         <YAxis
           type="category"
           dataKey={xKey}
           axisLine={false}
           tickLine={false}
-          tick={{ fill: 'rgba(255,255,255,0.55)', fontSize: 12, fontFamily: "'Inter', sans-serif" }}
-          width={110}
+          tick={{ fill: 'rgba(237,237,238,0.70)', fontSize: 12 }}
+          width={130}
         />
-        <Tooltip content={<PremiumTooltip />} cursor={{ fill: 'rgba(191,163,99,0.05)' }} />
-        <Bar dataKey={dataKey} radius={[0, 4, 4, 0]} barSize={18}>
+        <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(212,160,23,0.05)' }} />
+        <Bar dataKey={dataKey} radius={[0, 3, 3, 0]} barSize={16}>
           {data.map((_, idx) => (
-            <Cell key={idx} fill="url(#goldBarGradient)" opacity={1 - (idx / data.length) * 0.4} />
+            <Cell key={idx} fill={brand} opacity={1 - (idx / data.length) * 0.5} />
           ))}
         </Bar>
       </BarChart>
@@ -131,28 +97,43 @@ export function PremiumBarChart({
   );
 }
 
-// ============================================
-// Tooltip personalizado
-// ============================================
-function PremiumTooltip({ active, payload, label }: any) {
+function EmptyChart({ height }: { height: number }) {
+  return (
+    <div
+      style={{
+        height,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'var(--text-4)',
+        fontSize: '12px',
+      }}
+    >
+      Sin datos para mostrar
+    </div>
+  );
+}
+
+function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload || !payload.length) return null;
   return (
     <div
-      className="px-3 py-2 rounded-lg shadow-2xl"
       style={{
-        background: 'linear-gradient(180deg, rgba(20,28,46,0.98), rgba(10,16,28,0.99))',
-        border: '1px solid rgba(191,163,99,0.25)',
-        backdropFilter: 'blur(12px)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-default)',
+        borderRadius: '6px',
+        padding: '8px 10px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        fontSize: '12px',
       }}
     >
       {label && (
         <p
-          className="text-[10px] font-semibold mb-1"
           style={{
-            color: 'rgba(191,163,99,0.6)',
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
+            color: 'var(--text-3)',
+            fontSize: '11px',
+            marginBottom: 4,
+            fontWeight: 500,
           }}
         >
           {label}
@@ -161,13 +142,11 @@ function PremiumTooltip({ active, payload, label }: any) {
       {payload.map((p: any, i: number) => (
         <p
           key={i}
-          className="text-[14px]"
           style={{
-            fontFamily: "'Playfair Display', Georgia, serif",
-            color: '#d4b978',
+            color: 'var(--text-1)',
+            fontSize: '13px',
             fontWeight: 600,
             fontVariantNumeric: 'tabular-nums',
-            letterSpacing: '-0.01em',
           }}
         >
           {p.value.toLocaleString('es-AR')}
@@ -177,4 +156,8 @@ function PremiumTooltip({ active, payload, label }: any) {
   );
 }
 
-export default PremiumAreaChart;
+// Backwards compat exports
+export const PremiumAreaChart = AreaChartCard;
+export const PremiumBarChart = BarChartCard;
+
+export default AreaChartCard;

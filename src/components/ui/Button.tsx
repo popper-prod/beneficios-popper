@@ -1,96 +1,126 @@
+import { forwardRef, ButtonHTMLAttributes, ReactNode } from 'react';
+
 // ============================================
-// GRUPO POPPER - Componente Button Premium
+// Button — shadcn/ui inspirado, denso, funcional
 // ============================================
 
-import React from 'react';
-import { cn } from '../../utils/cn';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'outline' | 'danger' | 'success';
+type Size = 'sm' | 'md' | 'lg' | 'icon';
 
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'accent' | 'success' | 'warning' | 'danger' | 'ghost' | 'outline';
-  size?: 'sm' | 'md' | 'lg' | 'xl';
-  isLoading?: boolean;
-  leftIcon?: React.ReactNode;
-  rightIcon?: React.ReactNode;
-  fullWidth?: boolean;
+interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'size'> {
+  variant?: Variant;
+  size?: Size;
+  loading?: boolean;
+  leftIcon?: ReactNode;
+  rightIcon?: ReactNode;
+  children?: ReactNode;
 }
 
-export const Button: React.FC<ButtonProps> = ({
-  children,
-  variant = 'primary',
-  size = 'md',
-  isLoading = false,
-  leftIcon,
-  rightIcon,
-  fullWidth = false,
-  className,
-  disabled,
-  ...props
-}) => {
-  const baseStyles = 'inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
-  
-  const variantStyles = {
-    primary: 'bg-gradient-to-r from-[#1e3a5f] to-[#2d5a87] text-white hover:from-[#2d5a87] hover:to-[#1e3a5f] focus:ring-[#1e3a5f] shadow-lg hover:shadow-xl transform hover:-translate-y-0.5',
-    secondary: 'bg-gradient-to-r from-gray-600 to-gray-700 text-white hover:from-gray-700 hover:to-gray-800 focus:ring-gray-500 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5',
-    accent: 'bg-gradient-to-r from-[#ffd700] to-[#f4c430] text-[#1e3a5f] hover:from-[#f4c430] hover:to-[#ffd700] focus:ring-[#ffd700] shadow-lg hover:shadow-xl transform hover:-translate-y-0.5',
-    success: 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 focus:ring-emerald-500 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5',
-    warning: 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-orange-500 hover:to-amber-500 focus:ring-amber-500 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5',
-    danger: 'bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 focus:ring-red-500 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5',
-    ghost: 'bg-transparent text-[#1e3a5f] hover:bg-[#1e3a5f]/10 focus:ring-[#1e3a5f]',
-    outline: 'bg-transparent text-[#1e3a5f] border-2 border-[#1e3a5f] hover:bg-[#1e3a5f] hover:text-white focus:ring-[#1e3a5f]',
-  };
-
-  const sizeStyles = {
-    sm: 'px-3 py-1.5 text-sm gap-1.5',
-    md: 'px-4 py-2.5 text-base gap-2',
-    lg: 'px-6 py-3 text-lg gap-2.5',
-    xl: 'px-8 py-4 text-xl gap-3',
-  };
-
-  return (
-    <button
-      className={cn(
-        baseStyles,
-        variantStyles[variant],
-        sizeStyles[size],
-        fullWidth && 'w-full',
-        className
-      )}
-      disabled={disabled || isLoading}
-      {...props}
-    >
-      {isLoading ? (
-        <>
-          <svg
-            className="animate-spin h-5 w-5"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-          <span>Procesando...</span>
-        </>
-      ) : (
-        <>
-          {leftIcon && <span className="flex-shrink-0">{leftIcon}</span>}
-          {children}
-          {rightIcon && <span className="flex-shrink-0">{rightIcon}</span>}
-        </>
-      )}
-    </button>
-  );
+const variantStyles: Record<Variant, React.CSSProperties> = {
+  primary: {
+    background: 'var(--brand)',
+    color: 'var(--brand-fg)',
+    border: '1px solid var(--brand)',
+  },
+  secondary: {
+    background: 'var(--bg-raised)',
+    color: 'var(--text-1)',
+    border: '1px solid var(--border-default)',
+  },
+  ghost: {
+    background: 'transparent',
+    color: 'var(--text-2)',
+    border: '1px solid transparent',
+  },
+  outline: {
+    background: 'transparent',
+    color: 'var(--text-1)',
+    border: '1px solid var(--border-default)',
+  },
+  danger: {
+    background: 'var(--danger-bg)',
+    color: 'var(--danger-text)',
+    border: '1px solid var(--danger-border)',
+  },
+  success: {
+    background: 'var(--success-bg)',
+    color: 'var(--success-text)',
+    border: '1px solid var(--success-border)',
+  },
 };
+
+const sizeStyles: Record<Size, { padding: string; fontSize: string; height: string; gap: string }> = {
+  sm: { padding: '0 8px', fontSize: '12px', height: '28px', gap: '4px' },
+  md: { padding: '0 12px', fontSize: '13px', height: '32px', gap: '6px' },
+  lg: { padding: '0 16px', fontSize: '14px', height: '40px', gap: '8px' },
+  icon: { padding: '0', fontSize: '13px', height: '32px', gap: '0' },
+};
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ variant = 'secondary', size = 'md', loading, leftIcon, rightIcon, children, style, disabled, className = '', ...props }, ref) => {
+    const variantStyle = variantStyles[variant];
+    const sizeStyle = sizeStyles[size];
+    const isIcon = size === 'icon';
+
+    return (
+      <button
+        ref={ref}
+        disabled={disabled || loading}
+        className={`inline-flex items-center justify-center font-medium rounded-md transition-all whitespace-nowrap select-none disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+        style={{
+          ...variantStyle,
+          ...sizeStyle,
+          width: isIcon ? sizeStyle.height : undefined,
+          transitionDuration: '120ms',
+          transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+          ...style,
+        }}
+        onMouseEnter={e => {
+          if (disabled || loading) return;
+          if (variant === 'primary') e.currentTarget.style.background = 'var(--brand-hover)';
+          else if (variant === 'ghost') e.currentTarget.style.background = 'var(--bg-elevated)';
+          else if (variant === 'secondary') e.currentTarget.style.background = 'var(--bg-elevated)';
+          else if (variant === 'outline') e.currentTarget.style.background = 'var(--bg-elevated)';
+          else if (variant === 'danger') {
+            e.currentTarget.style.background = 'var(--danger)';
+            e.currentTarget.style.color = 'white';
+          } else if (variant === 'success') {
+            e.currentTarget.style.background = 'var(--success)';
+            e.currentTarget.style.color = 'white';
+          }
+        }}
+        onMouseLeave={e => {
+          Object.assign(e.currentTarget.style, variantStyle);
+        }}
+        {...props}
+      >
+        {loading ? (
+          <Spinner size={isIcon ? 14 : 13} />
+        ) : (
+          <>
+            {leftIcon && <span style={{ marginRight: children ? sizeStyle.gap : 0, display: 'inline-flex' }}>{leftIcon}</span>}
+            {children}
+            {rightIcon && <span style={{ marginLeft: children ? sizeStyle.gap : 0, display: 'inline-flex' }}>{rightIcon}</span>}
+          </>
+        )}
+      </button>
+    );
+  }
+);
+
+Button.displayName = 'Button';
+
+function Spinner({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      style={{ width: size, height: size, animation: 'spin 600ms linear infinite' }}
+      viewBox="0 0 16 16"
+      fill="none"
+    >
+      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+      <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export default Button;

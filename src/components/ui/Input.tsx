@@ -1,89 +1,99 @@
+import { forwardRef, InputHTMLAttributes, ReactNode } from 'react';
+
 // ============================================
-// GRUPO POPPER - Componente Input Premium
+// Input — focus ring brand sutil, sin gradientes
 // ============================================
 
-import React, { forwardRef } from 'react';
-import { cn } from '../../utils/cn';
-
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
-  error?: string;
   hint?: string;
-  leftIcon?: React.ReactNode;
-  rightIcon?: React.ReactNode;
-  fullWidth?: boolean;
+  error?: string;
+  leftIcon?: ReactNode;
+  rightAddon?: ReactNode;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  (
-    {
-      label,
-      error,
-      hint,
-      leftIcon,
-      rightIcon,
-      fullWidth = true,
-      className,
-      id,
-      ...props
-    },
-    ref
-  ) => {
-    const inputId = id || `input-${label?.toLowerCase().replace(/\s+/g, '-')}`;
+  ({ label, hint, error, leftIcon, rightAddon, style, className = '', id, ...props }, ref) => {
+    const inputId = id || `input-${Math.random().toString(36).slice(2, 9)}`;
 
     return (
-      <div className={cn('mb-4', fullWidth && 'w-full')}>
+      <div>
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2"
+            style={{
+              display: 'block',
+              fontSize: '12px',
+              fontWeight: 500,
+              color: 'var(--text-2)',
+              marginBottom: 6,
+            }}
           >
             {label}
-            {props.required && <span className="text-red-500 ml-1">*</span>}
           </label>
         )}
         <div className="relative">
           {leftIcon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+            <div
+              style={{
+                position: 'absolute',
+                left: 10,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-3)',
+                pointerEvents: 'none',
+                display: 'flex',
+              }}
+            >
               {leftIcon}
             </div>
           )}
           <input
             ref={ref}
             id={inputId}
-            className={cn(
-              'w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl',
-              'text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-500',
-              'transition-all duration-300 ease-in-out',
-              'focus:outline-none focus:border-[#1e3a5f] focus:ring-2 focus:ring-[#1e3a5f]/20',
-              'hover:border-gray-300 dark:hover:border-gray-500',
-              leftIcon && 'pl-11',
-              rightIcon && 'pr-11',
-              error && 'border-red-500 focus:border-red-500 focus:ring-red-500/20',
-              className
-            )}
+            className={`w-full font-medium ${className}`}
+            style={{
+              height: '36px',
+              padding: leftIcon ? '0 12px 0 36px' : rightAddon ? '0 40px 0 12px' : '0 12px',
+              background: 'var(--bg-elevated)',
+              border: error ? '1px solid var(--danger-border)' : '1px solid var(--border-default)',
+              borderRadius: '6px',
+              color: 'var(--text-1)',
+              fontSize: '13px',
+              outline: 'none',
+              transition: 'all 120ms cubic-bezier(0.4, 0, 0.2, 1)',
+              ...style,
+            }}
+            onFocus={e => {
+              e.target.style.borderColor = 'var(--brand)';
+              e.target.style.boxShadow = '0 0 0 3px var(--brand-subtle)';
+              props.onFocus?.(e);
+            }}
+            onBlur={e => {
+              e.target.style.borderColor = error ? 'var(--danger-border)' : 'var(--border-default)';
+              e.target.style.boxShadow = 'none';
+              props.onBlur?.(e);
+            }}
             {...props}
           />
-          {rightIcon && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-              {rightIcon}
+          {rightAddon && (
+            <div
+              style={{
+                position: 'absolute',
+                right: 8,
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }}
+            >
+              {rightAddon}
             </div>
           )}
         </div>
-        {error && (
-          <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-            {error}
-          </p>
-        )}
         {hint && !error && (
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{hint}</p>
+          <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 4 }}>{hint}</p>
+        )}
+        {error && (
+          <p style={{ fontSize: '11px', color: 'var(--danger-text)', marginTop: 4 }}>{error}</p>
         )}
       </div>
     );
@@ -91,75 +101,5 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 );
 
 Input.displayName = 'Input';
-
-// ============================================
-// Componente Select
-// ============================================
-export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
-  label?: string;
-  error?: string;
-  options: { value: string; label: string }[];
-  placeholder?: string;
-  fullWidth?: boolean;
-}
-
-export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, options, placeholder, fullWidth = true, className, id, ...props }, ref) => {
-    const selectId = id || `select-${label?.toLowerCase().replace(/\s+/g, '-')}`;
-
-    return (
-      <div className={cn('mb-4', fullWidth && 'w-full')}>
-        {label && (
-          <label
-            htmlFor={selectId}
-            className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2"
-          >
-            {label}
-            {props.required && <span className="text-red-500 ml-1">*</span>}
-          </label>
-        )}
-        <select
-          ref={ref}
-          id={selectId}
-          className={cn(
-            'w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl',
-            'text-gray-800 dark:text-white',
-            'transition-all duration-300 ease-in-out',
-            'focus:outline-none focus:border-[#1e3a5f] focus:ring-2 focus:ring-[#1e3a5f]/20',
-            'hover:border-gray-300 dark:hover:border-gray-500',
-            error && 'border-red-500 focus:border-red-500 focus:ring-red-500/20',
-            className
-          )}
-          {...props}
-        >
-          {placeholder && (
-            <option value="" disabled>
-              {placeholder}
-            </option>
-          )}
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        {error && (
-          <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  }
-);
-
-Select.displayName = 'Select';
 
 export default Input;

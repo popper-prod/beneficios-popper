@@ -20,12 +20,12 @@ function useHashRoute() {
 export default function App() {
   const hash = useHashRoute();
 
-  // Ocultar la pantalla de carga HTML cuando React se monta
+  // Ocultar el splash inicial cuando React monta
   useEffect(() => {
-    const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-      loadingScreen.classList.add('hidden');
-      setTimeout(() => loadingScreen.remove(), 600);
+    const el = document.getElementById('loading');
+    if (el) {
+      el.classList.add('hidden');
+      setTimeout(() => el.remove(), 320);
     }
   }, []);
 
@@ -54,8 +54,12 @@ function PrivateApp() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#080e1a' }}>
-        <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(191,163,99,0.15)', borderTopColor: '#bfa363' }} />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-canvas)' }}>
+        <div style={{
+          width: 8, height: 8, borderRadius: '50%',
+          background: 'var(--brand)',
+          animation: 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        }} />
       </div>
     );
   }

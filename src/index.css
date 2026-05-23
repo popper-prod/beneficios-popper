@@ -1,229 +1,198 @@
 @import "tailwindcss";
 
 /* ============================================
-   GRUPO POPPER - Estilos globales premium
-   Filosofía: nada se ve "default", todo intencional
+   GRUPO POPPER — CSS globals v2
+   Filosofía: Linear/Vercel. Funcional, denso, sin decoración.
    ============================================ */
 
-:root {
-  --gold: #bfa363;
-  --gold-light: #d4b978;
-  --gold-deep: #9d8649;
-  --carbon: #0a0e14;
-  --carbon-light: #0f1929;
-  --cream: #f5f1e8;
+/* Geist Variable font via Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap');
 
-  --ease-luxury: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-swift: cubic-bezier(0.32, 0.72, 0, 1);
+:root {
+  /* ===== Background scale (depth) ===== */
+  --bg-canvas: #08090A;
+  --bg-surface: #0E0E10;
+  --bg-elevated: #16161A;
+  --bg-raised: #1C1C22;
+  --bg-overlay: rgba(8, 9, 10, 0.78);
+
+  /* ===== Borders ===== */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-brand: rgba(212, 160, 23, 0.30);
+
+  /* ===== Text ===== */
+  --text-1: rgba(237, 237, 238, 1);
+  --text-2: rgba(237, 237, 238, 0.72);
+  --text-3: rgba(237, 237, 238, 0.48);
+  --text-4: rgba(237, 237, 238, 0.30);
+  --text-5: rgba(237, 237, 238, 0.16);
+
+  /* ===== Brand (oro, con criterio) ===== */
+  --brand: #D4A017;
+  --brand-hover: #E0AD22;
+  --brand-muted: rgba(212, 160, 23, 0.12);
+  --brand-subtle: rgba(212, 160, 23, 0.08);
+  --brand-fg: #0a0a0a;
+
+  /* ===== Semantic ===== */
+  --success: #22c55e;
+  --success-bg: rgba(34, 197, 94, 0.10);
+  --success-border: rgba(34, 197, 94, 0.25);
+  --success-text: #4ade80;
+
+  --danger: #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.10);
+  --danger-border: rgba(239, 68, 68, 0.25);
+  --danger-text: #f87171;
+
+  --warning: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.10);
+  --warning-border: rgba(245, 158, 11, 0.25);
+  --warning-text: #fbbf24;
+
+  --info: #3b82f6;
+  --info-bg: rgba(59, 130, 246, 0.10);
+  --info-border: rgba(59, 130, 246, 0.25);
+  --info-text: #60a5fa;
+
+  /* ===== Tier colors ===== */
+  --tier-bronce: #b97842;
+  --tier-plata: #94a3b8;
+  --tier-oro: #d4a017;
+  --tier-platinum: #e4e4e7;
+
+  /* ===== Motion ===== */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ===== Font ===== */
+  --font-geist: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-geist-mono: "Geist Mono", "SF Mono", Menlo, Monaco, "Courier New", monospace;
 }
 
-* {
+/* ============================================
+   Reset y base
+   ============================================ */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-html, body {
-  background: #080e1a;
-  color: rgba(255, 255, 255, 0.95);
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-canvas);
+  color: var(--text-1);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  font-family: var(--font-geist);
+  font-size: 13px;
+  line-height: 1.5;
+  font-feature-settings: "cv11" 1, "ss01" 1;
 }
 
-body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+#root {
+  isolation: isolate;
+  min-height: 100vh;
 }
 
-/* Números tabulares en TODOS los lugares numéricos por default */
-.num,
-[class*="num-"],
-.tabular,
+/* Heading reset */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+/* ============================================
+   Typography utilities
+   ============================================ */
+.font-mono {
+  font-family: var(--font-geist-mono);
+  font-feature-settings: "tnum" 1;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Números en tablas y métricas siempre tabulares */
 table td,
 table th,
+[data-numeric],
 input[type="number"],
-input[type="tel"],
-.font-mono {
+input[type="tel"] {
   font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  font-feature-settings: "tnum" 1, "lnum" 1;
 }
 
-/* Selección con color de marca */
+/* ============================================
+   Selection
+   ============================================ */
 ::selection {
-  background: rgba(191, 163, 99, 0.25);
-  color: #f5f1e8;
+  background: rgba(212, 160, 23, 0.30);
+  color: #fff;
 }
 
-/* Scrollbar premium - delgada y dorada */
+/* ============================================
+   Scrollbars — discretos, no dorados
+   ============================================ */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.02);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(191, 163, 99, 0.15);
-  border-radius: 4px;
-  transition: background 320ms var(--ease-smooth);
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid var(--bg-canvas);
+  border-radius: 8px;
+  transition: background 160ms var(--ease-out);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(191, 163, 99, 0.35);
+  background: rgba(255, 255, 255, 0.18);
 }
 
-/* Focus ring premium */
+/* ============================================
+   Focus — accessibility primero
+   ============================================ */
+*:focus {
+  outline: none;
+}
 *:focus-visible {
-  outline: 1px solid rgba(191, 163, 99, 0.6);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
   border-radius: 4px;
 }
-button:focus-visible,
-a:focus-visible {
-  outline: 1px solid rgba(191, 163, 99, 0.6);
-  outline-offset: 3px;
-}
 
-/* Inputs y textareas - sin outline nativo, controlado por componente */
+/* Inputs: focus controlado por componente */
 input:focus,
 textarea:focus,
-select:focus {
+select:focus,
+button:focus {
   outline: none;
 }
 
-/* ============================================
-   Animaciones globales premium
-   ============================================ */
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-@keyframes goldPulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(191, 163, 99, 0.25);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(191, 163, 99, 0);
-  }
-}
-
-@keyframes floatGentle {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-4px); }
-}
-
-@keyframes barSlideGold {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(400%); }
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  15%, 45%, 75% { transform: translateX(-3px); }
-  30%, 60%, 90% { transform: translateX(3px); }
-}
-
-.animate-fadeInUp {
-  animation: fadeInUp 800ms var(--ease-luxury) both;
-}
-.animate-fadeIn {
-  animation: fadeIn 500ms var(--ease-smooth) both;
-}
-.animate-scaleIn {
-  animation: scaleIn 600ms var(--ease-luxury) both;
-}
-.animate-shake {
-  animation: shake 400ms ease-in-out;
-}
-.animate-floatGentle {
-  animation: floatGentle 4s var(--ease-smooth) infinite;
-}
-
-/* Stagger helper para animaciones consecutivas */
-.stagger > * {
-  animation: fadeInUp 800ms var(--ease-luxury) both;
-}
-.stagger > *:nth-child(1) { animation-delay: 0ms; }
-.stagger > *:nth-child(2) { animation-delay: 80ms; }
-.stagger > *:nth-child(3) { animation-delay: 160ms; }
-.stagger > *:nth-child(4) { animation-delay: 240ms; }
-.stagger > *:nth-child(5) { animation-delay: 320ms; }
-.stagger > *:nth-child(6) { animation-delay: 400ms; }
-.stagger > *:nth-child(7) { animation-delay: 480ms; }
-.stagger > *:nth-child(8) { animation-delay: 560ms; }
-
-/* ============================================
-   Skeleton shimmer premium
-   ============================================ */
-.skeleton {
-  position: relative;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
-}
-.skeleton::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(191, 163, 99, 0.06) 50%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 2s var(--ease-smooth) infinite;
-}
-
-/* ============================================
-   Hairline dividers
-   ============================================ */
-.divider-gold {
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(191, 163, 99, 0.18),
-    transparent
-  );
-}
-
-/* Placeholder elegante */
 input::placeholder,
 textarea::placeholder {
-  color: rgba(255, 255, 255, 0.18);
-  font-weight: 400;
+  color: var(--text-4);
 }
 
-/* Sin spinners horribles en number inputs */
+/* Sin spinners en number inputs */
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button {
   -webkit-appearance: none;
@@ -231,4 +200,134 @@ input[type=number]::-webkit-outer-spin-button {
 }
 input[type=number] {
   -moz-appearance: textfield;
+}
+
+/* ============================================
+   Animaciones — pocas y funcionales
+   ============================================ */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 160ms var(--ease-out);
+}
+.animate-fadeInUp {
+  animation: fadeInUp 240ms var(--ease-out);
+}
+.animate-scaleIn {
+  animation: scaleIn 240ms var(--ease-out);
+}
+.animate-slideInRight {
+  animation: slideInRight 200ms var(--ease-out);
+}
+.animate-slideInDown {
+  animation: slideInDown 200ms var(--ease-out);
+}
+
+/* ============================================
+   Skeleton — shimmer neutral, no dorado
+   ============================================ */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s var(--ease-in-out) infinite;
+}
+
+/* ============================================
+   Utilities
+   ============================================ */
+.divider {
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.divider-strong {
+  height: 1px;
+  background: var(--border-default);
+}
+
+/* Truncate utils */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Layout utilities específicos */
+.app-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+@media (max-width: 768px) {
+  .app-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Tooltip simple via title attribute (no JS) */
+
+/* ============================================
+   Print styles para QR codes
+   ============================================ */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+  .no-print {
+    display: none !important;
+  }
 }

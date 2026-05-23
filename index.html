@@ -3,101 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#080e1a" />
-    <meta name="description" content="Sistema de Verificacion de Beneficios - Grupo Popper" />
+    <meta name="theme-color" content="#08090A" />
+    <meta name="description" content="Sistema de beneficios — Grupo Popper" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Grupo Popper" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23080e1a'/><text x='50' y='62' font-family='serif' font-size='38' font-weight='bold' fill='%23bfa363' text-anchor='middle'>GP</text></svg>">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <title>Grupo Popper - Beneficios</title>
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2308090a'/><text x='50' y='62' font-family='-apple-system,BlinkMacSystemFont,sans-serif' font-size='38' font-weight='700' fill='%23d4a017' text-anchor='middle' letter-spacing='-2'>GP</text></svg>">
+    <title>Grupo Popper</title>
     <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        background: #080e1a;
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #08090A;
         -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
       }
-      #loading-screen {
+      #loading {
         position: fixed;
         inset: 0;
-        background: radial-gradient(ellipse at 50% 0%, #0f1b2e 0%, #080e1a 70%);
+        background: #08090A;
         display: flex;
-        flex-direction: column;
-        justify-content: center;
         align-items: center;
+        justify-content: center;
         z-index: 9999;
-        transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: opacity 280ms cubic-bezier(0.16, 1, 0.3, 1);
       }
-      #loading-screen.hidden {
+      #loading.hidden {
         opacity: 0;
-        transform: scale(1.03);
         pointer-events: none;
       }
-      .loading-icon {
-        width: 56px;
-        height: 56px;
-        border: 1.5px solid rgba(191, 163, 99, 0.3);
+      .loading-dot {
+        width: 8px;
+        height: 8px;
+        background: #d4a017;
         border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 20px;
-        animation: iconGlow 3s ease-in-out infinite;
+        animation: dot 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
       }
-      .loading-icon svg {
-        width: 24px;
-        height: 24px;
-        color: #bfa363;
-        opacity: 0.8;
-      }
-      .loading-brand {
-        font-family: 'Playfair Display', Georgia, serif;
-        color: rgba(191, 163, 99, 0.7);
-        font-size: 15px;
-        letter-spacing: 6px;
-        text-transform: uppercase;
-        font-weight: 500;
-      }
-      .loading-bar-wrap {
-        width: 120px;
-        height: 1px;
-        background: rgba(191, 163, 99, 0.1);
-        margin-top: 24px;
-        overflow: hidden;
-        border-radius: 1px;
-      }
-      .loading-bar-inner {
-        width: 30%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, #bfa363, transparent);
-        animation: barSlide 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-      }
-      @keyframes iconGlow {
-        0%, 100% { border-color: rgba(191, 163, 99, 0.2); box-shadow: 0 0 20px rgba(191, 163, 99, 0); }
-        50% { border-color: rgba(191, 163, 99, 0.4); box-shadow: 0 0 30px rgba(191, 163, 99, 0.08); }
-      }
-      @keyframes barSlide {
-        0% { transform: translateX(-100%); }
-        100% { transform: translateX(450%); }
+      @keyframes dot {
+        0%, 100% { opacity: 0.3; transform: scale(0.85); }
+        50% { opacity: 1; transform: scale(1.1); }
       }
     </style>
   </head>
   <body>
-    <div id="loading-screen">
-      <div class="loading-icon">
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z" />
-        </svg>
-      </div>
-      <p class="loading-brand">Grupo Popper</p>
-      <div class="loading-bar-wrap">
-        <div class="loading-bar-inner"></div>
-      </div>
-    </div>
+    <div id="loading"><div class="loading-dot"></div></div>
     <div id="root"></div>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script type="module" src="/src/main.tsx"></script>
