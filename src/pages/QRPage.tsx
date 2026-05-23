@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
+import { MapPin, Clock, ChevronRight, Check, AlertCircle, ArrowLeft, RotateCw, Copy } from 'lucide-react';
 
 // ============================================
-// QRPage - Premium Private Bank aesthetic
-// Página pública que ven los colaboradores al escanear el QR.
-// Es la cara visible de la marca - cada detalle suma a la sensación de exclusividad.
+// QRPage — Apple Wallet / Mercado Pago aesthetic
+// Consumer experience, card-first, photo-prominent, tier-as-color
 // ============================================
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://beneficios-backend-jfpx.onrender.com/api';
@@ -52,35 +52,31 @@ interface HistorialItem {
 
 type Step = 'loading' | 'identify' | 'profile' | 'success' | 'error';
 
-// Niveles con paleta refinada (más sobria, menos chillona)
-const nivelTier: Record<string, { gradient: string; text: string; border: string; label: string; tier: number }> = {
+// Niveles con gradientes tipo metal real (no glitter)
+const tierGradients: Record<string, { gradient: string; ringColor: string; textColor: string; label: string }> = {
   bronce: {
-    gradient: 'linear-gradient(135deg, #8b6a3a 0%, #6a4f29 100%)',
-    text: '#d4a76a',
-    border: 'rgba(180,130,70,0.45)',
+    gradient: 'linear-gradient(135deg, #8b5a2b 0%, #b97842 50%, #8b5a2b 100%)',
+    ringColor: '#b97842',
+    textColor: '#e8b888',
     label: 'Bronce',
-    tier: 1,
   },
   plata: {
-    gradient: 'linear-gradient(135deg, #b8c0c8 0%, #889098 100%)',
-    text: '#c8d0d8',
-    border: 'rgba(184,192,200,0.45)',
+    gradient: 'linear-gradient(135deg, #6b7280 0%, #94a3b8 50%, #6b7280 100%)',
+    ringColor: '#94a3b8',
+    textColor: '#e2e8f0',
     label: 'Plata',
-    tier: 2,
   },
   oro: {
-    gradient: 'linear-gradient(135deg, #d4b978 0%, #bfa363 50%, #9d8649 100%)',
-    text: '#e8d9b3',
-    border: 'rgba(212,185,120,0.55)',
+    gradient: 'linear-gradient(135deg, #9d8649 0%, #d4a017 50%, #9d8649 100%)',
+    ringColor: '#d4a017',
+    textColor: '#fce884',
     label: 'Oro',
-    tier: 3,
   },
   platinum: {
-    gradient: 'linear-gradient(135deg, #e8e6e3 0%, #c4c1bc 50%, #a8a4a0 100%)',
-    text: '#f0eeea',
-    border: 'rgba(232,230,227,0.55)',
+    gradient: 'linear-gradient(135deg, #4b5563 0%, #d1d5db 30%, #f3f4f6 50%, #d1d5db 70%, #4b5563 100%)',
+    ringColor: '#e5e7eb',
+    textColor: '#f9fafb',
     label: 'Platinum',
-    tier: 4,
   },
 };
 
@@ -97,7 +93,6 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [successData, setSuccessData] = useState<any>(null);
   const [historial, setHistorial] = useState<HistorialItem[]>([]);
   const [showHistorial, setShowHistorial] = useState(false);
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const fetchComercio = async () => {
@@ -117,7 +112,6 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
       }
     };
     fetchComercio();
-    requestAnimationFrame(() => setMounted(true));
   }, [qrCode]);
 
   const handleSearch = async () => {
@@ -155,6 +149,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const handleCanjear = async () => {
     if (!comercio || !beneficiario || !selectedBenefit) return;
     setProcessing(true);
+    setErrorMsg('');
 
     try {
       const res = await fetch(`${API_URL}/public/canjear`, {
@@ -197,246 +192,197 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const selectedBenefitData = beneficios.find(b => b.id === selectedBenefit);
 
   return (
-    <div className="min-h-screen relative flex items-start md:items-center justify-center overflow-hidden py-6 px-4">
-      {/* Fondo cinematográfico */}
-      <div
-        className="absolute inset-0"
-        style={{ background: 'radial-gradient(ellipse at 50% 0%, #0f1b2e 0%, #080e1a 60%, #06090f 100%)' }}
-      />
-      {/* Grano */}
-      <div
-        className="absolute inset-0 opacity-[0.02] pointer-events-none mix-blend-overlay"
+    <div
+      style={{
+        minHeight: '100vh',
+        background: 'var(--bg-canvas)',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {/* Sticky header con brand */}
+      <header
         style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>\")",
+          padding: '16px 20px',
+          borderBottom: '1px solid var(--border-subtle)',
+          background: 'var(--bg-canvas)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
         }}
-      />
-      {/* Glow dorado */}
-      <div
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] rounded-full pointer-events-none"
-        style={{
-          background: 'radial-gradient(ellipse, rgba(191,163,99,0.06), transparent 65%)',
-          filter: 'blur(30px)',
-        }}
-      />
-
-      <div
-        className={`relative z-10 w-full max-w-[480px] transition-all ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
-        style={{ transitionDuration: '1200ms', transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
       >
-        <div className="relative">
-          {/* Borde dorado */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div
-            className="absolute -inset-px rounded-[22px] pointer-events-none"
             style={{
-              background:
-                'linear-gradient(180deg, rgba(191,163,99,0.22) 0%, rgba(191,163,99,0.05) 40%, rgba(191,163,99,0.02) 100%)',
-            }}
-          />
-
-          <div
-            className="relative rounded-[22px] overflow-hidden"
-            style={{
-              background: 'linear-gradient(180deg, rgba(20,28,46,0.94) 0%, rgba(8,14,26,0.98) 100%)',
-              backdropFilter: 'blur(40px)',
-              boxShadow: '0 24px 60px rgba(8,14,26,0.5), inset 0 1px 0 rgba(212,185,120,0.06)',
-            }}
-          >
-            {/* ====== Brand header ====== */}
-            <BrandHeader />
-
-            <div className="mx-10 divider-gold" />
-
-            {/* ====== LOADING ====== */}
-            {step === 'loading' && <LoadingState />}
-
-            {/* ====== ERROR ====== */}
-            {step === 'error' && <ErrorState message={errorMsg} />}
-
-            {/* ====== IDENTIFY ====== */}
-            {step === 'identify' && comercio && (
-              <IdentifyStep
-                comercio={comercio}
-                dni={dni}
-                setDni={setDni}
-                searching={searching}
-                errorMsg={errorMsg}
-                setErrorMsg={setErrorMsg}
-                onSearch={handleSearch}
-              />
-            )}
-
-            {/* ====== PROFILE ====== */}
-            {step === 'profile' && beneficiario && (
-              <ProfileStep
-                beneficiario={beneficiario}
-                beneficios={beneficios}
-                selectedBenefit={selectedBenefit}
-                setSelectedBenefit={setSelectedBenefit}
-                historial={historial}
-                showHistorial={showHistorial}
-                setShowHistorial={setShowHistorial}
-                processing={processing}
-                errorMsg={errorMsg}
-                onCanjear={handleCanjear}
-                onReset={handleReset}
-              />
-            )}
-
-            {/* ====== SUCCESS ====== */}
-            {step === 'success' && successData && selectedBenefitData && (
-              <SuccessStep
-                beneficio={selectedBenefitData}
-                successData={successData}
-                comercio={comercio}
-                onReset={handleReset}
-              />
-            )}
-
-            {/* Footer */}
-            <div className="mx-10 divider-gold" />
-            <div className="px-8 py-5 text-center">
-              <p
-                className="text-[9.5px]"
-                style={{
-                  color: 'rgba(255,255,255,0.18)',
-                  letterSpacing: '0.18em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                &copy; 2026 Recluta &middot; Verificación segura
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// SUBCOMPONENTES
-// ============================================
-
-function BrandHeader() {
-  return (
-    <div className="pt-9 pb-7 text-center">
-      <div className="relative inline-flex">
-        {/* Halo */}
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: 'radial-gradient(circle, rgba(191,163,99,0.18), transparent 70%)',
-            filter: 'blur(10px)',
-            transform: 'scale(1.5)',
-          }}
-        />
-        <div
-          className="relative w-[60px] h-[60px] rounded-full flex items-center justify-center"
-          style={{
-            border: '1.5px solid rgba(191,163,99,0.4)',
-            background: 'radial-gradient(circle at 30% 30%, rgba(212,185,120,0.08), rgba(8,14,26,0.4))',
-            boxShadow: '0 0 24px rgba(191,163,99,0.1), inset 0 1px 0 rgba(212,185,120,0.15)',
-          }}
-        >
-          <span
-            style={{
-              fontFamily: "'Playfair Display', Georgia, serif",
-              fontSize: '22px',
+              width: 28,
+              height: 28,
+              borderRadius: '7px',
+              background: 'var(--brand)',
+              color: 'var(--brand-fg)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               fontWeight: 700,
-              color: '#d4b978',
+              fontSize: '12px',
               letterSpacing: '-0.02em',
-              textShadow: '0 0 12px rgba(212,185,120,0.4)',
             }}
           >
             GP
-          </span>
+          </div>
+          <div>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-1)', lineHeight: 1.2 }}>
+              Grupo Popper
+            </p>
+            <p style={{ fontSize: '10.5px', color: 'var(--text-3)', lineHeight: 1.2, marginTop: 1 }}>
+              Beneficios
+            </p>
+          </div>
         </div>
-      </div>
-      <h1
-        className="mt-5 leading-none"
+        {comercio && step !== 'loading' && step !== 'error' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 10px',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '6px',
+            }}
+          >
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)' }} />
+            <span style={{ fontSize: '11.5px', color: 'var(--text-2)', fontWeight: 500 }}>
+              {comercio.nombre}
+            </span>
+          </div>
+        )}
+      </header>
+
+      <main
         style={{
-          fontFamily: "'Playfair Display', Georgia, serif",
-          fontSize: '20px',
-          fontWeight: 600,
-          color: 'rgba(245,241,232,0.9)',
-          letterSpacing: '0.04em',
+          flex: 1,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          padding: '24px 16px',
         }}
       >
-        Grupo Popper
-      </h1>
-      <p
-        className="mt-2 text-[9.5px] font-semibold"
-        style={{
-          color: 'rgba(191,163,99,0.5)',
-          letterSpacing: '0.42em',
-          textTransform: 'uppercase',
-        }}
-      >
-        Beneficios Privados
-      </p>
+        <div style={{ width: '100%', maxWidth: 480, animation: 'fadeInUp 280ms var(--ease-out)' }}>
+          {step === 'loading' && <LoadingState />}
+          {step === 'error' && <ErrorState message={errorMsg} />}
+
+          {step === 'identify' && comercio && (
+            <IdentifyStep
+              comercio={comercio}
+              dni={dni}
+              setDni={setDni}
+              searching={searching}
+              errorMsg={errorMsg}
+              setErrorMsg={setErrorMsg}
+              onSearch={handleSearch}
+            />
+          )}
+
+          {step === 'profile' && beneficiario && (
+            <ProfileStep
+              beneficiario={beneficiario}
+              beneficios={beneficios}
+              selectedBenefit={selectedBenefit}
+              setSelectedBenefit={setSelectedBenefit}
+              historial={historial}
+              showHistorial={showHistorial}
+              setShowHistorial={setShowHistorial}
+              processing={processing}
+              errorMsg={errorMsg}
+              onCanjear={handleCanjear}
+              onReset={handleReset}
+            />
+          )}
+
+          {step === 'success' && successData && selectedBenefitData && comercio && (
+            <SuccessStep
+              beneficio={selectedBenefitData}
+              successData={successData}
+              comercio={comercio}
+              onReset={handleReset}
+            />
+          )}
+        </div>
+      </main>
+
+      <footer style={{ padding: '16px 20px', textAlign: 'center', borderTop: '1px solid var(--border-subtle)' }}>
+        <p style={{ fontSize: '10.5px', color: 'var(--text-4)' }}>© 2026 Recluta · Verificación segura</p>
+      </footer>
     </div>
   );
 }
 
+// ============================================
+// LOADING
+// ============================================
 function LoadingState() {
   return (
-    <div className="px-8 py-20 text-center">
-      <div className="relative inline-flex">
-        <div
-          className="w-12 h-12 rounded-full"
-          style={{
-            border: '2px solid rgba(191,163,99,0.12)',
-            borderTopColor: '#bfa363',
-            animation: 'spin 800ms cubic-bezier(0.4, 0, 0.2, 1) infinite',
-          }}
-        />
-      </div>
-      <p
-        className="mt-5 text-[11px] font-semibold"
-        style={{ color: 'rgba(191,163,99,0.45)', letterSpacing: '0.3em', textTransform: 'uppercase' }}
-      >
-        Verificando comercio
-      </p>
+    <div style={{ padding: '80px 20px', textAlign: 'center' }}>
+      <div
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: '50%',
+          border: '2px solid var(--border-default)',
+          borderTopColor: 'var(--brand)',
+          margin: '0 auto 16px',
+          animation: 'spin 800ms linear infinite',
+        }}
+      />
+      <p style={{ fontSize: '13px', color: 'var(--text-3)' }}>Cargando…</p>
     </div>
   );
 }
 
+// ============================================
+// ERROR
+// ============================================
 function ErrorState({ message }: { message: string }) {
   return (
-    <div className="px-10 py-14 text-center animate-fadeIn">
+    <div
+      style={{
+        padding: '64px 24px',
+        textAlign: 'center',
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: '12px',
+      }}
+    >
       <div
-        className="w-16 h-16 rounded-full mx-auto mb-5 flex items-center justify-center"
         style={{
-          background: 'rgba(232,144,137,0.08)',
-          border: '1px solid rgba(232,144,137,0.2)',
+          width: 56,
+          height: 56,
+          borderRadius: '50%',
+          background: 'var(--danger-bg)',
+          border: '1px solid var(--danger-border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 16px',
+          color: 'var(--danger-text)',
         }}
       >
-        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="rgba(232,144,137,0.85)" strokeWidth={1.5}>
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
-          />
-        </svg>
+        <AlertCircle size={26} />
       </div>
-      <h2
-        className="text-[20px] mb-2"
-        style={{
-          fontFamily: "'Playfair Display', Georgia, serif",
-          color: 'rgba(255,255,255,0.9)',
-          fontWeight: 600,
-        }}
-      >
-        Hubo un inconveniente
+      <h2 style={{ fontSize: '17px', fontWeight: 600, color: 'var(--text-1)', marginBottom: 6 }}>
+        Hubo un problema
       </h2>
-      <p className="text-[13px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>
-        {message}
-      </p>
+      <p style={{ fontSize: '13px', color: 'var(--text-3)', lineHeight: 1.55 }}>{message}</p>
     </div>
   );
 }
 
+// ============================================
+// IDENTIFY — paso 1
+// ============================================
 function IdentifyStep({
   comercio,
   dni,
@@ -457,209 +403,187 @@ function IdentifyStep({
   const [focused, setFocused] = useState(false);
 
   return (
-    <div className="px-8 pt-7 pb-9 animate-fadeIn">
-      {/* Commerce card */}
+    <div>
+      {/* Commerce card sutil */}
       <div
-        className="relative p-4 rounded-2xl mb-7 overflow-hidden"
         style={{
-          background: 'linear-gradient(135deg, rgba(255,255,255,0.025) 0%, rgba(191,163,99,0.04) 100%)',
-          border: '1px solid rgba(191,163,99,0.12)',
+          padding: '14px 16px',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '10px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          marginBottom: 32,
         }}
       >
         <div
-          className="absolute top-0 left-0 right-0 h-px"
-          style={{ background: 'linear-gradient(90deg, transparent, rgba(212,185,120,0.3), transparent)' }}
-        />
-        <div className="flex items-center gap-3.5">
-          <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{
-              background: 'rgba(191,163,99,0.08)',
-              border: '1px solid rgba(191,163,99,0.18)',
-            }}
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#bfa363" strokeWidth={1.5}>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z"
-              />
-            </svg>
-          </div>
-          <div className="min-w-0 flex-1">
-            <p
-              className="text-[9.5px] font-semibold mb-1"
-              style={{ color: 'rgba(191,163,99,0.55)', letterSpacing: '0.22em', textTransform: 'uppercase' }}
-            >
-              Comercio adherido
-            </p>
-            <p
-              className="text-[15px] leading-tight"
-              style={{
-                fontFamily: "'Playfair Display', Georgia, serif",
-                color: 'rgba(255,255,255,0.95)',
-                fontWeight: 600,
-              }}
-            >
-              {comercio.nombre}
-            </p>
-            <p className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              {comercio.direccion}, {comercio.ciudad}
-            </p>
-          </div>
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '8px',
+            background: 'var(--brand-muted)',
+            border: '1px solid var(--brand-border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--brand)',
+            flexShrink: 0,
+          }}
+        >
+          <MapPin size={18} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-1)' }}>{comercio.nombre}</p>
+          <p style={{ fontSize: '11.5px', color: 'var(--text-3)', marginTop: 2 }}>
+            {comercio.direccion}, {comercio.ciudad}
+          </p>
         </div>
       </div>
 
-      {/* Título */}
-      <h2
-        className="leading-tight"
+      <h1
         style={{
-          fontFamily: "'Playfair Display', Georgia, serif",
-          fontSize: '26px',
+          fontSize: '24px',
           fontWeight: 600,
-          color: 'rgba(255,255,255,0.95)',
-          letterSpacing: '-0.01em',
+          color: 'var(--text-1)',
+          letterSpacing: '-0.02em',
+          marginBottom: 8,
+          textAlign: 'center',
         }}
       >
-        Bienvenido
-      </h2>
-      <p className="text-[13px] mt-2 mb-7 leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>
-        Identificate con tu DNI para acceder a tus beneficios disponibles en este comercio.
+        Identificate
+      </h1>
+      <p
+        style={{
+          fontSize: '13.5px',
+          color: 'var(--text-3)',
+          textAlign: 'center',
+          marginBottom: 32,
+          lineHeight: 1.5,
+        }}
+      >
+        Ingresá tu DNI para ver tus beneficios disponibles.
       </p>
 
-      {/* DNI input dramático */}
-      <label
-        className="block text-[10px] font-semibold mb-3"
-        style={{
-          color: focused ? 'rgba(191,163,99,0.85)' : 'rgba(191,163,99,0.45)',
-          letterSpacing: '0.22em',
-          textTransform: 'uppercase',
-          transition: 'color 320ms cubic-bezier(0.4,0,0.2,1)',
-        }}
-      >
-        Número de Documento
-      </label>
       <input
         type="text"
         inputMode="numeric"
         pattern="[0-9]*"
-        placeholder="00000000"
+        placeholder="00.000.000"
         value={dni}
         onChange={e => {
           const val = e.target.value.replace(/\D/g, '').slice(0, 8);
           setDni(val);
           setErrorMsg('');
         }}
-        onKeyDown={e => {
-          if (e.key === 'Enter') onSearch();
-        }}
+        onKeyDown={e => { if (e.key === 'Enter') onSearch(); }}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         autoFocus
         autoComplete="off"
-        className="w-full px-5 py-5 rounded-xl text-center transition-all"
         style={{
-          fontFamily: "'Playfair Display', Georgia, serif",
+          width: '100%',
+          height: 64,
+          padding: '0 20px',
+          background: 'var(--bg-elevated)',
+          border: `1px solid ${focused ? 'var(--brand)' : 'var(--border-default)'}`,
+          borderRadius: '12px',
+          color: 'var(--text-1)',
           fontSize: '28px',
           fontWeight: 600,
-          color: 'rgba(255,255,255,0.95)',
-          background: focused ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.025)',
-          border: focused ? '1px solid rgba(191,163,99,0.4)' : '1px solid rgba(255,255,255,0.06)',
-          boxShadow: focused
-            ? '0 0 0 4px rgba(191,163,99,0.06), inset 0 1px 0 rgba(212,185,120,0.05)'
-            : 'none',
-          caretColor: '#bfa363',
-          letterSpacing: '0.15em',
+          textAlign: 'center',
+          letterSpacing: '0.04em',
+          outline: 'none',
           fontVariantNumeric: 'tabular-nums',
-          transitionDuration: '320ms',
-          transitionTimingFunction: 'cubic-bezier(0.4,0,0.2,1)',
+          boxShadow: focused ? '0 0 0 4px var(--brand-subtle)' : 'none',
+          transition: 'all 120ms var(--ease-in-out)',
         }}
       />
 
-      {/* Progress dots para los dígitos */}
-      <div className="flex items-center justify-center gap-1.5 mt-4">
+      {/* Progress dots */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 14 }}>
         {Array.from({ length: 8 }).map((_, i) => (
           <div
             key={i}
-            className="rounded-full transition-all"
             style={{
-              width: i < dni.length ? '6px' : '4px',
-              height: i < dni.length ? '6px' : '4px',
-              backgroundColor:
-                i < dni.length ? 'rgba(191,163,99,0.85)' : 'rgba(191,163,99,0.18)',
-              transitionDuration: '300ms',
-              transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+              width: i < dni.length ? 7 : 4,
+              height: i < dni.length ? 7 : 4,
+              borderRadius: '50%',
+              background: i < dni.length ? 'var(--brand)' : 'var(--border-default)',
+              transition: 'all 160ms var(--ease-out)',
             }}
           />
         ))}
       </div>
 
-      {/* Error */}
       {errorMsg && (
         <div
-          className="mt-5 p-3 rounded-xl animate-shake"
           style={{
-            background: 'rgba(232,144,137,0.06)',
-            border: '1px solid rgba(232,144,137,0.18)',
+            marginTop: 20,
+            padding: '10px 12px',
+            background: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
           }}
         >
-          <p className="text-[12.5px] text-center" style={{ color: 'rgba(232,144,137,0.92)' }}>
-            {errorMsg}
-          </p>
+          <AlertCircle size={14} style={{ color: 'var(--danger-text)', flexShrink: 0, marginTop: 1 }} />
+          <p style={{ fontSize: '12.5px', color: 'var(--danger-text)', lineHeight: 1.5 }}>{errorMsg}</p>
         </div>
       )}
 
-      {/* Botón verificar */}
       <button
         onClick={onSearch}
         disabled={dni.length < 7 || searching}
-        className="relative w-full mt-7 py-[16px] rounded-xl text-[12.5px] font-semibold overflow-hidden transition-all group disabled:opacity-30 disabled:cursor-not-allowed"
         style={{
-          letterSpacing: '0.22em',
-          textTransform: 'uppercase',
-          background: 'linear-gradient(135deg, #d4b978 0%, #bfa363 50%, #9d8649 100%)',
-          color: '#0a0e14',
-          boxShadow:
-            dni.length >= 7 && !searching
-              ? '0 8px 24px rgba(191,163,99,0.18), inset 0 1px 0 rgba(255,255,255,0.15)'
-              : 'none',
-          transitionDuration: '500ms',
-          transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          width: '100%',
+          height: 48,
+          marginTop: 24,
+          background: dni.length >= 7 && !searching ? 'var(--brand)' : 'rgba(212,160,23,0.4)',
+          color: 'var(--brand-fg)',
+          border: 'none',
+          borderRadius: '10px',
+          fontSize: '14px',
+          fontWeight: 600,
+          cursor: dni.length < 7 || searching ? 'not-allowed' : 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          transition: 'all 120ms var(--ease-in-out)',
+          opacity: dni.length < 7 ? 0.6 : 1,
         }}
-        onMouseEnter={e => {
-          if (dni.length >= 7 && !searching) e.currentTarget.style.transform = 'translateY(-1px)';
-        }}
-        onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}
       >
-        <span className="relative z-10 flex items-center justify-center gap-2">
-          {searching ? (
-            <>
-              <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Verificando
-            </>
-          ) : (
-            <>
-              Verificar
-              <svg
-                className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform duration-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.5}
-              >
-                <path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </>
-          )}
-        </span>
+        {searching ? (
+          <>
+            <span
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: '50%',
+                border: '1.5px solid currentColor',
+                borderTopColor: 'transparent',
+                animation: 'spin 600ms linear infinite',
+              }}
+            />
+            Verificando
+          </>
+        ) : (
+          <>
+            Continuar
+            <ChevronRight size={16} />
+          </>
+        )}
       </button>
     </div>
   );
 }
 
+// ============================================
+// PROFILE — paso 2
+// ============================================
 function ProfileStep({
   beneficiario,
   beneficios,
@@ -685,156 +609,186 @@ function ProfileStep({
   onCanjear: () => void;
   onReset: () => void;
 }) {
-  const tier = nivelTier[beneficiario.nivel] || nivelTier.bronce;
+  const tier = tierGradients[beneficiario.nivel] || tierGradients.bronce;
 
   return (
-    <div className="px-8 pt-7 pb-9 animate-fadeIn">
-      {/* Hero del perfil */}
-      <div className="text-center mb-7">
-        {/* Foto con tier ring */}
-        <div className="relative inline-block mb-5">
-          {/* Tier glow externo */}
+    <div>
+      {/* ===== Membership Card estilo Apple Wallet ===== */}
+      <div
+        style={{
+          position: 'relative',
+          padding: '20px',
+          background: tier.gradient,
+          borderRadius: '16px',
+          marginBottom: 24,
+          boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Pattern overlay subtle */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'radial-gradient(ellipse at top right, rgba(255,255,255,0.15), transparent 60%)',
+            pointerEvents: 'none',
+          }}
+        />
+
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 16 }}>
+          {/* Foto */}
           <div
-            className="absolute inset-0 rounded-full"
             style={{
-              background: tier.gradient,
-              filter: 'blur(16px)',
-              opacity: 0.25,
-              transform: 'scale(1.3)',
+              position: 'relative',
+              flexShrink: 0,
             }}
-          />
-          {/* Ring */}
-          <div
-            className="relative rounded-full p-[2px]"
-            style={{ background: tier.gradient }}
           >
             {beneficiario.foto ? (
               <img
                 src={beneficiario.foto}
                 alt={`${beneficiario.nombre} ${beneficiario.apellido}`}
-                className="w-[108px] h-[108px] rounded-full object-cover block"
-                style={{ background: '#0a0e14' }}
-                onError={e => {
-                  (e.target as HTMLImageElement).style.display = 'none';
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  border: '3px solid rgba(255,255,255,0.25)',
+                  background: 'rgba(0,0,0,0.2)',
                 }}
+                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
             ) : (
               <div
-                className="w-[108px] h-[108px] rounded-full flex items-center justify-center"
                 style={{
-                  background: '#0a0e14',
-                  color: tier.text,
-                  fontFamily: "'Playfair Display', Georgia, serif",
-                  fontSize: '36px',
+                  width: 72,
+                  height: 72,
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.15)',
+                  border: '3px solid rgba(255,255,255,0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '24px',
                   fontWeight: 600,
+                  color: tier.textColor,
+                  letterSpacing: '-0.02em',
                 }}
               >
-                {beneficiario.nombre[0]}
-                {beneficiario.apellido[0]}
+                {beneficiario.nombre[0]}{beneficiario.apellido[0]}
               </div>
             )}
           </div>
+
+          {/* Info */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p
+              style={{
+                fontSize: '10.5px',
+                fontWeight: 600,
+                color: 'rgba(255,255,255,0.7)',
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase',
+                marginBottom: 4,
+              }}
+            >
+              Beneficios · {tier.label}
+            </p>
+            <h2
+              style={{
+                fontSize: '20px',
+                fontWeight: 600,
+                color: 'white',
+                letterSpacing: '-0.015em',
+                lineHeight: 1.2,
+                marginBottom: 2,
+              }}
+            >
+              {beneficiario.nombre}
+            </h2>
+            <p
+              style={{
+                fontSize: '15px',
+                fontWeight: 500,
+                color: 'rgba(255,255,255,0.85)',
+                lineHeight: 1.2,
+              }}
+            >
+              {beneficiario.apellido}
+            </p>
+          </div>
         </div>
 
-        {/* Nombre */}
-        <h2
-          className="leading-tight"
+        {/* Footer info — cargo, dni */}
+        <div
           style={{
-            fontFamily: "'Playfair Display', Georgia, serif",
-            fontSize: '24px',
-            fontWeight: 600,
-            color: 'rgba(255,255,255,0.96)',
-            letterSpacing: '-0.01em',
+            position: 'relative',
+            marginTop: 16,
+            paddingTop: 12,
+            borderTop: '1px solid rgba(255,255,255,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
           }}
         >
-          {beneficiario.nombre} {beneficiario.apellido}
-        </h2>
-
-        {/* Cargo + departamento */}
-        <p className="text-[12.5px] mt-1.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
-          {beneficiario.cargo && <span>{beneficiario.cargo}</span>}
-          {beneficiario.cargo && beneficiario.departamento && (
-            <span className="mx-1.5" style={{ color: 'rgba(191,163,99,0.4)' }}>
-              ·
-            </span>
-          )}
-          {beneficiario.departamento && <span>{beneficiario.departamento}</span>}
-        </p>
-
-        {/* Credential badge premium */}
-        <div className="mt-4 inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full" style={{
-          background: 'rgba(8,14,26,0.5)',
-          border: `1px solid ${tier.border}`,
-        }}>
-          {/* Diamantes (estrellas) según tier */}
-          <span className="flex items-center gap-0.5">
-            {Array.from({ length: tier.tier }).map((_, i) => (
-              <svg key={i} className="w-2.5 h-2.5" fill={tier.text} viewBox="0 0 16 16">
-                <path d="M8 0L9.7 5.5H15L10.7 8.8 12.4 14.3 8 11 3.6 14.3 5.3 8.8 1 5.5H6.3z" />
-              </svg>
-            ))}
-          </span>
-          <span
-            className="text-[10.5px] font-semibold"
-            style={{
-              color: tier.text,
-              letterSpacing: '0.32em',
-              textTransform: 'uppercase',
-            }}
-          >
-            {tier.label}
-          </span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 1 }}>
+              {beneficiario.cargo ? 'Cargo' : 'Departamento'}
+            </p>
+            <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.92)', fontWeight: 500, lineHeight: 1.3 }}>
+              {beneficiario.cargo || beneficiario.departamento || '—'}
+            </p>
+          </div>
           {beneficiario.legajo && (
-            <>
-              <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
-              <span
-                className="text-[10px]"
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 1 }}>
+                Legajo
+              </p>
+              <p
                 style={{
-                  color: 'rgba(255,255,255,0.4)',
-                  letterSpacing: '0.1em',
+                  fontSize: '12.5px',
+                  color: 'rgba(255,255,255,0.92)',
+                  fontWeight: 500,
+                  fontFamily: 'var(--font-geist-mono)',
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
                 #{beneficiario.legajo}
-              </span>
-            </>
+              </p>
+            </div>
           )}
         </div>
       </div>
 
-      <div className="divider-gold mb-5" />
-
-      {/* Beneficios */}
-      <div className="flex items-center justify-between mb-4">
-        <p
-          className="text-[10px] font-semibold"
-          style={{ color: 'rgba(191,163,99,0.5)', letterSpacing: '0.22em', textTransform: 'uppercase' }}
-        >
+      {/* ===== Beneficios ===== */}
+      <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h3 style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-1)' }}>
           Beneficios disponibles
-        </p>
-        <span
-          className="text-[11px]"
-          style={{
-            color: 'rgba(255,255,255,0.4)',
-            fontVariantNumeric: 'tabular-nums',
-            fontFamily: "'Playfair Display', Georgia, serif",
-            fontStyle: 'italic',
-          }}
-        >
+        </h3>
+        <span style={{ fontSize: '11.5px', color: 'var(--text-3)' }}>
           {beneficios.length} {beneficios.length === 1 ? 'oferta' : 'ofertas'}
         </span>
       </div>
 
       {beneficios.length === 0 ? (
-        <div className="py-10 px-4 text-center rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)' }}>
-          <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            No hay beneficios disponibles en este comercio para tu nivel.
+        <div
+          style={{
+            padding: '32px 16px',
+            background: 'var(--bg-elevated)',
+            border: '1px dashed var(--border-default)',
+            borderRadius: '10px',
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ fontSize: '13px', color: 'var(--text-3)' }}>
+            No hay beneficios disponibles para tu nivel en este comercio.
           </p>
         </div>
       ) : (
-        <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1 -mr-1">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {beneficios.map(b => (
-            <BenefitCard
+            <BenefitOption
               key={b.id}
               benefit={b}
               selected={selectedBenefit === b.id}
@@ -844,81 +798,66 @@ function ProfileStep({
         </div>
       )}
 
-      {/* Historial colapsable */}
+      {/* ===== Historial colapsable ===== */}
       {historial.length > 0 && (
-        <div className="mt-6">
-          <div className="divider-gold mb-3" />
+        <div style={{ marginTop: 20 }}>
           <button
             onClick={() => setShowHistorial(!showHistorial)}
-            className="w-full flex items-center justify-between py-2 text-[10px] font-semibold transition-colors"
             style={{
-              color: showHistorial ? 'rgba(191,163,99,0.8)' : 'rgba(191,163,99,0.45)',
-              letterSpacing: '0.22em',
-              textTransform: 'uppercase',
+              width: '100%',
+              padding: '10px 12px',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '8px',
+              color: 'var(--text-2)',
+              fontSize: '12px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              transition: 'all 120ms var(--ease-in-out)',
             }}
           >
-            <span>
-              Mis canjes recientes
-              <span
-                className="ml-2"
-                style={{
-                  fontFamily: "'Playfair Display', Georgia, serif",
-                  fontStyle: 'italic',
-                  textTransform: 'lowercase',
-                  letterSpacing: 'normal',
-                  color: 'rgba(255,255,255,0.3)',
-                }}
-              >
-                ({historial.length})
-              </span>
-            </span>
-            <svg
-              className={`w-3 h-3 transition-transform duration-500 ${showHistorial ? 'rotate-180' : ''}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
+            <span>Tus canjes recientes ({historial.length})</span>
+            <ChevronRight
+              size={14}
+              style={{
+                transform: showHistorial ? 'rotate(90deg)' : 'rotate(0deg)',
+                transition: 'transform 200ms var(--ease-out)',
+              }}
+            />
           </button>
           {showHistorial && (
-            <div className="mt-3 space-y-2 max-h-[200px] overflow-y-auto pr-1 animate-fadeIn">
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, animation: 'fadeIn 200ms var(--ease-out)' }}>
               {historial.map((h, i) => (
                 <div
                   key={i}
-                  className="p-3 rounded-lg"
-                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}
+                  style={{
+                    padding: '10px 12px',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                  }}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12.5px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.85)' }}>
-                        {h.beneficio_nombre}
-                      </p>
-                      <p className="text-[10.5px] mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                        {h.comercio_nombre}
-                        <span className="mx-1.5">·</span>
-                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                          {new Date(h.fecha_verificacion).toLocaleDateString('es-AR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: '2-digit',
-                          })}
-                        </span>
-                      </p>
-                    </div>
-                    {h.descuento && (
-                      <span
-                        className="flex-shrink-0 text-[11px] font-semibold"
-                        style={{
-                          color: '#7fc99f',
-                          fontFamily: "'Playfair Display', Georgia, serif",
-                        }}
-                      >
-                        −{h.descuento}%
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <p style={{ fontSize: '12.5px', color: 'var(--text-1)', fontWeight: 500 }}>{h.beneficio_nombre}</p>
+                    <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 1 }}>
+                      {h.comercio_nombre} ·{' '}
+                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {new Date(h.fecha_verificacion).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                       </span>
-                    )}
+                    </p>
                   </div>
+                  {h.descuento && (
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
+                      −{h.descuento}%
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -926,80 +865,98 @@ function ProfileStep({
         </div>
       )}
 
-      {/* Error */}
+      {/* ===== Error ===== */}
       {errorMsg && (
         <div
-          className="mt-5 p-3 rounded-xl"
-          style={{ background: 'rgba(232,144,137,0.06)', border: '1px solid rgba(232,144,137,0.18)' }}
+          style={{
+            marginTop: 16,
+            padding: '10px 12px',
+            background: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+          }}
         >
-          <p className="text-[12.5px] text-center" style={{ color: 'rgba(232,144,137,0.92)' }}>
-            {errorMsg}
-          </p>
+          <AlertCircle size={14} style={{ color: 'var(--danger-text)', flexShrink: 0, marginTop: 1 }} />
+          <p style={{ fontSize: '12.5px', color: 'var(--danger-text)' }}>{errorMsg}</p>
         </div>
       )}
 
-      {/* Botones */}
-      <div className="flex gap-3 mt-7">
+      {/* ===== Actions ===== */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
         <button
           onClick={onReset}
-          className="flex-shrink-0 px-5 py-[15px] rounded-xl text-[11.5px] font-semibold transition-all"
           style={{
-            color: 'rgba(255,255,255,0.5)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            letterSpacing: '0.15em',
-            textTransform: 'uppercase',
+            height: 48,
+            padding: '0 18px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-default)',
+            borderRadius: '10px',
+            color: 'var(--text-2)',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            transition: 'all 120ms var(--ease-in-out)',
           }}
-          onMouseEnter={e => {
-            e.currentTarget.style.borderColor = 'rgba(191,163,99,0.25)';
-            e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-            e.currentTarget.style.color = 'rgba(255,255,255,0.5)';
-          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-raised)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
         >
+          <ArrowLeft size={14} />
           Volver
         </button>
         <button
           onClick={onCanjear}
           disabled={!selectedBenefit || processing}
-          className="relative flex-1 py-[15px] rounded-xl text-[12px] font-semibold overflow-hidden transition-all group disabled:opacity-30 disabled:cursor-not-allowed"
           style={{
-            letterSpacing: '0.22em',
-            textTransform: 'uppercase',
-            background: 'linear-gradient(135deg, #d4b978 0%, #bfa363 50%, #9d8649 100%)',
-            color: '#0a0e14',
-            boxShadow:
-              selectedBenefit && !processing
-                ? '0 8px 24px rgba(191,163,99,0.18), inset 0 1px 0 rgba(255,255,255,0.15)'
-                : 'none',
-            transitionDuration: '500ms',
+            flex: 1,
+            height: 48,
+            background: selectedBenefit && !processing ? 'var(--brand)' : 'rgba(212,160,23,0.4)',
+            color: 'var(--brand-fg)',
+            border: 'none',
+            borderRadius: '10px',
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: !selectedBenefit || processing ? 'not-allowed' : 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            transition: 'all 120ms var(--ease-in-out)',
+            opacity: !selectedBenefit ? 0.6 : 1,
           }}
-          onMouseEnter={e => {
-            if (selectedBenefit && !processing) e.currentTarget.style.transform = 'translateY(-1px)';
-          }}
-          onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}
         >
-          <span className="relative z-10 flex items-center justify-center gap-2">
-            {processing ? (
-              <>
-                <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                  <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Procesando
-              </>
-            ) : (
-              'Canjear'
-            )}
-          </span>
+          {processing ? (
+            <>
+              <span
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: '50%',
+                  border: '1.5px solid currentColor',
+                  borderTopColor: 'transparent',
+                  animation: 'spin 600ms linear infinite',
+                }}
+              />
+              Procesando
+            </>
+          ) : (
+            'Canjear beneficio'
+          )}
         </button>
       </div>
     </div>
   );
 }
 
-function BenefitCard({
+// ============================================
+// BENEFIT OPTION
+// ============================================
+function BenefitOption({
   benefit,
   selected,
   onSelect,
@@ -1011,106 +968,108 @@ function BenefitCard({
   return (
     <button
       onClick={onSelect}
-      className="relative w-full p-4 rounded-xl text-left transition-all overflow-hidden group"
       style={{
-        background: selected
-          ? 'linear-gradient(135deg, rgba(191,163,99,0.10) 0%, rgba(191,163,99,0.05) 100%)'
-          : 'rgba(255,255,255,0.02)',
-        border: selected ? '1px solid rgba(191,163,99,0.4)' : '1px solid rgba(255,255,255,0.05)',
-        boxShadow: selected ? '0 0 0 3px rgba(191,163,99,0.06), 0 4px 12px rgba(191,163,99,0.08)' : 'none',
-        transitionDuration: '320ms',
-        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        width: '100%',
+        padding: '14px 16px',
+        background: selected ? 'var(--brand-subtle)' : 'var(--bg-elevated)',
+        border: `1px solid ${selected ? 'var(--brand)' : 'var(--border-subtle)'}`,
+        borderRadius: '10px',
+        textAlign: 'left',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        transition: 'all 120ms var(--ease-in-out)',
+        boxShadow: selected ? '0 0 0 3px var(--brand-subtle)' : 'none',
+      }}
+      onMouseEnter={e => {
+        if (!selected) e.currentTarget.style.background = 'var(--bg-raised)';
+      }}
+      onMouseLeave={e => {
+        if (!selected) e.currentTarget.style.background = 'var(--bg-elevated)';
       }}
     >
-      {selected && (
-        <div
-          className="absolute top-0 left-0 right-0 h-px"
-          style={{ background: 'linear-gradient(90deg, transparent, rgba(212,185,120,0.5), transparent)' }}
-        />
-      )}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p
-            className="text-[14.5px] leading-tight"
-            style={{
-              fontFamily: "'Playfair Display', Georgia, serif",
-              color: 'rgba(255,255,255,0.95)',
-              fontWeight: 600,
-            }}
-          >
-            {benefit.nombre}
-          </p>
-          {benefit.descripcion && (
-            <p className="text-[11.5px] mt-1 leading-relaxed line-clamp-2" style={{ color: 'rgba(255,255,255,0.5)' }}>
-              {benefit.descripcion}
-            </p>
-          )}
-          {(benefit.descuento || benefit.valor_fijo) && (
-            <div className="mt-2 flex items-baseline gap-1.5">
-              {benefit.descuento && (
-                <>
-                  <span
-                    style={{
-                      fontFamily: "'Playfair Display', Georgia, serif",
-                      fontSize: '22px',
-                      fontWeight: 600,
-                      color: '#d4b978',
-                      lineHeight: 1,
-                      fontVariantNumeric: 'tabular-nums',
-                      letterSpacing: '-0.02em',
-                    }}
-                  >
-                    {benefit.descuento}
-                    <span style={{ fontSize: '14px', marginLeft: '2px' }}>%</span>
-                  </span>
-                  <span
-                    className="text-[9.5px] font-semibold"
-                    style={{
-                      color: 'rgba(212,185,120,0.6)',
-                      letterSpacing: '0.18em',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Descuento
-                  </span>
-                </>
-              )}
-              {benefit.valor_fijo && !benefit.descuento && (
-                <span
-                  style={{
-                    fontFamily: "'Playfair Display', Georgia, serif",
-                    fontSize: '18px',
-                    fontWeight: 600,
-                    color: '#d4b978',
-                  }}
-                >
-                  ${benefit.valor_fijo}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-        {/* Selector */}
-        <div
-          className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-1 transition-all"
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p
           style={{
-            background: selected ? 'linear-gradient(135deg, #d4b978, #bfa363)' : 'rgba(255,255,255,0.04)',
-            border: selected ? '1px solid #d4b978' : '1.5px solid rgba(255,255,255,0.1)',
-            boxShadow: selected ? '0 2px 8px rgba(191,163,99,0.25)' : 'none',
-            transitionDuration: '320ms',
+            fontSize: '14px',
+            fontWeight: 600,
+            color: 'var(--text-1)',
+            marginBottom: 2,
+            letterSpacing: '-0.005em',
           }}
         >
-          {selected && (
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="#0a0e14" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
+          {benefit.nombre}
+        </p>
+        {benefit.descripcion && (
+          <p
+            className="line-clamp-2"
+            style={{
+              fontSize: '12px',
+              color: 'var(--text-3)',
+              lineHeight: 1.5,
+            }}
+          >
+            {benefit.descripcion}
+          </p>
+        )}
+      </div>
+      {(benefit.descuento || benefit.valor_fijo) && (
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          {benefit.descuento && (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'baseline',
+                gap: 1,
+                color: selected ? 'var(--brand)' : 'var(--text-1)',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '22px',
+                  fontWeight: 700,
+                  fontVariantNumeric: 'tabular-nums',
+                  letterSpacing: '-0.02em',
+                  lineHeight: 1,
+                }}
+              >
+                {benefit.descuento}
+              </span>
+              <span style={{ fontSize: '13px', fontWeight: 600 }}>%</span>
+            </div>
+          )}
+          {benefit.valor_fijo && !benefit.descuento && (
+            <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
+              ${benefit.valor_fijo}
+            </span>
           )}
         </div>
+      )}
+      {/* radio circle */}
+      <div
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: '50%',
+          border: `2px solid ${selected ? 'var(--brand)' : 'var(--border-default)'}`,
+          background: selected ? 'var(--brand)' : 'transparent',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          transition: 'all 120ms var(--ease-in-out)',
+        }}
+      >
+        {selected && <Check size={13} strokeWidth={3} color="var(--brand-fg)" />}
       </div>
     </button>
   );
 }
 
+// ============================================
+// SUCCESS
+// ============================================
 function SuccessStep({
   beneficio,
   successData,
@@ -1119,186 +1078,184 @@ function SuccessStep({
 }: {
   beneficio: Beneficio;
   successData: any;
-  comercio: Comercio | null;
+  comercio: Comercio;
   onReset: () => void;
 }) {
   const codigo = successData.verificacion?.codigo_referencia || '---';
   const fecha = new Date(successData.verificacion?.fecha_verificacion || Date.now());
+  const [copied, setCopied] = useState(false);
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(codigo);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* ignore */ }
+  };
 
   return (
-    <div className="px-8 pt-9 pb-8 text-center animate-fadeIn">
-      {/* Sello premium */}
-      <div className="relative inline-block mb-6">
+    <div>
+      {/* Success badge */}
+      <div style={{ textAlign: 'center', marginBottom: 32, animation: 'scaleIn 280ms var(--ease-out)' }}>
         <div
-          className="absolute inset-0 rounded-full"
           style={{
-            background: 'radial-gradient(circle, rgba(127,201,159,0.25), transparent 70%)',
-            filter: 'blur(16px)',
-            transform: 'scale(1.5)',
-          }}
-        />
-        <div
-          className="relative w-[88px] h-[88px] rounded-full flex items-center justify-center"
-          style={{
-            background: 'radial-gradient(circle at 30% 30%, rgba(127,201,159,0.15), rgba(8,14,26,0.5))',
-            border: '1.5px solid rgba(127,201,159,0.5)',
-            boxShadow: '0 0 30px rgba(127,201,159,0.18), inset 0 1px 0 rgba(127,201,159,0.2)',
+            width: 72,
+            height: 72,
+            borderRadius: '50%',
+            background: 'var(--success-bg)',
+            border: '1px solid var(--success-border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 20px',
+            color: 'var(--success)',
           }}
         >
-          <svg
-            className="w-10 h-10 animate-scaleIn"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="#7fc99f"
-            strokeWidth={2}
-            style={{ filter: 'drop-shadow(0 0 8px rgba(127,201,159,0.4))' }}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-          </svg>
+          <Check size={36} strokeWidth={2.5} />
         </div>
+        <p
+          style={{
+            fontSize: '11px',
+            fontWeight: 600,
+            color: 'var(--success-text)',
+            letterSpacing: '0.32em',
+            textTransform: 'uppercase',
+            marginBottom: 8,
+          }}
+        >
+          Beneficio confirmado
+        </p>
+        <h1 style={{ fontSize: '22px', fontWeight: 600, color: 'var(--text-1)', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
+          {beneficio.nombre}
+        </h1>
+        {beneficio.descuento && (
+          <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'baseline', gap: 4, color: 'var(--brand)' }}>
+            <span style={{ fontSize: '32px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', lineHeight: 1 }}>
+              {beneficio.descuento}%
+            </span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              de descuento
+            </span>
+          </div>
+        )}
       </div>
 
-      <p
-        className="text-[10px] font-semibold mb-2"
-        style={{
-          color: 'rgba(127,201,159,0.7)',
-          letterSpacing: '0.42em',
-          textTransform: 'uppercase',
-        }}
-      >
-        Beneficio confirmado
-      </p>
-      <h2
-        className="leading-tight"
-        style={{
-          fontFamily: "'Playfair Display', Georgia, serif",
-          fontSize: '26px',
-          fontWeight: 600,
-          color: 'rgba(255,255,255,0.96)',
-          letterSpacing: '-0.01em',
-        }}
-      >
-        {beneficio.nombre}
-      </h2>
-      {beneficio.descuento && (
-        <p className="mt-2">
-          <span
-            style={{
-              fontFamily: "'Playfair Display', Georgia, serif",
-              fontSize: '40px',
-              fontWeight: 600,
-              color: '#d4b978',
-              letterSpacing: '-0.02em',
-              fontVariantNumeric: 'tabular-nums',
-              lineHeight: 1,
-            }}
-          >
-            {beneficio.descuento}%
-          </span>
-          <span className="ml-2 text-[12px] font-semibold uppercase" style={{ color: 'rgba(212,185,120,0.6)', letterSpacing: '0.2em' }}>
-            de descuento
-          </span>
-        </p>
-      )}
-
-      {/* Recibo */}
+      {/* Code card — el QR equivalente para el comerciante */}
       <div
-        className="relative mt-7 p-5 rounded-2xl overflow-hidden"
         style={{
-          background: 'linear-gradient(180deg, rgba(212,185,120,0.04) 0%, rgba(191,163,99,0.02) 100%)',
-          border: '1px solid rgba(191,163,99,0.2)',
+          padding: '24px',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-default)',
+          borderRadius: '12px',
+          textAlign: 'center',
+          marginBottom: 16,
+          position: 'relative',
         }}
       >
-        {/* Edge dorado superior */}
-        <div
-          className="absolute top-0 left-0 right-0 h-px"
-          style={{ background: 'linear-gradient(90deg, transparent, rgba(212,185,120,0.4), transparent)' }}
-        />
-
         <p
-          className="text-[9.5px] font-semibold mb-3"
-          style={{ color: 'rgba(191,163,99,0.5)', letterSpacing: '0.32em', textTransform: 'uppercase' }}
+          style={{
+            fontSize: '10.5px',
+            fontWeight: 600,
+            color: 'var(--text-3)',
+            letterSpacing: '0.28em',
+            textTransform: 'uppercase',
+            marginBottom: 12,
+          }}
         >
           Código de verificación
         </p>
         <p
-          className="text-[26px] font-mono select-all"
           style={{
-            color: 'rgba(245,241,232,0.95)',
-            fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-            fontWeight: 600,
-            letterSpacing: '0.2em',
+            fontSize: '32px',
+            fontWeight: 700,
+            color: 'var(--text-1)',
+            fontFamily: 'var(--font-geist-mono)',
+            letterSpacing: '0.16em',
             fontVariantNumeric: 'tabular-nums',
-            textShadow: '0 0 10px rgba(212,185,120,0.15)',
+            marginBottom: 12,
+            wordBreak: 'break-all',
+            lineHeight: 1.1,
           }}
         >
           {codigo}
         </p>
-
-        {/* Línea decorativa */}
-        <div className="my-4 divider-gold" />
-
-        {/* Detalles del canje */}
-        <div className="space-y-2 text-left">
-          {comercio && (
-            <ReceiptRow label="Comercio" value={comercio.nombre} />
-          )}
-          <ReceiptRow label="Fecha" value={fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })} />
-          <ReceiptRow label="Hora" value={fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} />
-        </div>
+        <button
+          onClick={copyCode}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '6px 12px',
+            background: copied ? 'var(--success-bg)' : 'var(--bg-surface)',
+            border: `1px solid ${copied ? 'var(--success-border)' : 'var(--border-subtle)'}`,
+            borderRadius: '6px',
+            color: copied ? 'var(--success-text)' : 'var(--text-2)',
+            fontSize: '11.5px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            transition: 'all 120ms var(--ease-in-out)',
+          }}
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? 'Copiado' : 'Copiar código'}
+        </button>
       </div>
 
-      <p className="text-[11.5px] mt-5 leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>
+      {/* Receipt details */}
+      <div
+        style={{
+          padding: '12px 16px',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '10px',
+          marginBottom: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
+        <ReceiptRow icon={<MapPin size={13} />} label="Comercio" value={comercio.nombre} />
+        <ReceiptRow icon={<Clock size={13} />} label="Fecha" value={fecha.toLocaleString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
+      </div>
+
+      <p style={{ fontSize: '12px', color: 'var(--text-3)', textAlign: 'center', marginBottom: 24, lineHeight: 1.5 }}>
         Mostrá este código al encargado del comercio para hacer efectivo el beneficio.
       </p>
 
       <button
         onClick={onReset}
-        className="w-full mt-7 py-[15px] rounded-xl text-[11.5px] font-semibold transition-all"
         style={{
-          color: 'rgba(255,255,255,0.55)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          letterSpacing: '0.22em',
-          textTransform: 'uppercase',
+          width: '100%',
+          height: 48,
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-default)',
+          borderRadius: '10px',
+          color: 'var(--text-1)',
+          fontSize: '13px',
+          fontWeight: 500,
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          transition: 'all 120ms var(--ease-in-out)',
         }}
-        onMouseEnter={e => {
-          e.currentTarget.style.borderColor = 'rgba(191,163,99,0.3)';
-          e.currentTarget.style.color = 'rgba(255,255,255,0.85)';
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
-          e.currentTarget.style.color = 'rgba(255,255,255,0.55)';
-        }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-raised)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
       >
+        <RotateCw size={14} />
         Nueva verificación
       </button>
     </div>
   );
 }
 
-function ReceiptRow({ label, value }: { label: string; value: string }) {
+function ReceiptRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span
-        className="text-[10px] font-semibold flex-shrink-0"
-        style={{
-          color: 'rgba(191,163,99,0.5)',
-          letterSpacing: '0.22em',
-          textTransform: 'uppercase',
-        }}
-      >
-        {label}
-      </span>
-      <span
-        className="text-[12.5px] text-right truncate"
-        style={{
-          fontFamily: "'Playfair Display', Georgia, serif",
-          color: 'rgba(255,255,255,0.85)',
-          fontWeight: 500,
-        }}
-      >
-        {value}
-      </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ color: 'var(--text-4)', display: 'flex' }}>{icon}</span>
+      <span style={{ fontSize: '11.5px', color: 'var(--text-3)', minWidth: 60 }}>{label}</span>
+      <span style={{ fontSize: '12.5px', color: 'var(--text-1)', fontWeight: 500, flex: 1, textAlign: 'right' }}>{value}</span>
     </div>
   );
 }
