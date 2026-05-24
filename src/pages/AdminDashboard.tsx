@@ -497,7 +497,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
     <AppShell activeTab={activeTab} onTabChange={(t) => setActiveTab(t as Tab)} user={user} onLogout={onLogout}>
       {/* ====== DASHBOARD ====== */}
       {activeTab === 'dashboard' && (
-        loading ? <DashboardSkeleton /> : data && <DashboardView data={data} user={user} />
+        loading ? <DashboardSkeleton /> : data ? <DashboardView data={data} user={user} /> : <DashboardEmpty onRetry={fetchDashboard} />
       )}
 
       {/* ====== MOVIMIENTO ====== */}
@@ -1248,6 +1248,39 @@ function GroupBlockPanel({
         </>
       )}
     </Panel>
+  );
+}
+
+function DashboardEmpty({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div style={{
+      padding: '64px 24px',
+      textAlign: 'center',
+      background: 'var(--bg-elevated)',
+      border: '1px solid var(--border-subtle)',
+      borderRadius: '12px',
+    }}>
+      <div style={{
+        width: 56, height: 56, borderRadius: '50%',
+        background: 'var(--bg-raised)', border: '1px solid var(--border-default)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        margin: '0 auto 16px', color: 'var(--text-3)',
+      }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zm-9-3.75h.008v.008H12V8.25zm-.001 7.5h.008v.008H12v-.008z" />
+          <path d="M12 8v4" />
+        </svg>
+      </div>
+      <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-1)', marginBottom: 6 }}>
+        No pudimos cargar los datos
+      </h2>
+      <p style={{ fontSize: '12.5px', color: 'var(--text-3)', maxWidth: 360, margin: '0 auto 20px', lineHeight: 1.5 }}>
+        Verificá tu conexión o tu sesión. Si el problema persiste, refrescá la página.
+      </p>
+      <Button variant="primary" size="md" onClick={onRetry}>
+        Reintentar
+      </Button>
+    </div>
   );
 }
 

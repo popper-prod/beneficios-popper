@@ -95,6 +95,15 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [showHistorial, setShowHistorial] = useState(false);
 
   useEffect(() => {
+    // Reset al cambiar de QR
+    setStep('loading');
+    setErrorMsg('');
+    setComercio(null);
+    setBeneficiario(null);
+    setBeneficios([]);
+    setDni('');
+    setSelectedBenefit('');
+
     const fetchComercio = async () => {
       try {
         const res = await fetch(`${API_URL}/public/comercio/${qrCode}`);
@@ -855,7 +864,7 @@ function ProfileStep({
                   </div>
                   {h.descuento && (
                     <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
-                      −{h.descuento}%
+                      −{Math.round(Number(h.descuento))}%
                     </span>
                   )}
                 </div>
@@ -1034,14 +1043,14 @@ function BenefitOption({
                   lineHeight: 1,
                 }}
               >
-                {benefit.descuento}
+                {Math.round(Number(benefit.descuento))}
               </span>
               <span style={{ fontSize: '13px', fontWeight: 600 }}>%</span>
             </div>
           )}
           {benefit.valor_fijo && !benefit.descuento && (
             <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
-              ${benefit.valor_fijo}
+              ${Number(benefit.valor_fijo).toLocaleString('es-AR')}
             </span>
           )}
         </div>
@@ -1131,7 +1140,7 @@ function SuccessStep({
         {beneficio.descuento && (
           <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'baseline', gap: 4, color: 'var(--brand)' }}>
             <span style={{ fontSize: '32px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', lineHeight: 1 }}>
-              {beneficio.descuento}%
+              {Math.round(Number(beneficio.descuento))}%
             </span>
             <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
               de descuento

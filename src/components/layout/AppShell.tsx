@@ -63,11 +63,23 @@ interface AppShellProps {
 export function AppShell({ activeTab, onTabChange, user, onLogout, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
+  );
 
   // Cerrar mobile drawer al cambiar de tab
   useEffect(() => {
     setMobileOpen(false);
   }, [activeTab]);
+
+  // Resize listener
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    setIsMobile(mq.matches);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   // ESC cierra drawer mobile
   useEffect(() => {
@@ -78,10 +90,22 @@ export function AppShell({ activeTab, onTabChange, user, onLogout, children }: A
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Prevent body scroll cuando el drawer está abierto en mobile
+  useEffect(() => {
+    if (isMobile && mobileOpen) {
+      const original = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = original; };
+    }
+  }, [isMobile, mobileOpen]);
+
   const sections = Array.from(new Set(navItems.map(n => n.section)));
   const currentItem = navItems.find(n => n.id === activeTab);
 
+  // Desktop: sidebar fijo a la izquierda. Mobile: drawer overlay
   const sidebarWidth = collapsed ? 64 : 232;
+  const desktopSidebarWidth = isMobile ? 0 : sidebarWidth;
+  const mobileSidebarWidth = 264;
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-canvas)' }}>
@@ -103,27 +127,22 @@ export function AppShell({ activeTab, onTabChange, user, onLogout, children }: A
 
       {/* ====== Sidebar ====== */}
       <aside
-        className="fixed left-0 top-0 bottom-0 flex flex-col"
         style={{
-          width: sidebarWidth,
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          width: isMobile ? mobileSidebarWidth : sidebarWidth,
           background: 'var(--bg-surface)',
           borderRight: '1px solid var(--border-subtle)',
           zIndex: 50,
+          transform: isMobile ? (mobileOpen ? 'translateX(0)' : 'translateX(-100%)') : 'translateX(0)',
           transition: 'width 200ms var(--ease-out), transform 240ms var(--ease-out)',
-          transform: mobileOpen ? 'translateX(0)' : undefined,
+          boxShadow: isMobile && mobileOpen ? '0 0 40px rgba(0,0,0,0.4)' : 'none',
         }}
-        data-mobile-open={mobileOpen}
       >
-        <style>{`
-          @media (max-width: 768px) {
-            aside[data-mobile-open="false"] {
-              transform: translateX(-100%) !important;
-            }
-            aside[data-mobile-open="true"] {
-              width: 240px !important;
-            }
-          }
-        `}</style>
 
         {/* Brand */}
         <div
@@ -260,8 +279,8 @@ export function AppShell({ activeTab, onTabChange, user, onLogout, children }: A
           {/* Collapse toggle (desktop only) */}
           <button
             onClick={() => setCollapsed(c => !c)}
-            className="hidden md:flex"
             style={{
+              display: isMobile ? 'none' : 'flex',
               width: '100%',
               padding: '7px 12px',
               alignItems: 'center',
@@ -358,18 +377,17 @@ export function AppShell({ activeTab, onTabChange, user, onLogout, children }: A
       {/* ====== Main content ====== */}
       <main
         style={{
-          marginLeft: sidebarWidth,
+          marginLeft: desktopSidebarWidth,
           minHeight: '100vh',
           transition: 'margin-left 200ms var(--ease-out)',
         }}
-        className="ml-0 md:!ml-[var(--sidebar-w)]"
       >
-        <style>{`:root { --sidebar-w: ${sidebarWidth}px; }`}</style>
-
         {/* TopBar minimalista */}
         <header
-          className="sticky top-0 z-10"
           style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 30,
             height: 56,
             background: 'rgba(8, 9, 10, 0.75)',
             backdropFilter: 'blur(12px)',
@@ -383,8 +401,16 @@ export function AppShell({ activeTab, onTabChange, user, onLogout, children }: A
           {/* Mobile menu trigger */}
           <button
             onClick={() => setMobileOpen(true)}
-            className="md:hidden p-2 rounded-md"
-            style={{ color: 'var(--text-2)', marginLeft: -8 }}
+            style={{
+              display: isMobile ? 'flex' : 'none',
+              padding: 8,
+              borderRadius: '6px',
+              background: 'transparent',
+              color: 'var(--text-2)',
+              border: 'none',
+              cursor: 'pointer',
+              marginLeft: -8,
+            }}
             aria-label="Abrir menú"
           >
             <Menu size={18} />
@@ -409,12 +435,13 @@ export function AppShell({ activeTab, onTabChange, user, onLogout, children }: A
             )}
           </div>
 
-          {/* Search global */}
-          <div className="ml-auto flex items-center gap-2">
+          {/* Search global — desktop only */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               style={{
                 height: 32,
-                padding: '0 10px 0 10px',
+                padding: isMobile ? 0 : '0 10px',
+                width: isMobile ? 32 : undefined,
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: '6px',
@@ -422,6 +449,7 @@ export function AppShell({ activeTab, onTabChange, user, onLogout, children }: A
                 fontSize: '12px',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: 8,
                 cursor: 'pointer',
                 transition: 'all 120ms var(--ease-in-out)',
@@ -436,10 +464,12 @@ export function AppShell({ activeTab, onTabChange, user, onLogout, children }: A
               }}
             >
               <Search size={13} />
-              <span className="hidden sm:inline">Buscar</span>
+              {!isMobile && <span>Buscar</span>}
               <kbd
-                className="hidden sm:inline-flex items-center justify-center"
                 style={{
+                  display: isMobile ? 'none' : 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   height: 18,
                   padding: '0 4px',
                   background: 'var(--bg-canvas)',
@@ -457,7 +487,7 @@ export function AppShell({ activeTab, onTabChange, user, onLogout, children }: A
         </header>
 
         {/* Page content */}
-        <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
+        <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: 1400, margin: '0 auto' }}>
           {children}
         </div>
       </main>
