@@ -951,4 +951,205 @@ router.get('/mi-perfil', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ============================================
+// IMPORTACION CATALOGO OFICIAL ADN POPPER 2026
+// ============================================
+// Fuente: "Listado beneficios ADN Popper 2026.xlsx"
+// 11 comercios en Ushuaia y Rio Grande con sus beneficios oficiales
+// Estrategia: desactivar todo lo existente (no borrar, para preservar
+// verificaciones historicas) e insertar el catalogo oficial
+// ============================================
+const CATALOGO_2026: Array<{
+  qr: string;
+  comercio: string;
+  cuit: string;
+  direccion: string;
+  ciudad: string;
+  responsable: string;
+  telefono: string;
+  email: string;
+  beneficioNombre: string;
+  beneficioDescripcion: string;
+  descuento: number;
+  fechaInicio: string;
+  fechaFin: string;
+  lugar: string;
+}> = [
+  {
+    qr: 'ADN-SALK-2026', comercio: 'Farmacia Salk', cuit: '30-70801763-5',
+    direccion: 'Av. Malvinas 212', ciudad: 'Ushuaia', responsable: 'Martín Jiménez',
+    telefono: '2901 51-4076', email: 'concentrador@farmaciasalk.com',
+    beneficioNombre: 'Farmacia Salk · 10% OFF',
+    beneficioDescripcion: '10% de descuento en farmacia. Presentando credencial de Grupo Popper.',
+    descuento: 10, fechaInicio: '2026-05-18', fechaFin: '2027-05-13',
+    lugar: 'Ushuaia · Río Grande',
+  },
+  {
+    qr: 'ADN-PULSE-2026', comercio: 'Gimnasio Espacio Pulse', cuit: '16060462',
+    direccion: 'Fuegia Basket 580', ciudad: 'Ushuaia', responsable: 'Sergio Petronio',
+    telefono: '2901 50-1062', email: 'petronio1982@gmail.com',
+    beneficioNombre: 'Espacio Pulse · 5% OFF',
+    beneficioDescripcion: '5% de descuento en cuota mensual del gimnasio.',
+    descuento: 5, fechaInicio: '2026-05-18', fechaFin: '2027-05-13',
+    lugar: 'Ushuaia',
+  },
+  {
+    qr: 'ADN-NEUMATICOS-2026', comercio: 'Neumáticos Río Grande Sur', cuit: '30-61051920-9',
+    direccion: 'Magallanes 1055', ciudad: 'Ushuaia', responsable: 'Carlos Gustavo D\'Angelo',
+    telefono: '2901 62-7271', email: 'tiresrgsur@gmail.com',
+    beneficioNombre: 'Neumáticos RG Sur · 15% efectivo',
+    beneficioDescripcion: '15% de descuento pagando en efectivo. Con Visa o Mastercard: 6 cuotas sin interés o 3 pagos sin interés con 5% off.',
+    descuento: 15, fechaInicio: '2026-05-18', fechaFin: '2026-06-17',
+    lugar: 'Ushuaia',
+  },
+  {
+    qr: 'ADN-PLENA-2026', comercio: 'Plena Estudio', cuit: '32768750',
+    direccion: 'Virrey Liniers 54', ciudad: 'Río Grande', responsable: 'Samanta Guerrero',
+    telefono: '2964 69-5299', email: 'smt.socialmedias@mail.com',
+    beneficioNombre: 'Plena Estudio · 10% OFF',
+    beneficioDescripcion: '10% de descuento en estudio de belleza.',
+    descuento: 10, fechaInicio: '2026-05-18', fechaFin: '2026-11-14',
+    lugar: 'Río Grande',
+  },
+  {
+    qr: 'ADN-FLAVIA-2026', comercio: 'Flavia Hair Center', cuit: '30901496',
+    direccion: 'Obligado 1236', ciudad: 'Río Grande', responsable: 'Flavia Araceli Sánchez Dominiconi',
+    telefono: '2964 51-3883', email: 'flaviasandominiconi@gmail.com',
+    beneficioNombre: 'Flavia Hair Center · 10% OFF',
+    beneficioDescripcion: '10% de descuento en peluquería y tratamientos.',
+    descuento: 10, fechaInicio: '2026-05-18', fechaFin: '2026-11-14',
+    lugar: 'Río Grande',
+  },
+  {
+    qr: 'ADN-EUREKA-2026', comercio: 'Eureka', cuit: '18830736',
+    direccion: 'Don Bosco y Campos', ciudad: 'Ushuaia', responsable: 'Jorge Lobos',
+    telefono: '2901 64-7748', email: 'Eurekaushuaia@gmail.com',
+    beneficioNombre: 'Eureka · 10% efectivo / 5% tarjeta',
+    beneficioDescripcion: '10% pagando en efectivo o transferencia. 5% con tarjeta de crédito, débito o QR.',
+    descuento: 10, fechaInicio: '2026-05-18', fechaFin: '2027-05-13',
+    lugar: 'Ushuaia',
+  },
+  {
+    qr: 'ADN-AROMAS-2026', comercio: 'Aromas', cuit: '18830736',
+    direccion: 'Arturo Coronado 418', ciudad: 'Ushuaia', responsable: 'Jorge Lobos',
+    telefono: '2901 64-7748', email: 'Lauravvalle@gmail.com',
+    beneficioNombre: 'Aromas · 10% efectivo / 5% tarjeta',
+    beneficioDescripcion: '10% pagando en efectivo o transferencia. 5% con tarjeta de crédito, débito o QR.',
+    descuento: 10, fechaInicio: '2026-05-18', fechaFin: '2027-05-13',
+    lugar: 'Ushuaia',
+  },
+  {
+    qr: 'ADN-LAMORADA-2026', comercio: 'La Morada Burgers', cuit: '28509819',
+    direccion: 'Tolhuin 138', ciudad: 'Ushuaia', responsable: 'Gastón Zarlenga',
+    telefono: '11 6766-6784', email: 'info@lamoradaburgers.com.ar',
+    beneficioNombre: 'La Morada Burgers · 10% OFF',
+    beneficioDescripcion: '10% de descuento en hamburguesería.',
+    descuento: 10, fechaInicio: '2026-05-18', fechaFin: '2026-11-14',
+    lugar: 'Ushuaia',
+  },
+  {
+    qr: 'ADN-CENTRALMARKET-2026', comercio: 'Central Market Ushuaia', cuit: '28509819',
+    direccion: '25 de Mayo 231', ciudad: 'Ushuaia', responsable: 'Gastón Zarlenga',
+    telefono: '11 6766-6784', email: 'administracion@centralmarketushuaia.com.ar',
+    beneficioNombre: 'Central Market · 10% OFF',
+    beneficioDescripcion: '10% de descuento en mercado.',
+    descuento: 10, fechaInicio: '2026-05-18', fechaFin: '2026-11-14',
+    lugar: 'Ushuaia',
+  },
+  {
+    qr: 'ADN-TALLERTEXTIL-2026', comercio: 'Taller Textil', cuit: '33494010',
+    direccion: 'Canga 1721', ciudad: 'Ushuaia', responsable: 'Raúl Monzón',
+    telefono: '2901 50-8017', email: 'monzon769@hotmail.com',
+    beneficioNombre: 'Taller Textil · 15% (1 prenda) · 20% (3+)',
+    beneficioDescripcion: '15% de descuento por 1 prenda. 20% por más de 3 prendas.',
+    descuento: 15, fechaInicio: '2026-05-18', fechaFin: '2026-11-14',
+    lugar: 'Ushuaia',
+  },
+  {
+    qr: 'ADN-COREREHAB-2026', comercio: 'Core Rehabilitación', cuit: '32131178',
+    direccion: 'San Martín 1507, Piso 1, Oficina 104', ciudad: 'Ushuaia', responsable: 'Dalmiro Nicolás Naselli',
+    telefono: '2901 64-0666', email: 'core.rehabilitacion.ushuaia@gmail.com',
+    beneficioNombre: 'Core Rehabilitación · 10% OFF',
+    beneficioDescripcion: '10% en Kinesiología, masajes deportivos, descontracturantes, estudio de pisada para plantillas y medición de fuerza.',
+    descuento: 10, fechaInicio: '2026-05-18', fechaFin: '2027-05-13',
+    lugar: 'Ushuaia',
+  },
+];
+
+router.post('/importar-catalogo-2026', async (req: AuthRequest, res: Response) => {
+  try {
+    let comerciosCreados = 0, comerciosActualizados = 0;
+    let beneficiosCreados = 0, asociaciones = 0;
+
+    // 1. Desactivar todo el catalogo previo (no borrar, para preservar verificaciones)
+    await query(`UPDATE beneficios SET activo = FALSE, updated_at = NOW() WHERE activo = TRUE`);
+    await query(`UPDATE comercios SET activo = FALSE, updated_at = NOW() WHERE activo = TRUE`);
+
+    // 2. Insertar / upsert cada comercio del listado 2026
+    for (const item of CATALOGO_2026) {
+      // Upsert comercio por qr_code
+      const existing = await query(`SELECT id FROM comercios WHERE qr_code = $1 LIMIT 1`, [item.qr]);
+      let comercioId: string;
+
+      if (existing.rows.length > 0) {
+        comercioId = existing.rows[0].id;
+        await query(
+          `UPDATE comercios SET
+            nombre = $1, direccion = $2, ciudad = $3, provincia = 'Tierra del Fuego',
+            telefono = $4, email = $5, responsable = $6,
+            horario_apertura = '09:00', horario_cierre = '20:00',
+            activo = TRUE, updated_at = NOW()
+          WHERE id = $7`,
+          [item.comercio, item.direccion, item.ciudad, item.telefono, item.email, item.responsable, comercioId]
+        );
+        comerciosActualizados++;
+      } else {
+        const inserted = await query(
+          `INSERT INTO comercios (nombre, direccion, ciudad, provincia, telefono, email, responsable,
+                                  horario_apertura, horario_cierre, activo, qr_code)
+           VALUES ($1, $2, $3, 'Tierra del Fuego', $4, $5, $6, '09:00', '20:00', TRUE, $7)
+           RETURNING id`,
+          [item.comercio, item.direccion, item.ciudad, item.telefono, item.email, item.responsable, item.qr]
+        );
+        comercioId = inserted.rows[0].id;
+        comerciosCreados++;
+      }
+
+      // Crear beneficio
+      const benef = await query(
+        `INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, descuento,
+                                 fecha_inicio, fecha_fin, horario_inicio, horario_fin, activo)
+         VALUES ($1, $2, 'descuento', 'bronce', $3, $4, $5, '09:00', '20:00', TRUE)
+         RETURNING id`,
+        [item.beneficioNombre, item.beneficioDescripcion, item.descuento,
+         item.fechaInicio, item.fechaFin]
+      );
+      beneficiosCreados++;
+
+      // Asociar beneficio con comercio
+      await query(
+        `INSERT INTO comercio_beneficios (comercio_id, beneficio_id) VALUES ($1, $2)
+         ON CONFLICT DO NOTHING`,
+        [comercioId, benef.rows[0].id]
+      );
+      asociaciones++;
+    }
+
+    res.json({
+      exito: true,
+      mensaje: 'Catálogo 2026 importado correctamente',
+      resumen: {
+        comerciosCreados,
+        comerciosActualizados,
+        beneficiosCreados,
+        asociaciones,
+        total: CATALOGO_2026.length,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error importando catalogo 2026:', error.message);
+    res.status(500).json({ error: 'Error importando catálogo', detalle: error.message });
+  }
+});
+
 export default router;

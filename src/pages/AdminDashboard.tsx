@@ -121,6 +121,10 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [permisoMsg, setPermisoMsg] = useState('');
   const [permisosMigracionDone, setPermisosMigracionDone] = useState(false);
 
+  // Import catalogo 2026
+  const [importingCatalog, setImportingCatalog] = useState(false);
+  const [importCatalogMsg, setImportCatalogMsg] = useState('');
+
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
 
@@ -273,6 +277,39 @@ export default function AdminDashboard({ token, user, onLogout }: {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch { alert('Error de conexion al exportar'); }
+  };
+
+  // Importar catalogo oficial ADN Popper 2026
+  const handleImportarCatalogo2026 = async () => {
+    const ok = confirm(
+      '¿Importar el catálogo oficial ADN Popper 2026?\n\n' +
+      'Esto va a:\n' +
+      '• Desactivar todos los beneficios y comercios actuales\n' +
+      '• Importar 11 comercios oficiales de Ushuaia y Río Grande\n' +
+      '• Crear los beneficios oficiales 2026\n\n' +
+      'Las verificaciones históricas se preservan.'
+    );
+    if (!ok) return;
+    setImportingCatalog(true);
+    setImportCatalogMsg('');
+    try {
+      const res = await fetch(`${API_URL}/admin/importar-catalogo-2026`, { method: 'POST', headers });
+      const data = await res.json();
+      if (res.ok) {
+        setImportCatalogMsg(
+          `✓ ${data.mensaje}. ${data.resumen.comerciosCreados} comercios creados, ` +
+          `${data.resumen.comerciosActualizados} actualizados, ` +
+          `${data.resumen.beneficiosCreados} beneficios importados.`
+        );
+        fetchBeneficios();
+        fetchComercios();
+      } else {
+        setImportCatalogMsg(`Error: ${data.error || 'No se pudo importar'}`);
+      }
+    } catch {
+      setImportCatalogMsg('Error de conexión');
+    }
+    setImportingCatalog(false);
   };
 
   // Autorizaciones: ejecutar migracion
@@ -555,8 +592,20 @@ export default function AdminDashboard({ token, user, onLogout }: {
         <PageSection
           title="Beneficios"
           description={`${beneficios.length} ${beneficios.length === 1 ? 'beneficio' : 'beneficios'} en el catálogo.`}
-          action={<Button variant="primary" size="md" leftIcon={<PlusIcon size={13} />} onClick={() => openCreate('beneficio')}>Nuevo beneficio</Button>}
+          action={
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <Button variant="outline" size="md" onClick={handleImportarCatalogo2026} loading={importingCatalog}>
+                {importingCatalog ? 'Importando…' : 'Importar catálogo 2026'}
+              </Button>
+              <Button variant="primary" size="md" leftIcon={<PlusIcon size={13} />} onClick={() => openCreate('beneficio')}>Nuevo beneficio</Button>
+            </div>
+          }
         >
+          {importCatalogMsg && (
+            <InlineMessage tone={importCatalogMsg.includes('Error') ? 'danger' : 'success'}>
+              {importCatalogMsg}
+            </InlineMessage>
+          )}
           {beneficios.length === 0 ? (
             <EmptyView
               icon={<GiftIcon size={28} />}
