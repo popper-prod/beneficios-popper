@@ -251,16 +251,24 @@ export default function AdminDashboard({ token, user, onLogout }: {
   };
 
   const handleDelete = async (type: 'beneficio' | 'comercio' | 'beneficiario', id: string, nombre: string) => {
-    if (!confirm(`Eliminar "${nombre}"?`)) return;
+    if (!confirm(`¿Eliminar "${nombre}"?`)) return;
     try {
       const endpoint = type === 'beneficio' ? 'beneficios' : type === 'comercio' ? 'comercios' : 'beneficiarios';
       const res = await fetch(`${API_URL}/admin/${endpoint}/${id}`, { method: 'DELETE', headers });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        if (data?.modo === 'soft') {
+          alert(`"${nombre}" fue desactivado (tiene ${data.verificaciones} verificación(es) histórica(s) que se preservan). No se ve más en el listado.`);
+        }
         if (type === 'beneficio') fetchBeneficios();
         if (type === 'comercio') fetchComercios();
         if (type === 'beneficiario') fetchBeneficiarios();
+      } else {
+        alert(`No se pudo eliminar: ${data?.error || res.statusText}`);
       }
-    } catch (e) { console.error(e); }
+    } catch (e: any) {
+      alert(`Error de conexión al eliminar: ${e?.message || ''}`);
+    }
   };
 
   // Exportar CSV

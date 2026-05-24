@@ -128,8 +128,10 @@ router.get('/verificaciones', async (req: AuthRequest, res: Response) => {
 // GET /api/admin/beneficios - Listar beneficios
 router.get('/beneficios', async (req: AuthRequest, res: Response) => {
   try {
+    const includeInactive = req.query.include_inactive === 'true' || req.query.all === 'true';
+    const whereClause = includeInactive ? '' : 'WHERE activo = TRUE';
     const result = await query(
-      'SELECT * FROM beneficios ORDER BY created_at DESC'
+      `SELECT * FROM beneficios ${whereClause} ORDER BY created_at DESC`
     );
     res.json({ beneficios: result.rows });
   } catch (error: any) {
@@ -140,8 +142,10 @@ router.get('/beneficios', async (req: AuthRequest, res: Response) => {
 // GET /api/admin/comercios - Listar comercios
 router.get('/comercios', async (req: AuthRequest, res: Response) => {
   try {
+    const includeInactive = req.query.include_inactive === 'true' || req.query.all === 'true';
+    const whereClause = includeInactive ? '' : 'WHERE activo = TRUE';
     const result = await query(
-      'SELECT * FROM comercios ORDER BY created_at DESC'
+      `SELECT * FROM comercios ${whereClause} ORDER BY created_at DESC`
     );
     res.json({ comercios: result.rows });
   } catch (error: any) {
@@ -206,13 +210,28 @@ router.put('/beneficios/:id', async (req: AuthRequest, res: Response) => {
 router.delete('/beneficios/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    await query('DELETE FROM comercio_beneficios WHERE beneficio_id = $1', [id]);
-    const result = await query('DELETE FROM beneficios WHERE id = $1 RETURNING id', [id]);
+    // ¿Hay verificaciones que referencian este beneficio?
+    const used = await query('SELECT COUNT(*)::int AS c FROM verificaciones WHERE beneficio_id = $1', [id]);
+    const usageCount = used.rows[0]?.c || 0;
+
+    if (usageCount === 0) {
+      // Hard delete posible
+      await query('DELETE FROM comercio_beneficios WHERE beneficio_id = $1', [id]);
+      const result = await query('DELETE FROM beneficios WHERE id = $1 RETURNING id', [id]);
+      if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
+      return res.json({ eliminado: true, modo: 'hard' });
+    }
+
+    // Soft delete (preserva el historial de verificaciones)
+    const result = await query(
+      'UPDATE beneficios SET activo = FALSE, updated_at = NOW() WHERE id = $1 RETURNING id',
+      [id]
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
-    res.json({ eliminado: true });
+    res.json({ eliminado: true, modo: 'soft', verificaciones: usageCount });
   } catch (error: any) {
     console.error('Error eliminando beneficio:', error.message);
-    res.status(500).json({ error: 'Error eliminando beneficio' });
+    res.status(500).json({ error: 'Error eliminando beneficio', detalle: error.message });
   }
 });
 
@@ -268,17 +287,31 @@ router.put('/comercios/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// DELETE /api/admin/comercios/:id - Eliminar comercio
+// DELETE /api/admin/comercios/:id - Eliminar comercio (soft delete si tiene verificaciones)
 router.delete('/comercios/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    await query('DELETE FROM comercio_beneficios WHERE comercio_id = $1', [id]);
-    const result = await query('DELETE FROM comercios WHERE id = $1 RETURNING id', [id]);
+    const used = await query('SELECT COUNT(*)::int AS c FROM verificaciones WHERE comercio_id = $1', [id]);
+    const usageCount = used.rows[0]?.c || 0;
+
+    if (usageCount === 0) {
+      // Hard delete posible
+      await query('DELETE FROM comercio_beneficios WHERE comercio_id = $1', [id]);
+      const result = await query('DELETE FROM comercios WHERE id = $1 RETURNING id', [id]);
+      if (result.rows.length === 0) return res.status(404).json({ error: 'Comercio no encontrado' });
+      return res.json({ eliminado: true, modo: 'hard' });
+    }
+
+    // Soft delete
+    const result = await query(
+      'UPDATE comercios SET activo = FALSE, updated_at = NOW() WHERE id = $1 RETURNING id',
+      [id]
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Comercio no encontrado' });
-    res.json({ eliminado: true });
+    res.json({ eliminado: true, modo: 'soft', verificaciones: usageCount });
   } catch (error: any) {
     console.error('Error eliminando comercio:', error.message);
-    res.status(500).json({ error: 'Error eliminando comercio' });
+    res.status(500).json({ error: 'Error eliminando comercio', detalle: error.message });
   }
 });
 
