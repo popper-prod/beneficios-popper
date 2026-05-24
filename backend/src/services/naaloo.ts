@@ -95,6 +95,44 @@ export async function obtenerEmpleadosActivos(): Promise<NaalooEmpleado[]> {
   }
 }
 
+// ============================================
+// FAMILIARES — vienen anidados en PersonalDTO
+// Relacion: Parents | Spouse | CivilUnion | Child | Sibling | Other | Undefined
+// Para skipass: Parents + Spouse + CivilUnion + Child
+// ============================================
+export type NaalooFamilyRelationship =
+  | 'Undefined' | 'Child' | 'Spouse' | 'Sibling' | 'Other' | 'Parents' | 'CivilUnion';
+
+export interface NaalooFamiliar {
+  id: number;
+  dni: string;
+  nombreCompleto: string;
+  fechaNacimiento?: string;
+  email?: string;
+  telefonos?: string;
+  aCargo?: boolean;
+  discapacidad?: boolean;
+  relacion?: NaalooFamilyRelationship;
+}
+
+// Obtiene el detalle completo de un empleado (incluye familiares)
+export async function obtenerEmpleadoCompleto(naalooId: number): Promise<{ familiares: NaalooFamiliar[] } | null> {
+  try {
+    const response = await fetch(`${NAALOO_API_URL}/personal/${naalooId}`, {
+      headers: {
+        'Authorization': `Bearer ${NAALOO_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) return null;
+    const data: any = await response.json();
+    return { familiares: data?.familiares || [] };
+  } catch (error) {
+    console.error('Error obteniendo empleado completo:', error);
+    return null;
+  }
+}
+
 // Obtener TODOS los empleados (activos e inactivos) para sincronización
 export async function obtenerTodosEmpleados(): Promise<NaalooEmpleado[]> {
   try {

@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
 import { verifyToken, AuthRequest } from '../middleware/auth';
-import { obtenerTodosEmpleados, naalooToBeneficiario } from '../services/naaloo';
+import { obtenerTodosEmpleados, naalooToBeneficiario, obtenerEmpleadoCompleto, NaalooFamiliar } from '../services/naaloo';
 
 const router = Router();
 router.use(verifyToken);
@@ -1195,6 +1195,230 @@ router.post('/importar-catalogo-2026', async (req: AuthRequest, res: Response) =
   } catch (error: any) {
     console.error('Error importando catalogo 2026:', error.message);
     res.status(500).json({ error: 'Error importando catálogo', detalle: error.message });
+  }
+});
+
+// ============================================
+// MODULO MODELO EXTENDIDO V2
+// Beneficios: origen (interno/externo), categoria, aplica_a, modalidad,
+//             escala_descuentos (JSONB), restricciones, excluye_outlet
+// Beneficiarios: es_talento_popper, talento_desde, talento_por
+// Familiares: tabla nueva linkeada a beneficiarios + sync desde Naaloo
+// ============================================
+
+router.post('/migrar-modelo-v2', async (req: AuthRequest, res: Response) => {
+  try {
+    // ===== Extender beneficios =====
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS origen VARCHAR(20) DEFAULT 'externo'`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS categoria VARCHAR(50)`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS aplica_a VARCHAR(20) DEFAULT 'empleado'`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS modalidad VARCHAR(20) DEFAULT 'descuento'`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS escala_descuentos JSONB`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS restricciones TEXT`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS excluye_outlet BOOLEAN DEFAULT FALSE`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS relaciones_familiar VARCHAR(100)`);
+    // relaciones_familiar = CSV de FamilyRelationship aceptados (ej: "Parents,Spouse,CivilUnion,Child")
+    await query(`CREATE INDEX IF NOT EXISTS idx_beneficios_origen ON beneficios(origen)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_beneficios_categoria ON beneficios(categoria)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_beneficios_aplica_a ON beneficios(aplica_a)`);
+
+    // ===== Flag Talento Popper en beneficiarios =====
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS es_talento_popper BOOLEAN DEFAULT FALSE`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS talento_desde TIMESTAMP`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS talento_por VARCHAR(100)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_beneficiarios_talento ON beneficiarios(es_talento_popper) WHERE es_talento_popper = TRUE`);
+
+    // ===== Tabla familiares =====
+    await query(`
+      CREATE TABLE IF NOT EXISTS familiares (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        beneficiario_id UUID NOT NULL REFERENCES beneficiarios(id) ON DELETE CASCADE,
+        naaloo_id INT,
+        dni VARCHAR(20) NOT NULL,
+        nombre_completo VARCHAR(200) NOT NULL,
+        relacion VARCHAR(30) NOT NULL,
+        fecha_nacimiento DATE,
+        email VARCHAR(100),
+        telefono VARCHAR(50),
+        a_cargo BOOLEAN DEFAULT FALSE,
+        activo BOOLEAN DEFAULT TRUE,
+        ultima_sync TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (beneficiario_id, dni)
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_familiares_dni ON familiares(dni)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_familiares_beneficiario ON familiares(beneficiario_id)`);
+
+    res.json({
+      exito: true,
+      mensaje: 'Modelo v2 migrado correctamente',
+      cambios: [
+        'beneficios: +origen, categoria, aplica_a, modalidad, escala_descuentos, restricciones, excluye_outlet, relaciones_familiar',
+        'beneficiarios: +es_talento_popper, talento_desde, talento_por',
+        'familiares: tabla creada',
+      ],
+    });
+  } catch (error: any) {
+    console.error('Error migracion v2:', error.message);
+    res.status(500).json({ error: 'Error en migración v2', detalle: error.message });
+  }
+});
+
+// ============================================
+// TALENTO POPPER
+// ============================================
+router.get('/talento-popper', async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT id, dni, nombre, apellido, email, departamento, sector, nivel,
+             talento_desde, talento_por
+      FROM beneficiarios
+      WHERE es_talento_popper = TRUE AND activo = TRUE
+      ORDER BY talento_desde DESC NULLS LAST, apellido ASC
+    `);
+    res.json({ talentos: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error listando talento popper', detalle: error.message });
+  }
+});
+
+router.post('/talento-popper/toggle', async (req: AuthRequest, res: Response) => {
+  try {
+    const { beneficiarioId, activo } = req.body;
+    if (!beneficiarioId) return res.status(400).json({ error: 'beneficiarioId requerido' });
+    const adminNombre = req.user?.username || 'sistema';
+
+    if (activo) {
+      await query(
+        `UPDATE beneficiarios SET es_talento_popper=TRUE, talento_desde=NOW(), talento_por=$1, updated_at=NOW() WHERE id=$2`,
+        [adminNombre, beneficiarioId]
+      );
+    } else {
+      await query(
+        `UPDATE beneficiarios SET es_talento_popper=FALSE, talento_desde=NULL, talento_por=NULL, updated_at=NOW() WHERE id=$1`,
+        [beneficiarioId]
+      );
+    }
+    res.json({ exito: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error toggle talento', detalle: error.message });
+  }
+});
+
+// ============================================
+// FAMILIARES — sync desde Naaloo
+// ============================================
+router.get('/familiares/:beneficiarioId', async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT * FROM familiares WHERE beneficiario_id = $1 AND activo = TRUE ORDER BY relacion, nombre_completo`,
+      [req.params.beneficiarioId]
+    );
+    res.json({ familiares: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error cargando familiares' });
+  }
+});
+
+router.post('/familiares/sync-naaloo', async (req: AuthRequest, res: Response) => {
+  try {
+    // Sincroniza familiares de TODOS los beneficiarios activos con naaloo_id.
+    // Hace requests concurrentes en lotes para no bombardear Naaloo.
+    const benefRes = await query(
+      `SELECT id, naaloo_id, dni, nombre, apellido FROM beneficiarios
+       WHERE activo = TRUE AND naaloo_id IS NOT NULL`
+    );
+    const beneficiarios = benefRes.rows;
+
+    let totalSincronizados = 0;
+    let totalFamiliaresNuevos = 0;
+    let totalFamiliaresActualizados = 0;
+    let totalEmpleadosSinFamiliares = 0;
+    const errores: string[] = [];
+
+    // Procesar en lotes de 8 concurrentes
+    const batchSize = 8;
+    for (let i = 0; i < beneficiarios.length; i += batchSize) {
+      const batch = beneficiarios.slice(i, i + batchSize);
+      await Promise.all(batch.map(async (b: any) => {
+        try {
+          const detalle = await obtenerEmpleadoCompleto(b.naaloo_id);
+          if (!detalle) return;
+
+          const fams: NaalooFamiliar[] = detalle.familiares || [];
+          if (fams.length === 0) {
+            totalEmpleadosSinFamiliares++;
+            return;
+          }
+
+          for (const f of fams) {
+            if (!f.dni) continue;
+            // Upsert por (beneficiario_id, dni)
+            const existing = await query(
+              `SELECT id FROM familiares WHERE beneficiario_id=$1 AND dni=$2 LIMIT 1`,
+              [b.id, f.dni]
+            );
+            const fechaNac = f.fechaNacimiento ? f.fechaNacimiento.split('T')[0] : null;
+            if (existing.rows.length > 0) {
+              await query(
+                `UPDATE familiares SET
+                  naaloo_id=$1, nombre_completo=$2, relacion=$3, fecha_nacimiento=$4,
+                  email=$5, telefono=$6, a_cargo=$7, activo=TRUE, ultima_sync=NOW(), updated_at=NOW()
+                WHERE id=$8`,
+                [f.id, f.nombreCompleto, f.relacion || 'Other', fechaNac,
+                 f.email || null, f.telefonos || null, f.aCargo || false, existing.rows[0].id]
+              );
+              totalFamiliaresActualizados++;
+            } else {
+              await query(
+                `INSERT INTO familiares (beneficiario_id, naaloo_id, dni, nombre_completo, relacion,
+                                         fecha_nacimiento, email, telefono, a_cargo, activo, ultima_sync)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, NOW())`,
+                [b.id, f.id, f.dni, f.nombreCompleto, f.relacion || 'Other', fechaNac,
+                 f.email || null, f.telefonos || null, f.aCargo || false]
+              );
+              totalFamiliaresNuevos++;
+            }
+          }
+          totalSincronizados++;
+        } catch (e: any) {
+          errores.push(`${b.dni}: ${e.message}`);
+        }
+      }));
+    }
+
+    res.json({
+      exito: true,
+      resumen: {
+        empleadosProcesados: totalSincronizados,
+        empleadosSinFamiliares: totalEmpleadosSinFamiliares,
+        familiaresNuevos: totalFamiliaresNuevos,
+        familiaresActualizados: totalFamiliaresActualizados,
+        errores: errores.slice(0, 10),
+      },
+    });
+  } catch (error: any) {
+    console.error('Error sync familiares:', error.message);
+    res.status(500).json({ error: 'Error sincronizando familiares', detalle: error.message });
+  }
+});
+
+router.get('/familiares', async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT f.id, f.dni, f.nombre_completo, f.relacion, f.fecha_nacimiento, f.a_cargo, f.activo,
+             f.ultima_sync, b.id as titular_id, b.dni as titular_dni,
+             b.nombre as titular_nombre, b.apellido as titular_apellido
+      FROM familiares f
+      JOIN beneficiarios b ON b.id = f.beneficiario_id
+      WHERE f.activo = TRUE
+      ORDER BY b.apellido, b.nombre, f.relacion, f.nombre_completo
+    `);
+    res.json({ familiares: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error listando familiares', detalle: error.message });
   }
 });
 
