@@ -52,30 +52,31 @@ interface HistorialItem {
 
 type Step = 'loading' | 'identify' | 'profile' | 'success' | 'error';
 
-// Niveles con gradientes tipo metal real (no glitter)
+// Niveles con gradientes tipo metal real — todos suficientemente oscuros para que
+// texto blanco tenga buen contraste. Los highlights metálicos sutiles.
 const tierGradients: Record<string, { gradient: string; ringColor: string; textColor: string; label: string }> = {
   bronce: {
-    gradient: 'linear-gradient(135deg, #8b5a2b 0%, #b97842 50%, #8b5a2b 100%)',
+    gradient: 'linear-gradient(135deg, #5a3a1f 0%, #8b5a2b 40%, #a06b3a 50%, #8b5a2b 60%, #5a3a1f 100%)',
     ringColor: '#b97842',
     textColor: '#e8b888',
     label: 'Bronce',
   },
   plata: {
-    gradient: 'linear-gradient(135deg, #6b7280 0%, #94a3b8 50%, #6b7280 100%)',
+    gradient: 'linear-gradient(135deg, #3a4250 0%, #5a6470 40%, #7a8696 50%, #5a6470 60%, #3a4250 100%)',
     ringColor: '#94a3b8',
     textColor: '#e2e8f0',
     label: 'Plata',
   },
   oro: {
-    gradient: 'linear-gradient(135deg, #9d8649 0%, #d4a017 50%, #9d8649 100%)',
+    gradient: 'linear-gradient(135deg, #5e4e29 0%, #9d8649 40%, #b89656 50%, #9d8649 60%, #5e4e29 100%)',
     ringColor: '#d4a017',
     textColor: '#fce884',
     label: 'Oro',
   },
   platinum: {
-    gradient: 'linear-gradient(135deg, #4b5563 0%, #d1d5db 30%, #f3f4f6 50%, #d1d5db 70%, #4b5563 100%)',
-    ringColor: '#e5e7eb',
-    textColor: '#f9fafb',
+    gradient: 'linear-gradient(135deg, #2a2e36 0%, #4a525c 40%, #6a7280 50%, #4a525c 60%, #2a2e36 100%)',
+    ringColor: '#9ca3af',
+    textColor: '#f4f4f5',
     label: 'Platinum',
   },
 };
@@ -139,7 +140,16 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
       }
 
       setBeneficiario(data.beneficiario);
-      setBeneficios(data.beneficios);
+      // Dedupe defensivo por nombre+descuento+valor_fijo (la BD a veces
+      // tiene entradas duplicadas accidentales)
+      const seen = new Set<string>();
+      const uniqueBeneficios = (data.beneficios || []).filter((b: Beneficio) => {
+        const key = `${(b.nombre || '').toLowerCase().trim()}|${b.descuento ?? ''}|${b.valor_fijo ?? ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setBeneficios(uniqueBeneficios);
       setStep('profile');
 
       try {
@@ -630,17 +640,25 @@ function ProfileStep({
           background: tier.gradient,
           borderRadius: '16px',
           marginBottom: 24,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.18)',
           overflow: 'hidden',
         }}
       >
-        {/* Pattern overlay subtle */}
+        {/* Highlight metálico arriba */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
-            background:
-              'radial-gradient(ellipse at top right, rgba(255,255,255,0.15), transparent 60%)',
+            background: 'radial-gradient(ellipse at 80% 0%, rgba(255,255,255,0.18), transparent 50%)',
+            pointerEvents: 'none',
+          }}
+        />
+        {/* Vignette oscuro para garantizar contraste del texto */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(0,0,0,0.18) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.25) 100%)',
             pointerEvents: 'none',
           }}
         />
@@ -694,11 +712,12 @@ function ProfileStep({
             <p
               style={{
                 fontSize: '10.5px',
-                fontWeight: 600,
-                color: 'rgba(255,255,255,0.7)',
+                fontWeight: 700,
+                color: 'rgba(255,255,255,0.85)',
                 letterSpacing: '0.18em',
                 textTransform: 'uppercase',
                 marginBottom: 4,
+                textShadow: '0 1px 2px rgba(0,0,0,0.4)',
               }}
             >
               Beneficios · {tier.label}
@@ -706,11 +725,12 @@ function ProfileStep({
             <h2
               style={{
                 fontSize: '20px',
-                fontWeight: 600,
+                fontWeight: 700,
                 color: 'white',
                 letterSpacing: '-0.015em',
                 lineHeight: 1.2,
                 marginBottom: 2,
+                textShadow: '0 1px 3px rgba(0,0,0,0.45)',
               }}
             >
               {beneficiario.nombre}
@@ -718,9 +738,10 @@ function ProfileStep({
             <p
               style={{
                 fontSize: '15px',
-                fontWeight: 500,
-                color: 'rgba(255,255,255,0.85)',
+                fontWeight: 600,
+                color: 'rgba(255,255,255,0.95)',
                 lineHeight: 1.2,
+                textShadow: '0 1px 2px rgba(0,0,0,0.35)',
               }}
             >
               {beneficiario.apellido}
@@ -734,7 +755,7 @@ function ProfileStep({
             position: 'relative',
             marginTop: 16,
             paddingTop: 12,
-            borderTop: '1px solid rgba(255,255,255,0.15)',
+            borderTop: '1px solid rgba(255,255,255,0.20)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -742,25 +763,48 @@ function ProfileStep({
           }}
         >
           <div style={{ minWidth: 0, flex: 1 }}>
-            <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 1 }}>
+            <p style={{
+              fontSize: '10px',
+              color: 'rgba(255,255,255,0.75)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+              marginBottom: 2,
+              fontWeight: 600,
+              textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+            }}>
               {beneficiario.cargo ? 'Cargo' : 'Departamento'}
             </p>
-            <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.92)', fontWeight: 500, lineHeight: 1.3 }}>
+            <p style={{
+              fontSize: '12.5px',
+              color: 'white',
+              fontWeight: 600,
+              lineHeight: 1.3,
+              textShadow: '0 1px 2px rgba(0,0,0,0.35)',
+            }}>
               {beneficiario.cargo || beneficiario.departamento || '—'}
             </p>
           </div>
           {beneficiario.legajo && (
             <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 1 }}>
+              <p style={{
+                fontSize: '10px',
+                color: 'rgba(255,255,255,0.75)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                marginBottom: 2,
+                fontWeight: 600,
+                textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+              }}>
                 Legajo
               </p>
               <p
                 style={{
                   fontSize: '12.5px',
-                  color: 'rgba(255,255,255,0.92)',
-                  fontWeight: 500,
+                  color: 'white',
+                  fontWeight: 600,
                   fontFamily: 'var(--font-geist-mono)',
                   fontVariantNumeric: 'tabular-nums',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.35)',
                 }}
               >
                 #{beneficiario.legajo}
