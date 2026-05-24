@@ -220,16 +220,27 @@ router.delete('/beneficios/:id', async (req: AuthRequest, res: Response) => {
 // CRUD COMERCIOS
 // ============================================
 
+// Asegurar que la columna logo existe (auto-migracion idempotente)
+let logoColumnEnsured = false;
+async function ensureLogoColumn() {
+  if (logoColumnEnsured) return;
+  try {
+    await query(`ALTER TABLE comercios ADD COLUMN IF NOT EXISTS logo TEXT`);
+    logoColumnEnsured = true;
+  } catch (e) { /* silencioso */ }
+}
+
 // POST /api/admin/comercios - Crear comercio
 router.post('/comercios', async (req: AuthRequest, res: Response) => {
   try {
-    const { nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable } = req.body;
+    await ensureLogoColumn();
+    const { nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, logo } = req.body;
     if (!nombre) return res.status(400).json({ error: 'Nombre es requerido' });
     const qr_code = `QR-${nombre.replace(/\s+/g, '-').toUpperCase().substring(0, 20)}-${Date.now().toString(36).toUpperCase()}`;
     const result = await query(
-      `INSERT INTO comercios (nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, qr_code, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE) RETURNING *`,
-      [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, qr_code]
+      `INSERT INTO comercios (nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, qr_code, logo, activo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,TRUE) RETURNING *`,
+      [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, qr_code, logo || null]
     );
     res.json({ comercio: result.rows[0] });
   } catch (error: any) {
@@ -241,12 +252,13 @@ router.post('/comercios', async (req: AuthRequest, res: Response) => {
 // PUT /api/admin/comercios/:id - Editar comercio
 router.put('/comercios/:id', async (req: AuthRequest, res: Response) => {
   try {
+    await ensureLogoColumn();
     const { id } = req.params;
-    const { nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, activo } = req.body;
+    const { nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, activo, logo } = req.body;
     const result = await query(
-      `UPDATE comercios SET nombre=$1, direccion=$2, ciudad=$3, provincia=$4, telefono=$5, email=$6, horario_apertura=$7, horario_cierre=$8, responsable=$9, activo=$10, updated_at=NOW()
-       WHERE id=$11 RETURNING *`,
-      [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, activo, id]
+      `UPDATE comercios SET nombre=$1, direccion=$2, ciudad=$3, provincia=$4, telefono=$5, email=$6, horario_apertura=$7, horario_cierre=$8, responsable=$9, activo=$10, logo=$11, updated_at=NOW()
+       WHERE id=$12 RETURNING *`,
+      [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, activo, logo || null, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Comercio no encontrado' });
     res.json({ comercio: result.rows[0] });
@@ -1078,6 +1090,7 @@ const CATALOGO_2026: Array<{
 
 router.post('/importar-catalogo-2026', async (req: AuthRequest, res: Response) => {
   try {
+    await ensureLogoColumn();
     let comerciosCreados = 0, comerciosActualizados = 0;
     let beneficiosCreados = 0, asociaciones = 0;
 

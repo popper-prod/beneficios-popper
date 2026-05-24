@@ -9,8 +9,12 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
   try {
     const { qrCode } = req.params;
 
+    // COALESCE para que devuelva null si la columna logo aun no existe (migracion lazy)
     const result = await query(
-      `SELECT c.id, c.nombre, c.direccion, c.ciudad, c.telefono, c.horario_apertura, c.horario_cierre, c.responsable
+      `SELECT c.id, c.nombre, c.direccion, c.ciudad, c.telefono, c.horario_apertura, c.horario_cierre, c.responsable,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='comercios' AND column_name='logo')
+                THEN (SELECT logo FROM comercios WHERE qr_code = $1 AND activo = TRUE LIMIT 1)
+                ELSE NULL END as logo
        FROM comercios c WHERE c.qr_code = $1 AND c.activo = TRUE`,
       [qrCode]
     );

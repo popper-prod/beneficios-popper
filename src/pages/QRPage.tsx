@@ -17,6 +17,7 @@ interface Comercio {
   horario_apertura: string;
   horario_cierre: string;
   responsable: string;
+  logo?: string | null;
 }
 
 interface Beneficiario {
@@ -438,19 +439,24 @@ function IdentifyStep({
       >
         <div
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: '8px',
-            background: 'var(--brand-muted)',
-            border: '1px solid var(--brand-border)',
+            width: 48,
+            height: 48,
+            borderRadius: '10px',
+            background: comercio.logo ? 'var(--bg-canvas)' : 'var(--brand-muted)',
+            border: `1px solid ${comercio.logo ? 'var(--border-subtle)' : 'var(--brand-border)'}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: 'var(--brand)',
             flexShrink: 0,
+            overflow: 'hidden',
           }}
         >
-          <MapPin size={18} />
+          {comercio.logo ? (
+            <img src={comercio.logo} alt={comercio.nombre} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+          ) : (
+            <MapPin size={20} />
+          )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-1)' }}>{comercio.nombre}</p>

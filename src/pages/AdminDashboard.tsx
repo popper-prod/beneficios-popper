@@ -185,7 +185,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
     if (type === 'beneficio') {
       setForm({ nombre: '', descripcion: '', tipo: 'descuento', nivel_minimo: 'bronce', descuento: '', valor_fijo: '', fecha_inicio: '2024-01-01', fecha_fin: '2027-12-31', horario_inicio: '08:00', horario_fin: '22:00', limite_uso_diario: '', limite_uso_mensual: '' });
     } else if (type === 'comercio') {
-      setForm({ nombre: '', direccion: '', ciudad: 'Buenos Aires', provincia: 'Buenos Aires', telefono: '', email: '', horario_apertura: '08:00', horario_cierre: '22:00', responsable: '' });
+      setForm({ nombre: '', direccion: '', ciudad: 'Ushuaia', provincia: 'Tierra del Fuego', telefono: '', email: '', horario_apertura: '09:00', horario_cierre: '20:00', responsable: '', logo: '' });
     } else {
       setForm({ dni: '', nombre: '', apellido: '', email: '', telefono: '', nivel: 'bronce', departamento: '', empresa: 'Grupo Popper' });
     }
@@ -208,6 +208,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
         nombre: item.nombre || '', direccion: item.direccion || '', ciudad: item.ciudad || '', provincia: item.provincia || '',
         telefono: item.telefono || '', email: item.email || '', horario_apertura: item.horario_apertura || '',
         horario_cierre: item.horario_cierre || '', responsable: item.responsable || '', activo: item.activo ? 'true' : 'false',
+        logo: item.logo || '',
       });
     } else {
       setForm({
@@ -661,7 +662,22 @@ export default function AdminDashboard({ token, user, onLogout }: {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
               {comercios.map((c: any) => (
                 <ItemCard key={c.id}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
+                    {/* Logo o placeholder */}
+                    <div style={{
+                      width: 44, height: 44, borderRadius: '8px',
+                      background: c.logo ? 'var(--bg-canvas)' : 'var(--brand-muted)',
+                      border: `1px solid ${c.logo ? 'var(--border-subtle)' : 'var(--brand-border)'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden', flexShrink: 0,
+                      color: 'var(--brand)', fontWeight: 700, fontSize: '14px',
+                    }}>
+                      {c.logo ? (
+                        <img src={c.logo} alt={c.nombre} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                      ) : (
+                        c.nombre.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()
+                      )}
+                    </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-1)' }}>{c.nombre}</h3>
                       <p style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: 2 }}>{c.direccion}, {c.ciudad}</p>
@@ -742,9 +758,23 @@ export default function AdminDashboard({ token, user, onLogout }: {
                 const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrUrl)}&margin=10&color=ededee&bgcolor=16161a`;
                 return (
                   <ItemCard key={c.id}>
-                    <div style={{ textAlign: 'center', marginBottom: 12 }}>
-                      <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-1)' }}>{c.nombre}</p>
-                      <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 2 }}>{c.direccion}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: '8px',
+                        background: c.logo ? 'var(--bg-canvas)' : 'var(--brand-muted)',
+                        border: `1px solid ${c.logo ? 'var(--border-subtle)' : 'var(--brand-border)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        overflow: 'hidden', flexShrink: 0,
+                        color: 'var(--brand)', fontWeight: 700, fontSize: '12px',
+                      }}>
+                        {c.logo
+                          ? <img src={c.logo} alt={c.nombre} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                          : c.nombre.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-1)' }}>{c.nombre}</p>
+                        <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 2 }}>{c.direccion}</p>
+                      </div>
                     </div>
                     <div style={{
                       padding: 12, background: 'var(--bg-surface)', borderRadius: '8px',
@@ -1071,6 +1101,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
 
       {/* Modal Comercio */}
       <Modal open={modal?.type === 'comercio'} onClose={() => setModal(null)} title={modal?.mode === 'create' ? 'Nuevo comercio' : 'Editar comercio'}>
+        <LogoUploader value={form.logo || ''} onChange={(v) => setForm({ ...form, logo: v })} />
         <Field label="Nombre" value={form.nombre || ''} onChange={v => setForm({ ...form, nombre: v })} required />
         <Field label="Dirección" value={form.direccion || ''} onChange={v => setForm({ ...form, direccion: v })} required />
         <div className="grid grid-cols-2 gap-3">
@@ -1297,6 +1328,140 @@ function GroupBlockPanel({
         </>
       )}
     </Panel>
+  );
+}
+
+// ============================================
+// LogoUploader — file picker que convierte a base64 inline
+// ============================================
+function LogoUploader({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [error, setError] = useState('');
+  const handleFile = async (file: File) => {
+    setError('');
+    if (file.size > 600 * 1024) {
+      setError('Imagen muy pesada. Máximo 600 KB.');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      setError('El archivo debe ser una imagen.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      onChange(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label
+        style={{
+          display: 'block',
+          fontSize: '12px',
+          fontWeight: 500,
+          color: 'var(--text-2)',
+          marginBottom: 6,
+        }}
+      >
+        Logo del comercio
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Preview */}
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: '8px',
+            background: value ? 'var(--bg-canvas)' : 'var(--bg-elevated)',
+            border: '1px solid var(--border-default)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            flexShrink: 0,
+          }}
+        >
+          {value ? (
+            <img
+              src={value}
+              alt="Logo"
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+            />
+          ) : (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-4)' }}>
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          )}
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <label
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '7px 12px',
+                background: 'var(--bg-raised)',
+                border: '1px solid var(--border-default)',
+                borderRadius: '6px',
+                color: 'var(--text-1)',
+                fontSize: '12px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 120ms var(--ease-in-out)',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-raised)')}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+              </svg>
+              {value ? 'Cambiar' : 'Subir logo'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFile(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            {value && (
+              <button
+                type="button"
+                onClick={() => onChange('')}
+                style={{
+                  padding: '7px 10px',
+                  background: 'transparent',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: '6px',
+                  color: 'var(--danger-text)',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 120ms var(--ease-in-out)',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--danger-bg)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                Quitar
+              </button>
+            )}
+          </div>
+          <p style={{ fontSize: '11px', color: error ? 'var(--danger-text)' : 'var(--text-3)' }}>
+            {error || 'PNG, JPG, WEBP o SVG. Máx 600 KB.'}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
