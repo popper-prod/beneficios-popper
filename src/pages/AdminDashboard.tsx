@@ -143,6 +143,10 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [jerarquiaSaving, setJerarquiaSaving] = useState(false);
   const [jerarquiaMsg, setJerarquiaMsg] = useState('');
 
+  // V3C — Importación
+  const [importandoJerarquias, setImportandoJerarquias] = useState(false);
+  const [seedingInternos, setSeedingInternos] = useState(false);
+
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
 
@@ -481,6 +485,83 @@ export default function AdminDashboard({ token, user, onLogout }: {
     setJerarquiaSaving(false);
   };
 
+  // V3C — Importación masiva
+  const handleDescargarTemplateJerarquias = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/importar/template-jerarquias`, { headers });
+      if (!res.ok) return alert('Error descargando template');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'template-jerarquias.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch { alert('Error de conexión'); }
+  };
+
+  const handleAbrirImportJerarquias = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reemplazar = confirm('¿Reemplazar las jerarquías existentes?\n\nOK = Reemplazar (las que no estén en el Excel quedan inactivas)\nCancel = Solo crear/actualizar (mantener las que ya tenés)');
+      setImportandoJerarquias(true);
+      try {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const fileBase64 = e.target?.result as string;
+          const res = await fetch(`${API_URL}/admin/importar/jerarquias`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ fileBase64, reemplazar }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            alert(`✓ Importación completada. ${data.creadas} creadas, ${data.actualizadas} actualizadas${data.errores.length ? `, ${data.errores.length} errores` : ''}.`);
+            fetchJerarquias();
+          } else {
+            alert(`Error: ${data.error || 'No se pudo importar'}`);
+          }
+          setImportandoJerarquias(false);
+        };
+        reader.readAsDataURL(file);
+      } catch (e: any) {
+        alert(`Error: ${e.message}`);
+        setImportandoJerarquias(false);
+      }
+    };
+    input.click();
+  };
+
+  const handleSeedInternos = async () => {
+    const ok = confirm(
+      '¿Cargar los beneficios internos estándar?\n\n' +
+      'Esto creará (o actualizará si ya existen):\n' +
+      '• Pase de Esquí · Temporada (acceso, familiares)\n' +
+      '• Indumentaria Corporativa Popper (20/30%, jerarquía)\n' +
+      '• Calzado deportivo\n' +
+      '• Accesorios\n' +
+      '• Equipos de nieve\n' +
+      '• Puntos Gastronómicos\n' +
+      '• Indumentaria de Renta\n\n' +
+      'Después podés editarlos uno por uno desde el form.'
+    );
+    if (!ok) return;
+    setSeedingInternos(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/seed-beneficios-internos`, { method: 'POST', headers });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✓ ${data.creados} beneficios internos creados, ${data.actualizados} actualizados.`);
+        fetchBeneficios();
+      } else {
+        alert(`Error: ${data.error || 'No se pudo crear'}`);
+      }
+    } catch { alert('Error de conexión'); }
+    setSeedingInternos(false);
+  };
+
   const handleDeleteJerarquia = async (id: string, nombre: string) => {
     if (!confirm(`¿Eliminar jerarquía "${nombre}"?`)) return;
     try {
@@ -774,6 +855,9 @@ export default function AdminDashboard({ token, user, onLogout }: {
           description={`${beneficios.length} ${beneficios.length === 1 ? 'beneficio' : 'beneficios'} en el catálogo.`}
           action={
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <Button variant="ghost" size="md" onClick={handleSeedInternos} loading={seedingInternos}>
+                {seedingInternos ? 'Cargando…' : 'Cargar beneficios internos'}
+              </Button>
               <Button variant="outline" size="md" onClick={handleImportarCatalogo2026} loading={importingCatalog}>
                 {importingCatalog ? 'Importando…' : 'Importar catálogo 2026'}
               </Button>
@@ -1371,7 +1455,15 @@ export default function AdminDashboard({ token, user, onLogout }: {
         <PageSection
           title="Jerarquías y límites"
           description="Definí los cargos/jerarquías de la empresa y el límite mensual de gasto en indumentaria, calzado, accesorios y equipos."
-          action={<Button variant="primary" size="md" leftIcon={<PlusIcon size={13} />} onClick={() => openJerarquia('create')}>Nueva jerarquía</Button>}
+          action={
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <Button variant="ghost" size="md" onClick={handleDescargarTemplateJerarquias}>Descargar template</Button>
+              <Button variant="outline" size="md" onClick={handleAbrirImportJerarquias} loading={importandoJerarquias}>
+                {importandoJerarquias ? 'Importando…' : 'Importar Excel'}
+              </Button>
+              <Button variant="primary" size="md" leftIcon={<PlusIcon size={13} />} onClick={() => openJerarquia('create')}>Nueva jerarquía</Button>
+            </div>
+          }
         >
           {jerarquias.length === 0 ? (
             <EmptyView

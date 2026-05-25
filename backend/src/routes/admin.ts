@@ -1460,6 +1460,212 @@ router.post('/familiares/sync-naaloo', async (req: AuthRequest, res: Response) =
 });
 
 // ============================================
+// PHASE 3C — IMPORTACIÓN MASIVA + SEED
+// ============================================
+
+// Template Excel descargable
+router.get('/importar/template-jerarquias', async (req: AuthRequest, res: Response) => {
+  try {
+    const wb = XLSX.utils.book_new();
+    const data = [
+      { Nombre: 'Operario', Orden: 1, 'Límite mensual': 50000, 'Límite Talento': 80000, Notas: 'Ej: cajeros, vendedores' },
+      { Nombre: 'Supervisor', Orden: 2, 'Límite mensual': 80000, 'Límite Talento': 120000, Notas: '' },
+      { Nombre: 'Jefe', Orden: 3, 'Límite mensual': 120000, 'Límite Talento': 180000, Notas: '' },
+      { Nombre: 'Coordinador', Orden: 4, 'Límite mensual': 150000, 'Límite Talento': 220000, Notas: '' },
+      { Nombre: 'Gerente', Orden: 5, 'Límite mensual': 200000, 'Límite Talento': 300000, Notas: '' },
+    ];
+    const sheet = XLSX.utils.json_to_sheet(data);
+    sheet['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 18 }, { wch: 18 }, { wch: 35 }];
+    XLSX.utils.book_append_sheet(wb, sheet, 'Jerarquías');
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename="template-jerarquias.xlsx"');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error generando template', detalle: error.message });
+  }
+});
+
+// Import desde Excel (base64)
+router.post('/importar/jerarquias', async (req: AuthRequest, res: Response) => {
+  try {
+    const { fileBase64, reemplazar } = req.body;
+    if (!fileBase64) return res.status(400).json({ error: 'Falta el archivo' });
+
+    // Asegurar que la tabla existe
+    await query(`
+      CREATE TABLE IF NOT EXISTS jerarquias (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        nombre VARCHAR(100) NOT NULL UNIQUE,
+        orden INT DEFAULT 0,
+        limite_mensual DECIMAL(12,2) DEFAULT 0,
+        limite_mensual_talento DECIMAL(12,2) DEFAULT 0,
+        activo BOOLEAN DEFAULT TRUE,
+        notas TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `).catch(() => {});
+
+    const buffer = Buffer.from(fileBase64.split(',').pop() || fileBase64, 'base64');
+    const wb = XLSX.read(buffer, { type: 'buffer' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+    if (reemplazar) {
+      // Desactiva todas las existentes antes de importar
+      await query(`UPDATE jerarquias SET activo = FALSE`);
+    }
+
+    let creadas = 0, actualizadas = 0;
+    const errores: string[] = [];
+
+    for (const row of rows) {
+      try {
+        const nombre = String(row['Nombre'] || row['nombre'] || '').trim();
+        if (!nombre) continue;
+        const orden = parseInt(String(row['Orden'] || row['orden'] || 0), 10) || 0;
+        const limite = parseFloat(String(row['Límite mensual'] || row['Limite mensual'] || row['limite_mensual'] || 0)) || 0;
+        const limiteTalento = parseFloat(String(row['Límite Talento'] || row['Limite Talento'] || row['limite_mensual_talento'] || 0)) || 0;
+        const notas = String(row['Notas'] || row['notas'] || '').trim() || null;
+
+        const existing = await query(`SELECT id FROM jerarquias WHERE LOWER(nombre) = LOWER($1)`, [nombre]);
+        if (existing.rows.length > 0) {
+          await query(
+            `UPDATE jerarquias SET orden=$1, limite_mensual=$2, limite_mensual_talento=$3, notas=$4, activo=TRUE, updated_at=NOW() WHERE id=$5`,
+            [orden, limite, limiteTalento, notas, existing.rows[0].id]
+          );
+          actualizadas++;
+        } else {
+          await query(
+            `INSERT INTO jerarquias (nombre, orden, limite_mensual, limite_mensual_talento, notas, activo)
+             VALUES ($1, $2, $3, $4, $5, TRUE)`,
+            [nombre, orden, limite, limiteTalento, notas]
+          );
+          creadas++;
+        }
+      } catch (e: any) {
+        errores.push(`Fila ${JSON.stringify(row).substring(0, 80)}: ${e.message}`);
+      }
+    }
+
+    res.json({ exito: true, creadas, actualizadas, errores: errores.slice(0, 10), total: rows.length });
+  } catch (error: any) {
+    console.error('Error importando jerarquias:', error.message);
+    res.status(500).json({ error: 'Error importando', detalle: error.message });
+  }
+});
+
+// Seed de beneficios internos estándar (skipass + indumentaria/calzado/etc + gastronómicos)
+router.post('/seed-beneficios-internos', async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureBeneficiosV2();
+
+    const hoy = new Date().toISOString().split('T')[0];
+    const finAnio = `${new Date().getFullYear()}-12-31`;
+
+    type Seed = {
+      nombre: string; descripcion: string; categoria: string; modalidad: string;
+      aplica_a: string; descuento?: number; escala_descuentos?: any;
+      usa_limite_jerarquia?: boolean; relaciones_familiar?: string;
+      excluye_outlet?: boolean; restricciones?: string;
+    };
+
+    const seeds: Seed[] = [
+      {
+        nombre: 'Pase de Esquí · Temporada',
+        descripcion: 'Acceso libre a pistas durante toda la temporada. Incluye familiares directos: padres, cónyuge/concubino e hijos.',
+        categoria: 'skipass', modalidad: 'acceso', aplica_a: 'ambos',
+        relaciones_familiar: 'Parents,Spouse,CivilUnion,Child',
+      },
+      {
+        nombre: 'Indumentaria Corporativa Popper',
+        descripcion: 'Descuento en ropa marca Popper. 20% durante el primer año, 30% al cumplir un año. Talento Popper: 30% desde día 1.',
+        categoria: 'indumentaria', modalidad: 'descuento', aplica_a: 'empleado',
+        escala_descuentos: { tiers: [{ antiguedad_min_meses: 0, porcentaje: 20 }, { antiguedad_min_meses: 12, porcentaje: 30 }], talento_porcentaje: 30 },
+        usa_limite_jerarquia: true, excluye_outlet: true,
+        restricciones: 'No aplica a marcas excluidas (NIKE, POC u otras según stock). Outlet no genera descuento.',
+      },
+      {
+        nombre: 'Calzado deportivo',
+        descripcion: 'Descuento en calzado. Escala por antigüedad. Talento Popper accede al máximo desde el día 1.',
+        categoria: 'calzado', modalidad: 'descuento', aplica_a: 'empleado',
+        escala_descuentos: { tiers: [{ antiguedad_min_meses: 0, porcentaje: 20 }, { antiguedad_min_meses: 12, porcentaje: 30 }], talento_porcentaje: 30 },
+        usa_limite_jerarquia: true, excluye_outlet: true,
+        restricciones: 'Restricciones de marca según producto y stock. Outlet excluido.',
+      },
+      {
+        nombre: 'Accesorios',
+        descripcion: 'Mochilas, lentes, gorros y accesorios deportivos.',
+        categoria: 'accesorios', modalidad: 'descuento', aplica_a: 'empleado',
+        escala_descuentos: { tiers: [{ antiguedad_min_meses: 0, porcentaje: 20 }, { antiguedad_min_meses: 12, porcentaje: 30 }], talento_porcentaje: 30 },
+        usa_limite_jerarquia: true, excluye_outlet: true,
+      },
+      {
+        nombre: 'Equipos de nieve',
+        descripcion: 'Tablas, esquís, bastones, ropa técnica para nieve.',
+        categoria: 'equipos_nieve', modalidad: 'descuento', aplica_a: 'empleado',
+        escala_descuentos: { tiers: [{ antiguedad_min_meses: 0, porcentaje: 20 }, { antiguedad_min_meses: 12, porcentaje: 30 }], talento_porcentaje: 30 },
+        usa_limite_jerarquia: true, excluye_outlet: true,
+        restricciones: 'Restricciones de marca según producto y stock. Outlet excluido.',
+      },
+      {
+        nombre: 'Puntos Gastronómicos',
+        descripcion: 'Descuento en restaurantes del Grupo. Pendiente confirmar % específicos por RRHH.',
+        categoria: 'gastronomia', modalidad: 'puntos', aplica_a: 'empleado',
+        descuento: 15,
+      },
+      {
+        nombre: 'Indumentaria de Renta',
+        descripcion: 'Descuento sobre indumentaria de alquiler (renta) para uso recreacional.',
+        categoria: 'indumentaria', modalidad: 'descuento', aplica_a: 'empleado',
+        descuento: 25,
+      },
+    ];
+
+    let creados = 0, actualizados = 0;
+
+    for (const s of seeds) {
+      const existing = await query(`SELECT id FROM beneficios WHERE LOWER(nombre) = LOWER($1) AND activo = TRUE LIMIT 1`, [s.nombre]);
+      if (existing.rows.length > 0) {
+        await query(`
+          UPDATE beneficios SET descripcion=$1, categoria=$2, modalidad=$3, aplica_a=$4,
+            origen='interno', descuento=$5, escala_descuentos=$6, usa_limite_jerarquia=$7,
+            relaciones_familiar=$8, excluye_outlet=$9, restricciones=$10,
+            nivel_minimo='bronce', tipo=$11, updated_at=NOW()
+          WHERE id=$12
+        `, [s.descripcion, s.categoria, s.modalidad, s.aplica_a, s.descuento || null,
+            s.escala_descuentos ? JSON.stringify(s.escala_descuentos) : null,
+            !!s.usa_limite_jerarquia, s.relaciones_familiar || null,
+            !!s.excluye_outlet, s.restricciones || null,
+            s.modalidad || 'descuento', existing.rows[0].id]);
+        actualizados++;
+      } else {
+        await query(`
+          INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, descuento,
+            fecha_inicio, fecha_fin, horario_inicio, horario_fin, activo,
+            origen, categoria, aplica_a, modalidad, escala_descuentos,
+            restricciones, excluye_outlet, relaciones_familiar, usa_limite_jerarquia)
+          VALUES ($1, $2, $3, 'bronce', $4, $5, $6, '00:00', '23:59', TRUE,
+                  'interno', $7, $8, $9, $10, $11, $12, $13, $14)
+        `, [s.nombre, s.descripcion, s.modalidad || 'descuento', s.descuento || null,
+            hoy, finAnio,
+            s.categoria, s.aplica_a, s.modalidad,
+            s.escala_descuentos ? JSON.stringify(s.escala_descuentos) : null,
+            s.restricciones || null, !!s.excluye_outlet,
+            s.relaciones_familiar || null, !!s.usa_limite_jerarquia]);
+        creados++;
+      }
+    }
+
+    res.json({ exito: true, creados, actualizados, total: seeds.length });
+  } catch (error: any) {
+    console.error('Error seed beneficios internos:', error.message);
+    res.status(500).json({ error: 'Error creando beneficios internos', detalle: error.message });
+  }
+});
+
+// ============================================
 // PHASE 3B — REPORTES + ANALYTICS
 // ============================================
 async function buildReporte(desde: string, hasta: string) {
