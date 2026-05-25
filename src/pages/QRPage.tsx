@@ -37,8 +37,11 @@ interface Beneficiario {
 interface FamiliarInfo {
   es_familiar: true;
   relacion: string;
+  edad?: number | null;
+  es_menor?: boolean;
+  fecha_nacimiento?: string;
   titular: { dni: string; nombre: string; apellido: string };
-  foto?: string | null;
+  adultos_autorizados?: Array<{ dni: string; nombre: string; apellido?: string; relacion: string; esTitular?: boolean }>;
 }
 
 interface Beneficio {
@@ -206,7 +209,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   };
 
   // Canjear definitivo (lo dispara el cajero desde el step confirm)
-  const handleCanjearConfirmado = async (overrideLimite = false, pinResponsable?: string) => {
+  const handleCanjearConfirmado = async (overrideLimite = false, pinResponsable?: string, retiradoPorDni?: string) => {
     if (!comercio || !beneficiario || !selectedBenefit) return;
     const montoNum = monto ? parseFloat(monto) : null;
     setProcessing(true);
@@ -223,6 +226,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
           monto: montoNum,
           override_limite: overrideLimite,
           pin_responsable: pinResponsable,
+          retirado_por_dni: retiradoPorDni,
         }),
       });
       const data = await res.json();
@@ -381,13 +385,12 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
             <ConfirmStep
               beneficiario={beneficiario}
               familiarInfo={familiarInfo}
-              comercio={comercio}
               beneficio={selectedBenefitData}
               monto={monto}
               processing={processing}
               errorMsg={errorMsg}
-              onConfirmar={() => handleCanjearConfirmado(false)}
-              onConfirmarConPin={(pin) => handleCanjearConfirmado(true, pin)}
+              onConfirmar={(retiradoPorDni?: string) => handleCanjearConfirmado(false, undefined, retiradoPorDni)}
+              onConfirmarConPin={(pin, retiradoPorDni?: string) => handleCanjearConfirmado(true, pin, retiradoPorDni)}
               onCancelar={() => { setStep('profile'); setErrorMsg(''); }}
             />
           )}
@@ -1385,22 +1388,23 @@ function BenefitOption({
 // y confirma el canje con un click. Si excede el límite, pide PIN del responsable.
 // ============================================
 function ConfirmStep({
-  beneficiario, familiarInfo, comercio, beneficio, monto, processing, errorMsg,
+  beneficiario, familiarInfo, beneficio, monto, processing, errorMsg,
   onConfirmar, onConfirmarConPin, onCancelar,
 }: {
   beneficiario: Beneficiario;
   familiarInfo: FamiliarInfo | null;
-  comercio: Comercio;
   beneficio: Beneficio;
   monto: string;
   processing: boolean;
   errorMsg: string;
-  onConfirmar: () => void;
-  onConfirmarConPin: (pin: string) => void;
+  onConfirmar: (retiradoPorDni?: string) => void;
+  onConfirmarConPin: (pin: string, retiradoPorDni?: string) => void;
   onCancelar: () => void;
 }) {
   const requiereOverride: boolean = !!errorMsg && errorMsg.toLowerCase().includes('excede');
   const [pin, setPin] = useState('');
+  const esMenor = familiarInfo?.es_menor === true;
+  const [retiradoPorDni, setRetiradoPorDni] = useState('');
   const montoNum = parseFloat(monto || '0') || 0;
   const descuento = beneficio.descuento ? Number(beneficio.descuento) : 0;
   const ahorro = montoNum * (descuento / 100);
@@ -1421,8 +1425,12 @@ function ConfirmStep({
         <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--brand)', letterSpacing: '0.18em', textTransform: 'uppercase' }}>
           📱 Pasale el teléfono al cajero
         </p>
-        <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 2 }}>
-          {comercio.nombre} debe verificar y confirmar el canje
+        <p style={{ fontSize: '11.5px', color: 'var(--text-2)', marginTop: 4, lineHeight: 1.4 }}>
+          {esMenor
+            ? 'Pedí DNI del adulto autorizado que retira'
+            : familiarInfo
+              ? 'Pedí DNI físico al familiar y verificá contra los datos en pantalla'
+              : 'Pedí DNI físico al colaborador y verificá contra los datos en pantalla'}
         </p>
       </div>
 
@@ -1433,7 +1441,8 @@ function ConfirmStep({
         textAlign: 'center', marginBottom: 14,
       }}>
         {(() => {
-          const fotoMostrar = familiarInfo?.foto || beneficiario.foto;
+          // V3H: solo la foto del titular (de Naaloo). Familiares sin foto.
+          const fotoMostrar = familiarInfo ? null : beneficiario.foto;
           if (fotoMostrar) {
             return (
               <img
@@ -1481,6 +1490,16 @@ function ConfirmStep({
             <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-2)' }}>
               {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
             </span>
+            {familiarInfo.edad != null && (
+              <span style={{
+                marginLeft: 8, padding: '1px 7px', borderRadius: '999px',
+                background: esMenor ? 'var(--danger-bg)' : 'var(--success-bg)',
+                color: esMenor ? 'var(--danger-text)' : 'var(--success-text)',
+                fontSize: '10.5px', fontWeight: 700,
+              }}>
+                {familiarInfo.edad} años {esMenor ? '· menor' : '· adulto'}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -1537,6 +1556,63 @@ function ConfirmStep({
         </div>
       )}
 
+      {/* V3H: Banner menor de edad + dropdown adulto autorizado */}
+      {esMenor && familiarInfo && (
+        <div style={{
+          padding: 14, marginBottom: 14,
+          background: 'var(--danger-bg)', border: '2px solid var(--danger-border)',
+          borderRadius: '10px',
+        }}>
+          <p style={{
+            fontSize: '12px', fontWeight: 700, color: 'var(--danger-text)',
+            letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8,
+          }}>
+            ⚠ Menor de edad ({familiarInfo.edad} años)
+          </p>
+          <p style={{ fontSize: '12.5px', color: 'var(--text-1)', marginBottom: 12, lineHeight: 1.5 }}>
+            Menor de edad. Requiere adulto autorizado por la empresa.
+          </p>
+          <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-2)', fontWeight: 500, marginBottom: 6 }}>
+            DNI del adulto que retira (titular o familiar adulto del titular)
+          </label>
+          {familiarInfo.adultos_autorizados && familiarInfo.adultos_autorizados.length > 0 && (
+            <select
+              value={retiradoPorDni}
+              onChange={e => setRetiradoPorDni(e.target.value)}
+              style={{
+                width: '100%', height: 40, padding: '0 12px',
+                background: 'var(--bg-canvas)', border: '1px solid var(--border-default)',
+                borderRadius: '6px', color: 'var(--text-1)', fontSize: '13px',
+                marginBottom: 8, outline: 'none',
+              }}
+            >
+              <option value="">— Seleccionar adulto autorizado —</option>
+              {familiarInfo.adultos_autorizados.map(a => (
+                <option key={a.dni} value={a.dni}>
+                  {a.nombre} {a.apellido || ''} · DNI {a.dni} {a.esTitular ? '(Titular)' : `(${a.relacion})`}
+                </option>
+              ))}
+            </select>
+          )}
+          <input
+            type="text" inputMode="numeric"
+            placeholder="O ingresar DNI manualmente"
+            value={retiradoPorDni}
+            onChange={e => setRetiradoPorDni(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            style={{
+              width: '100%', height: 40, padding: '0 12px',
+              background: 'var(--bg-canvas)', border: '1px solid var(--border-default)',
+              borderRadius: '6px', color: 'var(--text-1)', fontSize: '14px',
+              fontVariantNumeric: 'tabular-nums', letterSpacing: '0.1em',
+              outline: 'none',
+            }}
+          />
+          <p style={{ fontSize: '10.5px', color: 'var(--text-3)', marginTop: 6 }}>
+            El sistema valida que el DNI corresponda a un adulto registrado en Naaloo como familiar del titular o al propio titular.
+          </p>
+        </div>
+      )}
+
       {/* PIN del responsable si requiere override */}
       {requiereOverride && (
         <div style={{
@@ -1575,14 +1651,21 @@ function ConfirmStep({
           ← Volver
         </button>
         <button
-          onClick={() => requiereOverride ? onConfirmarConPin(pin) : onConfirmar()}
-          disabled={processing || (requiereOverride && pin.length < 4)}
+          onClick={() => {
+            const rp = esMenor ? retiradoPorDni : undefined;
+            requiereOverride ? onConfirmarConPin(pin, rp) : onConfirmar(rp);
+          }}
+          disabled={
+            processing ||
+            (requiereOverride && pin.length < 4) ||
+            (esMenor && retiradoPorDni.length < 7)
+          }
           style={{
             flex: 1, height: 52, background: requiereOverride ? 'var(--warning)' : 'var(--success)',
             color: '#0a0a0a', border: 'none', borderRadius: '10px',
             fontSize: '15px', fontWeight: 700, cursor: processing ? 'not-allowed' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            opacity: processing || (requiereOverride && pin.length < 4) ? 0.6 : 1,
+            opacity: processing || (requiereOverride && pin.length < 4) || (esMenor && retiradoPorDni.length < 7) ? 0.6 : 1,
           }}
         >
           {processing ? (

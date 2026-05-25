@@ -2016,6 +2016,8 @@ router.post('/migrar-presupuesto', async (req: AuthRequest, res: Response) => {
     await query(`ALTER TABLE verificaciones ADD COLUMN IF NOT EXISTS monto DECIMAL(12,2)`);
     await query(`ALTER TABLE verificaciones ADD COLUMN IF NOT EXISTS categoria_beneficio VARCHAR(50)`);
     await query(`ALTER TABLE verificaciones ADD COLUMN IF NOT EXISTS usa_limite_jerarquia BOOLEAN DEFAULT FALSE`);
+    await query(`ALTER TABLE verificaciones ADD COLUMN IF NOT EXISTS retirado_por_dni VARCHAR(20)`);
+    await query(`ALTER TABLE verificaciones ADD COLUMN IF NOT EXISTS retirado_por_nombre VARCHAR(200)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_verif_categoria ON verificaciones(categoria_beneficio) WHERE categoria_beneficio IS NOT NULL`);
     await query(`CREATE INDEX IF NOT EXISTS idx_verif_beneficiario_fecha ON verificaciones(beneficiario_id, fecha_verificacion)`);
 

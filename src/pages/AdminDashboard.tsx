@@ -619,18 +619,8 @@ export default function AdminDashboard({ token, user, onLogout }: {
     setExportandoSkipass(false);
   };
 
-  const handleUploadFotoFamiliar = async (familiarId: string, fotoDataUrl: string) => {
-    try {
-      const res = await fetch(`${API_URL}/admin/familiares/${familiarId}/foto`, {
-        method: 'POST', headers, body: JSON.stringify({ foto: fotoDataUrl }),
-      });
-      if (res.ok) {
-        fetchFamiliares();
-        return true;
-      }
-      return false;
-    } catch { return false; }
-  };
+  // handleUploadFotoFamiliar y FamiliarFotoCell removidos en V3H — la
+  // verificación de identidad se hace contra DNI físico, no contra foto en BD
 
   // V3G — Anular verificación (canje ya registrado)
   const handleAnularVerificacion = async (v: any) => {
@@ -1533,10 +1523,6 @@ export default function AdminDashboard({ token, user, onLogout }: {
           ) : (
             <DataTable
               columns={[
-                {
-                  key: 'foto', label: '', width: 48,
-                  render: (r: any) => <FamiliarFotoCell familiar={r} onUpload={handleUploadFotoFamiliar} />,
-                },
                 { key: 'dni', label: 'DNI', mono: true, sortable: true },
                 {
                   key: 'nombre_completo', label: 'Familiar', sortable: true,
@@ -2006,53 +1992,7 @@ function EscalaEditor({
   );
 }
 
-// ============================================
-// V3F — FamiliarFotoCell (upload foto inline)
-// ============================================
-function FamiliarFotoCell({ familiar, onUpload }: { familiar: any; onUpload: (id: string, dataUrl: string) => Promise<boolean> }) {
-  const [uploading, setUploading] = useState(false);
-  const handleClick = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/png,image/jpeg,image/webp';
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      if (file.size > 800 * 1024) { alert('Máx 800 KB'); return; }
-      setUploading(true);
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const ok = await onUpload(familiar.id, e.target?.result as string);
-        if (!ok) alert('Error subiendo foto');
-        setUploading(false);
-      };
-      reader.readAsDataURL(file);
-    };
-    input.click();
-  };
-  return (
-    <button
-      onClick={handleClick}
-      title={familiar.foto ? 'Cambiar foto' : 'Subir foto del DNI / persona'}
-      style={{
-        width: 36, height: 36, borderRadius: '50%',
-        background: familiar.foto ? 'transparent' : 'var(--bg-elevated)',
-        border: `1px solid ${familiar.foto ? 'var(--brand-border)' : 'var(--border-default)'}`,
-        cursor: 'pointer', padding: 0, overflow: 'hidden',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: 'var(--text-3)',
-      }}
-    >
-      {uploading ? '…' : familiar.foto ? (
-        <img src={familiar.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
-        </svg>
-      )}
-    </button>
-  );
-}
+// V3H: FamiliarFotoCell eliminado — sin fotos en BD, identidad por DNI físico
 
 // ============================================
 // V2 — RelacionBadge para familiares

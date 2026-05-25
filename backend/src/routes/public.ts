@@ -31,6 +31,44 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
   }
 });
 
+// V3H: lista de adultos autorizados a retirar para un menor.
+// Incluye al titular y a todos los familiares activos del titular que sean adultos
+// (edad >= 18 o sin fecha_nacimiento — asumimos adulto por default).
+// Excluye al propio menor.
+async function getAdultosAutorizados(titularId: string, dniMenor: string): Promise<any[]> {
+  try {
+    const titularRes = await query(
+      `SELECT dni, nombre, apellido, 'Titular' as relacion FROM beneficiarios WHERE id=$1`,
+      [titularId]
+    );
+    const familiaresRes = await query(
+      `SELECT dni, nombre_completo as nombre, '' as apellido, relacion, fecha_nacimiento
+       FROM familiares WHERE beneficiario_id=$1 AND activo=TRUE AND dni != $2`,
+      [titularId, dniMenor]
+    ).catch(() => ({ rows: [] }));
+
+    const hoy = new Date();
+    const adultos: any[] = [];
+    for (const t of titularRes.rows) adultos.push({ ...t, esTitular: true });
+    for (const f of familiaresRes.rows) {
+      let esAdulto = true;
+      if (f.fecha_nacimiento) {
+        const fn = new Date(f.fecha_nacimiento);
+        if (!isNaN(fn.getTime())) {
+          let edad = hoy.getFullYear() - fn.getFullYear();
+          const m = hoy.getMonth() - fn.getMonth();
+          if (m < 0 || (m === 0 && hoy.getDate() < fn.getDate())) edad--;
+          esAdulto = edad >= 18;
+        }
+      }
+      if (esAdulto) adultos.push({ dni: f.dni, nombre: f.nombre, apellido: '', relacion: f.relacion });
+    }
+    return adultos;
+  } catch {
+    return [];
+  }
+}
+
 // Calcular % aplicable de un beneficio dado el titular (antiguedad + talento)
 function calcularDescuentoAplicable(beneficio: any, antiguedadMeses: number, esTalento: boolean): number | null {
   // Si tiene escala_descuentos (modelo V2), usar reglas
@@ -133,10 +171,23 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
         const row = familiarResult.rows[0];
         if (!row.activo) return res.status(403).json({ error: 'Titular inactivo. Contactá a RRHH.' });
         if (!row.familiar_activo) return res.status(403).json({ error: 'Vínculo familiar inactivo.' });
+        // V3H: calcular edad y flag menor
+        let edad: number | null = null;
+        let esMenor = false;
+        if (row.fecha_nacimiento) {
+          const fn = new Date(row.fecha_nacimiento);
+          if (!isNaN(fn.getTime())) {
+            const hoy = new Date();
+            edad = hoy.getFullYear() - fn.getFullYear();
+            const m = hoy.getMonth() - fn.getMonth();
+            if (m < 0 || (m === 0 && hoy.getDate() < fn.getDate())) edad--;
+            esMenor = edad < 18;
+          }
+        }
         familiar = {
           id: row.familiar_id, dni: row.familiar_dni, nombre_completo: row.nombre_completo,
           relacion: row.relacion, fecha_nacimiento: row.fecha_nacimiento,
-          foto: row.familiar_foto || null,
+          edad, es_menor: esMenor,
         };
         titular = {
           id: row.id, dni: row.dni, nombre: row.nombre, apellido: row.apellido,
@@ -257,8 +308,11 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
       familiar: esFamiliar ? {
         es_familiar: true,
         relacion: familiar.relacion,
+        edad: familiar.edad,
+        es_menor: familiar.es_menor,
+        fecha_nacimiento: familiar.fecha_nacimiento,
         titular: { dni: titular.dni, nombre: titular.nombre, apellido: titular.apellido },
-        foto: familiar.foto || null,
+        adultos_autorizados: esFamiliar && familiar.es_menor ? await getAdultosAutorizados(titular.id, familiar.dni) : undefined,
       } : null,
       beneficios: beneficiosConDescuento,
       comercio: comercioResult.rows[0],
@@ -405,7 +459,7 @@ router.post('/verificar-pin', async (req: Request, res: Response) => {
 // V3E: si override_limite=true, requiere pin_responsable del comercio
 router.post('/canjear', async (req: Request, res: Response) => {
   try {
-    const { dni, beneficio_id, comercio_id, monto, override_limite, pin_responsable } = req.body;
+    const { dni, beneficio_id, comercio_id, monto, override_limite, pin_responsable, retirado_por_dni } = req.body;
     const montoNum = monto != null ? parseFloat(String(monto)) : null;
 
     // V3E: si quieren override, validar PIN
@@ -477,6 +531,75 @@ router.post('/canjear', async (req: Request, res: Response) => {
           [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.empresa, fechaValida, ben.activo]
         );
         beneficiarioId = insertResult.rows[0].id;
+      }
+    }
+
+    // V3H: ¿El portador es menor de edad? Si es familiar y tiene fecha_nacimiento
+    // calculada con edad <18, requiere retirado_por_dni de un adulto autorizado
+    let retiradoPorInfo: { dni: string; nombre: string; tipo: 'titular' | 'familiar' } | null = null;
+    if (beneficiarioId) {
+      // Buscar si el DNI escaneado es familiar menor
+      const famRes = await query(
+        `SELECT f.fecha_nacimiento, f.nombre_completo, f.dni, f.beneficiario_id
+         FROM familiares f WHERE f.dni=$1 AND f.activo=TRUE LIMIT 1`,
+        [dni]
+      ).catch(() => ({ rows: [] }));
+
+      if (famRes.rows.length > 0 && famRes.rows[0].fecha_nacimiento) {
+        const fn = new Date(famRes.rows[0].fecha_nacimiento);
+        if (!isNaN(fn.getTime())) {
+          const hoy = new Date();
+          let edad = hoy.getFullYear() - fn.getFullYear();
+          const m = hoy.getMonth() - fn.getMonth();
+          if (m < 0 || (m === 0 && hoy.getDate() < fn.getDate())) edad--;
+
+          if (edad < 18) {
+            // Es menor → REQUIERE retirado_por
+            if (!retirado_por_dni) {
+              return res.status(400).json({
+                error: `Es menor de edad (${edad} años). Se requiere el DNI del adulto autorizado que retira el beneficio.`,
+                requiere_retirado_por: true,
+              });
+            }
+
+            // Validar retirado_por: debe ser titular o familiar adulto activo del mismo titular
+            const titularId = famRes.rows[0].beneficiario_id;
+            const adultoTitular = await query(`SELECT dni, nombre, apellido FROM beneficiarios WHERE id=$1 AND dni=$2 AND activo=TRUE`,
+              [titularId, retirado_por_dni]);
+            if (adultoTitular.rows.length > 0) {
+              const t = adultoTitular.rows[0];
+              retiradoPorInfo = { dni: t.dni, nombre: `${t.nombre} ${t.apellido}`, tipo: 'titular' };
+            } else {
+              const adultoFam = await query(
+                `SELECT dni, nombre_completo, fecha_nacimiento
+                 FROM familiares WHERE beneficiario_id=$1 AND dni=$2 AND activo=TRUE`,
+                [titularId, retirado_por_dni]
+              ).catch(() => ({ rows: [] }));
+              if (adultoFam.rows.length === 0) {
+                return res.status(403).json({
+                  error: `El DNI ${retirado_por_dni} no figura como familiar registrado del titular. No puede retirar este beneficio.`,
+                });
+              }
+              // Validar edad >= 18
+              let esAdultoOk = true;
+              if (adultoFam.rows[0].fecha_nacimiento) {
+                const fa = new Date(adultoFam.rows[0].fecha_nacimiento);
+                if (!isNaN(fa.getTime())) {
+                  let ea = hoy.getFullYear() - fa.getFullYear();
+                  const ma = hoy.getMonth() - fa.getMonth();
+                  if (ma < 0 || (ma === 0 && hoy.getDate() < fa.getDate())) ea--;
+                  esAdultoOk = ea >= 18;
+                }
+              }
+              if (!esAdultoOk) {
+                return res.status(403).json({
+                  error: `El DNI ${retirado_por_dni} también es menor de edad. Debe ser un adulto.`,
+                });
+              }
+              retiradoPorInfo = { dni: adultoFam.rows[0].dni, nombre: adultoFam.rows[0].nombre_completo, tipo: 'familiar' };
+            }
+          }
+        }
       }
     }
 
@@ -584,13 +707,28 @@ router.post('/canjear', async (req: Request, res: Response) => {
       `INSERT INTO verificaciones (
         beneficiario_id, beneficiario_dni, beneficio_id, comercio_id,
         estado, monto_original, monto_descuento, monto_final,
-        codigo_referencia, monto, categoria_beneficio, usa_limite_jerarquia
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        codigo_referencia, monto, categoria_beneficio, usa_limite_jerarquia,
+        retirado_por_dni, retirado_por_nombre
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING id, estado, codigo_referencia, fecha_verificacion, monto`,
       [beneficiarioId, dni, beneficio_id, comercio_id, 'exitoso',
        montoNum || 0, 0, montoNum || 0, codigo,
-       montoNum || null, beneficio.categoria || null, !!beneficio.usa_limite_jerarquia]
-    );
+       montoNum || null, beneficio.categoria || null, !!beneficio.usa_limite_jerarquia,
+       retiradoPorInfo?.dni || null, retiradoPorInfo?.nombre || null]
+    ).catch(async () => {
+      // Fallback si la columna retirado_por_* no existe aún
+      return await query(
+        `INSERT INTO verificaciones (
+          beneficiario_id, beneficiario_dni, beneficio_id, comercio_id,
+          estado, monto_original, monto_descuento, monto_final,
+          codigo_referencia, monto, categoria_beneficio, usa_limite_jerarquia
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING id, estado, codigo_referencia, fecha_verificacion, monto`,
+        [beneficiarioId, dni, beneficio_id, comercio_id, 'exitoso',
+         montoNum || 0, 0, montoNum || 0, codigo,
+         montoNum || null, beneficio.categoria || null, !!beneficio.usa_limite_jerarquia]
+      );
+    });
 
     await query('UPDATE beneficios SET uso_actual = uso_actual + 1 WHERE id = $1', [beneficio_id]);
 
