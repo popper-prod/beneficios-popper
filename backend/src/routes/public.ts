@@ -30,6 +30,32 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
   }
 });
 
+// Calcular % aplicable de un beneficio dado el titular (antiguedad + talento)
+function calcularDescuentoAplicable(beneficio: any, antiguedadMeses: number, esTalento: boolean): number | null {
+  // Si tiene escala_descuentos (modelo V2), usar reglas
+  if (beneficio.escala_descuentos) {
+    const escala = typeof beneficio.escala_descuentos === 'string'
+      ? JSON.parse(beneficio.escala_descuentos)
+      : beneficio.escala_descuentos;
+
+    // Talento override: aplica el % máximo desde el día 1
+    if (esTalento && escala.talento_porcentaje != null) {
+      return escala.talento_porcentaje;
+    }
+
+    // Buscar tier que aplique (el de antiguedad_min_meses más alto que cumpla)
+    if (Array.isArray(escala.tiers)) {
+      const aplicables = escala.tiers
+        .filter((t: any) => antiguedadMeses >= (t.antiguedad_min_meses || 0))
+        .sort((a: any, b: any) => (b.antiguedad_min_meses || 0) - (a.antiguedad_min_meses || 0));
+      if (aplicables.length > 0) return aplicables[0].porcentaje;
+    }
+  }
+
+  // Fallback: descuento simple del modelo viejo
+  return beneficio.descuento != null ? Number(beneficio.descuento) : null;
+}
+
 // GET /api/public/beneficiario/:comercioId/:dni - Datos del colaborador + beneficios disponibles
 router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response) => {
   try {
@@ -40,7 +66,7 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
       return res.status(400).json({ error: 'DNI invalido' });
     }
 
-    // Verificar que el comercio existe
+    // Verificar comercio
     const comercioResult = await query(
       'SELECT id, nombre FROM comercios WHERE id = $1 AND activo = TRUE',
       [comercioId]
@@ -49,86 +75,137 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
       return res.status(404).json({ error: 'Comercio no encontrado' });
     }
 
-    // Buscar en Naaloo primero
-    const empleadoNaaloo = await buscarEmpleadoPorDni(dni as string);
-
-    if (empleadoNaaloo) {
-      const beneficiario = naalooToBeneficiario(empleadoNaaloo);
-
-      // Obtener beneficios disponibles para este comercio y nivel
-      const nivelOrder: Record<string, number> = { bronce: 1, plata: 2, oro: 3, platinum: 4 };
-      const beneficiosResult = await query(
-        `SELECT b.id, b.nombre, b.descripcion, b.tipo, b.descuento, b.valor_fijo, b.horario_inicio, b.horario_fin, b.nivel_minimo
-         FROM beneficios b
-         INNER JOIN comercio_beneficios cb ON cb.beneficio_id = b.id
-         WHERE cb.comercio_id = $1 AND b.activo = TRUE`,
-        [comercioId]
-      );
-
-      const beneficiosFiltrados = beneficiosResult.rows.filter(
-        (b: any) => (nivelOrder[b.nivel_minimo] || 0) <= (nivelOrder[beneficiario.nivel] || 0)
-      );
-
-      return res.json({
-        beneficiario: {
-          dni: beneficiario.dni,
-          nombre: beneficiario.nombre,
-          apellido: beneficiario.apellido,
-          foto: beneficiario.foto,
-          nivel: beneficiario.nivel,
-          departamento: beneficiario.departamento,
-          cargo: beneficiario.cargo,
-          legajo: beneficiario.legajo,
-          empresa: beneficiario.empresa,
-        },
-        beneficios: beneficiosFiltrados,
-        comercio: comercioResult.rows[0],
-        fuente: 'naaloo',
-      });
-    }
-
-    // Fallback: buscar en BD local
-    const localResult = await query(
-      'SELECT id, dni, nombre, apellido, nivel, departamento, legajo, activo FROM beneficiarios WHERE dni = $1',
+    // 1) ¿Es titular (beneficiario directo)?
+    const titularResult = await query(
+      `SELECT id, dni, nombre, apellido, nivel, departamento, sector, fecha_ingreso,
+              activo, es_talento_popper
+       FROM beneficiarios WHERE dni = $1`,
       [dni]
     );
 
-    if (localResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Colaborador no encontrado. Verifica tu DNI.' });
+    let titular: any = null;
+    let familiar: any = null;
+    let esFamiliar = false;
+
+    if (titularResult.rows.length > 0) {
+      titular = titularResult.rows[0];
+      if (!titular.activo) {
+        return res.status(403).json({ error: 'Colaborador inactivo' });
+      }
+    } else {
+      // 2) ¿Es familiar? Buscar en tabla familiares
+      const familiarResult = await query(
+        `SELECT f.id as familiar_id, f.dni as familiar_dni, f.nombre_completo, f.relacion,
+                f.fecha_nacimiento, f.activo as familiar_activo,
+                b.id, b.dni, b.nombre, b.apellido, b.nivel, b.departamento, b.sector,
+                b.fecha_ingreso, b.activo, b.es_talento_popper
+         FROM familiares f
+         JOIN beneficiarios b ON b.id = f.beneficiario_id
+         WHERE f.dni = $1 LIMIT 1`,
+        [dni]
+      ).catch(() => ({ rows: [] }));
+
+      if (familiarResult.rows.length === 0) {
+        // 3) Fallback Naaloo (busqueda directa por DNI)
+        const empleadoNaaloo = await buscarEmpleadoPorDni(dni);
+        if (empleadoNaaloo) {
+          const conv = naalooToBeneficiario(empleadoNaaloo);
+          titular = { ...conv, es_talento_popper: false, fecha_ingreso: conv.fecha_ingreso };
+        } else {
+          return res.status(404).json({ error: 'Colaborador no encontrado. Verificá tu DNI.' });
+        }
+      } else {
+        const row = familiarResult.rows[0];
+        if (!row.activo) return res.status(403).json({ error: 'Titular inactivo. Contactá a RRHH.' });
+        if (!row.familiar_activo) return res.status(403).json({ error: 'Vínculo familiar inactivo.' });
+        familiar = {
+          id: row.familiar_id, dni: row.familiar_dni, nombre_completo: row.nombre_completo,
+          relacion: row.relacion, fecha_nacimiento: row.fecha_nacimiento,
+        };
+        titular = {
+          id: row.id, dni: row.dni, nombre: row.nombre, apellido: row.apellido,
+          nivel: row.nivel, departamento: row.departamento, sector: row.sector,
+          fecha_ingreso: row.fecha_ingreso, activo: row.activo,
+          es_talento_popper: row.es_talento_popper,
+        };
+        esFamiliar = true;
+      }
     }
 
-    const beneficiario = localResult.rows[0];
-    if (!beneficiario.activo) {
-      return res.status(403).json({ error: 'Colaborador inactivo' });
-    }
+    // Calcular antiguedad en meses
+    const antiguedadMeses = titular.fecha_ingreso
+      ? Math.floor((Date.now() - new Date(titular.fecha_ingreso).getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+      : 0;
+    const esTalento = !!titular.es_talento_popper;
 
-    const nivelOrder: Record<string, number> = { bronce: 1, plata: 2, oro: 3, platinum: 4 };
+    // Beneficios del comercio (con campos V2)
     const beneficiosResult = await query(
-      `SELECT b.id, b.nombre, b.descripcion, b.tipo, b.descuento, b.valor_fijo, b.horario_inicio, b.horario_fin, b.nivel_minimo
+      `SELECT b.id, b.nombre, b.descripcion, b.tipo, b.descuento, b.valor_fijo,
+              b.horario_inicio, b.horario_fin, b.nivel_minimo,
+              b.origen, b.categoria, b.aplica_a, b.modalidad, b.escala_descuentos,
+              b.restricciones, b.excluye_outlet, b.relaciones_familiar, b.usa_limite_jerarquia
        FROM beneficios b
        INNER JOIN comercio_beneficios cb ON cb.beneficio_id = b.id
        WHERE cb.comercio_id = $1 AND b.activo = TRUE`,
       [comercioId]
     );
 
-    const beneficiosFiltrados = beneficiosResult.rows.filter(
-      (b: any) => (nivelOrder[b.nivel_minimo] || 0) <= (nivelOrder[beneficiario.nivel] || 0)
-    );
+    // Filtrado por aplica_a + relación familiar
+    const beneficiosFiltrados = beneficiosResult.rows.filter((b: any) => {
+      // Si es familiar, beneficio debe permitirlo
+      if (esFamiliar) {
+        if (b.aplica_a && b.aplica_a === 'empleado') return false;
+        // Validar relación si está definida
+        if (b.relaciones_familiar) {
+          const relacionesPermitidas = b.relaciones_familiar.split(',').map((r: string) => r.trim());
+          if (!relacionesPermitidas.includes(familiar.relacion)) return false;
+        }
+      } else {
+        // Es titular: el beneficio debe permitir empleado o ambos (o no especificar)
+        if (b.aplica_a && b.aplica_a === 'familiar') return false;
+      }
+      return true;
+    });
+
+    // Anotar cada beneficio con el % aplicable calculado
+    const beneficiosConDescuento = beneficiosFiltrados.map((b: any) => {
+      const descuentoCalculado = calcularDescuentoAplicable(b, antiguedadMeses, esTalento);
+      return {
+        ...b,
+        descuento: descuentoCalculado != null ? descuentoCalculado : b.descuento,
+        descuento_calculado: descuentoCalculado,
+      };
+    });
+
+    // Foto del titular si vino de Naaloo
+    let foto: string | null = null;
+    try {
+      const empleadoNaaloo = await buscarEmpleadoPorDni(titular.dni);
+      if (empleadoNaaloo?.image) foto = empleadoNaaloo.image;
+    } catch { /* silencioso */ }
 
     res.json({
       beneficiario: {
-        dni: beneficiario.dni,
-        nombre: beneficiario.nombre,
-        apellido: beneficiario.apellido,
-        foto: null,
-        nivel: beneficiario.nivel,
-        departamento: beneficiario.departamento,
-        legajo: beneficiario.legajo,
+        dni: esFamiliar ? familiar.dni : titular.dni,
+        nombre: esFamiliar ? familiar.nombre_completo.split(' ')[0] : titular.nombre,
+        apellido: esFamiliar ? familiar.nombre_completo.split(' ').slice(1).join(' ') : titular.apellido,
+        foto,
+        nivel: titular.nivel,
+        departamento: titular.departamento,
+        sector: titular.sector,
+        legajo: null,
         empresa: 'Grupo Popper',
+        es_talento_popper: esTalento,
+        antiguedad_meses: antiguedadMeses,
       },
-      beneficios: beneficiosFiltrados,
+      familiar: esFamiliar ? {
+        es_familiar: true,
+        relacion: familiar.relacion,
+        titular: { dni: titular.dni, nombre: titular.nombre, apellido: titular.apellido },
+      } : null,
+      beneficios: beneficiosConDescuento,
       comercio: comercioResult.rows[0],
-      fuente: 'local',
+      fuente: esFamiliar ? 'familiar' : (titularResult.rows.length > 0 ? 'local' : 'naaloo'),
     });
   } catch (error: any) {
     console.error('Error buscando beneficiario:', error?.message || error);

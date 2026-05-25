@@ -203,7 +203,17 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const openCreate = (type: 'beneficio' | 'comercio' | 'beneficiario') => {
     setMsg('');
     if (type === 'beneficio') {
-      setForm({ nombre: '', descripcion: '', tipo: 'descuento', nivel_minimo: 'bronce', descuento: '', valor_fijo: '', fecha_inicio: '2024-01-01', fecha_fin: '2027-12-31', horario_inicio: '08:00', horario_fin: '22:00', limite_uso_diario: '', limite_uso_mensual: '' });
+      setForm({
+        nombre: '', descripcion: '', tipo: 'descuento', nivel_minimo: 'bronce',
+        descuento: '', valor_fijo: '',
+        fecha_inicio: '2026-01-01', fecha_fin: '2027-12-31',
+        horario_inicio: '08:00', horario_fin: '22:00',
+        limite_uso_diario: '', limite_uso_mensual: '',
+        // V2
+        origen: 'externo', categoria: '', aplica_a: 'empleado', modalidad: 'descuento',
+        escala_descuentos: '', restricciones: '', excluye_outlet: '',
+        relaciones_familiar: '', usa_limite_jerarquia: '',
+      });
     } else if (type === 'comercio') {
       setForm({ nombre: '', direccion: '', ciudad: 'Ushuaia', provincia: 'Tierra del Fuego', telefono: '', email: '', horario_apertura: '09:00', horario_cierre: '20:00', responsable: '', logo: '' });
     } else {
@@ -222,6 +232,16 @@ export default function AdminDashboard({ token, user, onLogout }: {
         horario_inicio: item.horario_inicio || '', horario_fin: item.horario_fin || '',
         limite_uso_diario: item.limite_uso_diario?.toString() || '', limite_uso_mensual: item.limite_uso_mensual?.toString() || '',
         activo: item.activo ? 'true' : 'false',
+        // V2
+        origen: item.origen || 'externo',
+        categoria: item.categoria || '',
+        aplica_a: item.aplica_a || 'empleado',
+        modalidad: item.modalidad || 'descuento',
+        escala_descuentos: item.escala_descuentos ? (typeof item.escala_descuentos === 'string' ? item.escala_descuentos : JSON.stringify(item.escala_descuentos)) : '',
+        restricciones: item.restricciones || '',
+        excluye_outlet: item.excluye_outlet ? 'true' : '',
+        relaciones_familiar: item.relaciones_familiar || '',
+        usa_limite_jerarquia: item.usa_limite_jerarquia ? 'true' : '',
       });
     } else if (type === 'comercio') {
       setForm({
@@ -255,6 +275,15 @@ export default function AdminDashboard({ token, user, onLogout }: {
       if (body.limite_uso_diario) body.limite_uso_diario = parseInt(body.limite_uso_diario);
       if (body.limite_uso_mensual) body.limite_uso_mensual = parseInt(body.limite_uso_mensual);
       if (body.activo !== undefined) body.activo = body.activo === 'true';
+      // V2 — escala_descuentos viene como JSON string del editor
+      if (body.escala_descuentos && typeof body.escala_descuentos === 'string') {
+        try { body.escala_descuentos = JSON.parse(body.escala_descuentos); } catch { body.escala_descuentos = null; }
+      }
+      // V2 — booleanos del checkbox vienen como string 'true' / ''
+      body.excluye_outlet = body.excluye_outlet === 'true';
+      body.usa_limite_jerarquia = body.usa_limite_jerarquia === 'true';
+      // legacy: tipo = modalidad si no se setea
+      if (!body.tipo) body.tipo = body.modalidad || 'descuento';
 
       const res = await fetch(url, { method, headers, body: JSON.stringify(body) });
       const data = await res.json();
@@ -1388,18 +1417,71 @@ export default function AdminDashboard({ token, user, onLogout }: {
 
       {/* ============ MODALES ============ */}
 
-      {/* Modal Beneficio */}
+      {/* Modal Beneficio (V2 extendido) */}
       <Modal open={modal?.type === 'beneficio'} onClose={() => setModal(null)} title={modal?.mode === 'create' ? 'Nuevo beneficio' : 'Editar beneficio'}>
+        {/* === Identidad === */}
+        <SectionDivider label="Información básica" />
         <Field label="Nombre" value={form.nombre || ''} onChange={v => setForm({ ...form, nombre: v })} required />
         <Field label="Descripción" value={form.descripcion || ''} onChange={v => setForm({ ...form, descripcion: v })} />
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Tipo" value={form.tipo || 'descuento'} onChange={v => setForm({ ...form, tipo: v })}
-            options={[{ value: 'descuento', label: 'Descuento' }, { value: 'acceso', label: 'Acceso' }, { value: 'promocion', label: 'Promoción' }, { value: 'regalo', label: 'Regalo' }]} />
-          <Field label="Nivel mínimo" value={form.nivel_minimo || 'bronce'} onChange={v => setForm({ ...form, nivel_minimo: v })} options={nivelOptions} />
+          <Field label="Origen" value={form.origen || 'externo'} onChange={v => setForm({ ...form, origen: v })}
+            options={[
+              { value: 'externo', label: 'Externo (comercio adherido)' },
+              { value: 'interno', label: 'Interno (Grupo Popper)' },
+            ]} />
+          <Field label="Categoría" value={form.categoria || ''} onChange={v => setForm({ ...form, categoria: v })}
+            options={[
+              { value: '', label: '— sin categoría —' },
+              { value: 'skipass', label: 'Skipass' },
+              { value: 'gastronomia', label: 'Gastronomía' },
+              { value: 'indumentaria', label: 'Indumentaria' },
+              { value: 'calzado', label: 'Calzado' },
+              { value: 'accesorios', label: 'Accesorios' },
+              { value: 'equipos_nieve', label: 'Equipos de nieve' },
+              { value: 'farmacia', label: 'Farmacia' },
+              { value: 'gym', label: 'Gimnasio' },
+              { value: 'otros', label: 'Otros' },
+            ]} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Descuento %" value={form.descuento || ''} onChange={v => setForm({ ...form, descuento: v })} type="number" placeholder="15" />
-          <Field label="Valor fijo $" value={form.valor_fijo || ''} onChange={v => setForm({ ...form, valor_fijo: v })} type="number" />
+          <Field label="Aplica a" value={form.aplica_a || 'empleado'} onChange={v => setForm({ ...form, aplica_a: v })}
+            options={[
+              { value: 'empleado', label: 'Solo empleado' },
+              { value: 'familiar', label: 'Solo familiares' },
+              { value: 'ambos', label: 'Empleado y familiares' },
+            ]} />
+          <Field label="Modalidad" value={form.modalidad || 'descuento'} onChange={v => setForm({ ...form, modalidad: v })}
+            options={[
+              { value: 'descuento', label: 'Descuento %' },
+              { value: 'valor_fijo', label: 'Valor fijo $' },
+              { value: 'puntos', label: 'Puntos' },
+              { value: 'acceso', label: 'Acceso (skipass)' },
+            ]} />
+        </div>
+        {(form.aplica_a === 'familiar' || form.aplica_a === 'ambos') && (
+          <RelacionesFamiliarPicker
+            value={form.relaciones_familiar || ''}
+            onChange={v => setForm({ ...form, relaciones_familiar: v })}
+          />
+        )}
+
+        {/* === Valor === */}
+        <SectionDivider label="Valor del beneficio" />
+        <EscalaEditor
+          value={form.escala_descuentos || ''}
+          onChange={v => setForm({ ...form, escala_descuentos: v })}
+          fallbackDescuento={form.descuento || ''}
+          onFallbackChange={v => setForm({ ...form, descuento: v })}
+        />
+        <Field label="Valor fijo $ (alternativo)" value={form.valor_fijo || ''} onChange={v => setForm({ ...form, valor_fijo: v })} type="number" placeholder="Solo si modalidad = valor fijo" />
+
+        {/* === Restricciones === */}
+        <SectionDivider label="Restricciones y vigencia" />
+        <Field label="Restricciones (texto libre)" value={form.restricciones || ''} onChange={v => setForm({ ...form, restricciones: v })}
+          placeholder="Ej: No aplica a NIKE, POC, outlet ni promociones combinadas" />
+        <div className="grid grid-cols-2 gap-3">
+          <CheckboxField label="Excluye outlet" checked={form.excluye_outlet === 'true'} onChange={v => setForm({ ...form, excluye_outlet: v ? 'true' : '' })} />
+          <CheckboxField label="Usa límite mensual de Jerarquía" checked={form.usa_limite_jerarquia === 'true'} onChange={v => setForm({ ...form, usa_limite_jerarquia: v ? 'true' : '' })} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Desde" value={form.fecha_inicio || ''} onChange={v => setForm({ ...form, fecha_inicio: v })} type="date" required />
@@ -1410,9 +1492,13 @@ export default function AdminDashboard({ token, user, onLogout }: {
           <Field label="Horario cierre" value={form.horario_fin || ''} onChange={v => setForm({ ...form, horario_fin: v })} type="time" />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Límite diario" value={form.limite_uso_diario || ''} onChange={v => setForm({ ...form, limite_uso_diario: v })} type="number" />
-          <Field label="Límite mensual" value={form.limite_uso_mensual || ''} onChange={v => setForm({ ...form, limite_uso_mensual: v })} type="number" />
+          <Field label="Límite usos diario" value={form.limite_uso_diario || ''} onChange={v => setForm({ ...form, limite_uso_diario: v })} type="number" />
+          <Field label="Límite usos mensual" value={form.limite_uso_mensual || ''} onChange={v => setForm({ ...form, limite_uso_mensual: v })} type="number" />
         </div>
+
+        {/* === Compat: tipo legacy === */}
+        <input type="hidden" value={form.tipo || form.modalidad || 'descuento'} onChange={() => {}} />
+
         {modal?.mode === 'edit' && (
           <Field label="Estado" value={form.activo || 'true'} onChange={v => setForm({ ...form, activo: v })}
             options={[{ value: 'true', label: 'Activo' }, { value: 'false', label: 'Inactivo' }]} />
@@ -1517,6 +1603,181 @@ export default function AdminDashboard({ token, user, onLogout }: {
       {/* Selección all hidden helper */}
       <span style={{ display: 'none' }} aria-hidden="true">{selectAll.toString().length}</span>
     </AppShell>
+  );
+}
+
+// ============================================
+// V2 — Form helpers: SectionDivider, CheckboxField, RelacionesFamiliarPicker, EscalaEditor
+// ============================================
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 12px', paddingBottom: 6, borderBottom: '1px solid var(--border-subtle)' }}>
+      <span style={{ fontSize: '10.5px', color: 'var(--text-3)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label style={{
+      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+      background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: '6px',
+      cursor: 'pointer', fontSize: '12.5px', color: 'var(--text-1)',
+    }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        style={{ accentColor: 'var(--brand)', cursor: 'pointer' }}
+      />
+      {label}
+    </label>
+  );
+}
+
+function RelacionesFamiliarPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const relaciones = [
+    { key: 'Parents', label: 'Madre/Padre' },
+    { key: 'Spouse', label: 'Cónyuge' },
+    { key: 'CivilUnion', label: 'Concubino/a' },
+    { key: 'Child', label: 'Hijos' },
+    { key: 'Sibling', label: 'Hermanos' },
+  ];
+  const selected = new Set((value || '').split(',').map(s => s.trim()).filter(Boolean));
+  const toggle = (key: string) => {
+    const next = new Set(selected);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    onChange(Array.from(next).join(','));
+  };
+  return (
+    <div style={{ marginTop: 8, marginBottom: 12 }}>
+      <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-2)', marginBottom: 6, fontWeight: 500 }}>
+        Relaciones familiares aceptadas
+      </label>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {relaciones.map(r => (
+          <button
+            key={r.key}
+            type="button"
+            onClick={() => toggle(r.key)}
+            style={{
+              padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 500,
+              background: selected.has(r.key) ? 'var(--brand-muted)' : 'var(--bg-elevated)',
+              border: `1px solid ${selected.has(r.key) ? 'var(--brand-border)' : 'var(--border-default)'}`,
+              color: selected.has(r.key) ? 'var(--brand)' : 'var(--text-2)',
+              cursor: 'pointer',
+            }}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+      <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 6 }}>
+        Si no seleccionás ninguna, el beneficio aplica a cualquier familiar vinculado.
+      </p>
+    </div>
+  );
+}
+
+function EscalaEditor({
+  value, onChange, fallbackDescuento, onFallbackChange,
+}: {
+  value: string; onChange: (v: string) => void;
+  fallbackDescuento: string; onFallbackChange: (v: string) => void;
+}) {
+  // Parseamos value como JSON. Si está vacío, mostramos solo el descuento simple.
+  let parsed: any = null;
+  try { if (value) parsed = typeof value === 'string' ? JSON.parse(value) : value; } catch { parsed = null; }
+
+  const [usaEscala, setUsaEscala] = useState(!!parsed);
+  const [tiers, setTiers] = useState<{ meses: string; pct: string }[]>(
+    parsed?.tiers?.length ? parsed.tiers.map((t: any) => ({ meses: String(t.antiguedad_min_meses || 0), pct: String(t.porcentaje || 0) })) : [
+      { meses: '0', pct: '20' }, { meses: '12', pct: '30' },
+    ]
+  );
+  const [talentoPct, setTalentoPct] = useState(parsed?.talento_porcentaje != null ? String(parsed.talento_porcentaje) : '30');
+
+  const sync = (newTiers: typeof tiers, newTalento: string, enabled: boolean) => {
+    if (!enabled) {
+      onChange('');
+      return;
+    }
+    const payload = {
+      tiers: newTiers.map(t => ({ antiguedad_min_meses: parseInt(t.meses || '0', 10), porcentaje: parseFloat(t.pct || '0') })),
+      talento_porcentaje: parseFloat(newTalento || '0'),
+    };
+    onChange(JSON.stringify(payload));
+  };
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <CheckboxField
+        label="Usar escala por antigüedad (cambia % según meses en la empresa)"
+        checked={usaEscala}
+        onChange={(v) => { setUsaEscala(v); sync(tiers, talentoPct, v); if (v) onFallbackChange(''); }}
+      />
+      {!usaEscala && (
+        <div style={{ marginTop: 8 }}>
+          <Field label="Descuento simple %" value={fallbackDescuento || ''} onChange={onFallbackChange} type="number" placeholder="15" />
+        </div>
+      )}
+      {usaEscala && (
+        <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}>
+          <p style={{ fontSize: '11px', color: 'var(--text-3)', marginBottom: 8 }}>
+            Definí los tiers en orden creciente de antigüedad. Ej: 0 meses = 20%, 12 meses = 30%.
+          </p>
+          {tiers.map((t, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+              <input
+                type="number"
+                placeholder="meses"
+                value={t.meses}
+                onChange={(e) => {
+                  const nt = [...tiers]; nt[i] = { ...nt[i], meses: e.target.value };
+                  setTiers(nt); sync(nt, talentoPct, usaEscala);
+                }}
+                style={{ width: 80, height: 32, padding: '0 10px', background: 'var(--bg-canvas)', border: '1px solid var(--border-default)', borderRadius: '6px', color: 'var(--text-1)', fontSize: '12.5px', outline: 'none' }}
+              />
+              <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>meses →</span>
+              <input
+                type="number"
+                placeholder="%"
+                value={t.pct}
+                onChange={(e) => {
+                  const nt = [...tiers]; nt[i] = { ...nt[i], pct: e.target.value };
+                  setTiers(nt); sync(nt, talentoPct, usaEscala);
+                }}
+                style={{ width: 70, height: 32, padding: '0 10px', background: 'var(--bg-canvas)', border: '1px solid var(--border-default)', borderRadius: '6px', color: 'var(--text-1)', fontSize: '12.5px', outline: 'none' }}
+              />
+              <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>%</span>
+              {tiers.length > 1 && (
+                <button type="button" onClick={() => { const nt = tiers.filter((_, j) => j !== i); setTiers(nt); sync(nt, talentoPct, usaEscala); }}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--danger-text)', cursor: 'pointer', fontSize: '14px' }}>×</button>
+              )}
+            </div>
+          ))}
+          <button type="button" onClick={() => { const nt = [...tiers, { meses: '0', pct: '0' }]; setTiers(nt); sync(nt, talentoPct, usaEscala); }}
+            style={{ marginTop: 4, padding: '6px 10px', background: 'var(--bg-canvas)', border: '1px dashed var(--border-default)', borderRadius: '6px', color: 'var(--text-2)', fontSize: '11.5px', cursor: 'pointer' }}>
+            + Agregar tier
+          </button>
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
+            <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-3)', marginBottom: 4 }}>
+              Override Talento Popper (% desde el día 1)
+            </label>
+            <input
+              type="number"
+              value={talentoPct}
+              onChange={(e) => { setTalentoPct(e.target.value); sync(tiers, e.target.value, usaEscala); }}
+              style={{ width: 100, height: 32, padding: '0 10px', background: 'var(--bg-canvas)', border: '1px solid var(--border-default)', borderRadius: '6px', color: 'var(--text-1)', fontSize: '12.5px', outline: 'none' }}
+              placeholder="30"
+            />
+            <span style={{ fontSize: '12px', color: 'var(--text-3)', marginLeft: 6 }}>%</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

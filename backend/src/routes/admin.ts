@@ -170,39 +170,92 @@ router.get('/beneficiarios', async (req: AuthRequest, res: Response) => {
 // ============================================
 
 // POST /api/admin/beneficios - Crear beneficio
+// Asegurar columnas v2 del modelo extendido (idempotente)
+let beneficiosV2Ensured = false;
+async function ensureBeneficiosV2() {
+  if (beneficiosV2Ensured) return;
+  try {
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS origen VARCHAR(20) DEFAULT 'externo'`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS categoria VARCHAR(50)`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS aplica_a VARCHAR(20) DEFAULT 'empleado'`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS modalidad VARCHAR(20) DEFAULT 'descuento'`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS escala_descuentos JSONB`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS restricciones TEXT`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS excluye_outlet BOOLEAN DEFAULT FALSE`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS relaciones_familiar VARCHAR(100)`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS usa_limite_jerarquia BOOLEAN DEFAULT FALSE`);
+    beneficiosV2Ensured = true;
+  } catch { /* silencioso */ }
+}
+
 router.post('/beneficios', async (req: AuthRequest, res: Response) => {
   try {
-    const { nombre, descripcion, tipo, nivel_minimo, descuento, valor_fijo, fecha_inicio, fecha_fin, horario_inicio, horario_fin, limite_uso_diario, limite_uso_mensual } = req.body;
-    if (!nombre || !tipo || !nivel_minimo || !fecha_inicio || !fecha_fin) {
+    await ensureBeneficiosV2();
+    const {
+      nombre, descripcion, tipo, nivel_minimo, descuento, valor_fijo, fecha_inicio, fecha_fin,
+      horario_inicio, horario_fin, limite_uso_diario, limite_uso_mensual,
+      // V2 fields
+      origen, categoria, aplica_a, modalidad, escala_descuentos,
+      restricciones, excluye_outlet, relaciones_familiar, usa_limite_jerarquia,
+    } = req.body;
+    if (!nombre || !tipo || !fecha_inicio || !fecha_fin) {
       return res.status(400).json({ error: 'Faltan campos requeridos' });
     }
     const result = await query(
-      `INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, descuento, valor_fijo, fecha_inicio, fecha_fin, horario_inicio, horario_fin, limite_uso_diario, limite_uso_mensual, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE) RETURNING *`,
-      [nombre, descripcion || null, tipo, nivel_minimo, descuento || null, valor_fijo || null, fecha_inicio, fecha_fin, horario_inicio || null, horario_fin || null, limite_uso_diario || null, limite_uso_mensual || null]
+      `INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, descuento, valor_fijo,
+                              fecha_inicio, fecha_fin, horario_inicio, horario_fin,
+                              limite_uso_diario, limite_uso_mensual, activo,
+                              origen, categoria, aplica_a, modalidad, escala_descuentos,
+                              restricciones, excluye_outlet, relaciones_familiar, usa_limite_jerarquia)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE,
+               $13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+      [nombre, descripcion || null, tipo, nivel_minimo || 'bronce', descuento || null, valor_fijo || null,
+       fecha_inicio, fecha_fin, horario_inicio || null, horario_fin || null,
+       limite_uso_diario || null, limite_uso_mensual || null,
+       origen || 'externo', categoria || null, aplica_a || 'empleado', modalidad || 'descuento',
+       escala_descuentos ? JSON.stringify(escala_descuentos) : null,
+       restricciones || null, !!excluye_outlet,
+       relaciones_familiar || null, !!usa_limite_jerarquia]
     );
     res.json({ beneficio: result.rows[0] });
   } catch (error: any) {
     console.error('Error creando beneficio:', error.message);
-    res.status(500).json({ error: 'Error creando beneficio' });
+    res.status(500).json({ error: 'Error creando beneficio', detalle: error.message });
   }
 });
 
 // PUT /api/admin/beneficios/:id - Editar beneficio
 router.put('/beneficios/:id', async (req: AuthRequest, res: Response) => {
   try {
+    await ensureBeneficiosV2();
     const { id } = req.params;
-    const { nombre, descripcion, tipo, nivel_minimo, descuento, valor_fijo, fecha_inicio, fecha_fin, horario_inicio, horario_fin, limite_uso_diario, limite_uso_mensual, activo } = req.body;
+    const {
+      nombre, descripcion, tipo, nivel_minimo, descuento, valor_fijo, fecha_inicio, fecha_fin,
+      horario_inicio, horario_fin, limite_uso_diario, limite_uso_mensual, activo,
+      origen, categoria, aplica_a, modalidad, escala_descuentos,
+      restricciones, excluye_outlet, relaciones_familiar, usa_limite_jerarquia,
+    } = req.body;
     const result = await query(
-      `UPDATE beneficios SET nombre=$1, descripcion=$2, tipo=$3, nivel_minimo=$4, descuento=$5, valor_fijo=$6, fecha_inicio=$7, fecha_fin=$8, horario_inicio=$9, horario_fin=$10, limite_uso_diario=$11, limite_uso_mensual=$12, activo=$13, updated_at=NOW()
-       WHERE id=$14 RETURNING *`,
-      [nombre, descripcion || null, tipo, nivel_minimo, descuento || null, valor_fijo || null, fecha_inicio, fecha_fin, horario_inicio || null, horario_fin || null, limite_uso_diario || null, limite_uso_mensual || null, activo, id]
+      `UPDATE beneficios SET nombre=$1, descripcion=$2, tipo=$3, nivel_minimo=$4, descuento=$5,
+        valor_fijo=$6, fecha_inicio=$7, fecha_fin=$8, horario_inicio=$9, horario_fin=$10,
+        limite_uso_diario=$11, limite_uso_mensual=$12, activo=$13,
+        origen=$14, categoria=$15, aplica_a=$16, modalidad=$17, escala_descuentos=$18,
+        restricciones=$19, excluye_outlet=$20, relaciones_familiar=$21, usa_limite_jerarquia=$22,
+        updated_at=NOW()
+       WHERE id=$23 RETURNING *`,
+      [nombre, descripcion || null, tipo, nivel_minimo || 'bronce', descuento || null, valor_fijo || null,
+       fecha_inicio, fecha_fin, horario_inicio || null, horario_fin || null,
+       limite_uso_diario || null, limite_uso_mensual || null, activo !== false,
+       origen || 'externo', categoria || null, aplica_a || 'empleado', modalidad || 'descuento',
+       escala_descuentos ? JSON.stringify(escala_descuentos) : null,
+       restricciones || null, !!excluye_outlet,
+       relaciones_familiar || null, !!usa_limite_jerarquia, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
     res.json({ beneficio: result.rows[0] });
   } catch (error: any) {
     console.error('Error editando beneficio:', error.message);
-    res.status(500).json({ error: 'Error editando beneficio' });
+    res.status(500).json({ error: 'Error editando beneficio', detalle: error.message });
   }
 });
 

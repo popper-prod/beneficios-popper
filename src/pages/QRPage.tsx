@@ -30,6 +30,14 @@ interface Beneficiario {
   cargo?: string;
   legajo?: string;
   empresa: string;
+  es_talento_popper?: boolean;
+  antiguedad_meses?: number;
+}
+
+interface FamiliarInfo {
+  es_familiar: true;
+  relacion: string;
+  titular: { dni: string; nombre: string; apellido: string };
 }
 
 interface Beneficio {
@@ -39,6 +47,11 @@ interface Beneficio {
   tipo: string;
   descuento: number | null;
   valor_fijo: number | null;
+  categoria?: string;
+  origen?: 'interno' | 'externo';
+  modalidad?: string;
+  restricciones?: string | null;
+  excluye_outlet?: boolean;
   nivel_minimo: string;
 }
 
@@ -86,6 +99,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [step, setStep] = useState<Step>('loading');
   const [comercio, setComercio] = useState<Comercio | null>(null);
   const [beneficiario, setBeneficiario] = useState<Beneficiario | null>(null);
+  const [familiarInfo, setFamiliarInfo] = useState<FamiliarInfo | null>(null);
   const [beneficios, setBeneficios] = useState<Beneficio[]>([]);
   const [selectedBenefit, setSelectedBenefit] = useState<string>('');
   const [dni, setDni] = useState('');
@@ -141,8 +155,8 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
       }
 
       setBeneficiario(data.beneficiario);
-      // Dedupe defensivo por nombre+descuento+valor_fijo (la BD a veces
-      // tiene entradas duplicadas accidentales)
+      setFamiliarInfo(data.familiar || null);
+      // Dedupe defensivo por nombre+descuento+valor_fijo
       const seen = new Set<string>();
       const uniqueBeneficios = (data.beneficios || []).filter((b: Beneficio) => {
         const key = `${(b.nombre || '').toLowerCase().trim()}|${b.descuento ?? ''}|${b.valor_fijo ?? ''}`;
@@ -200,6 +214,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const handleReset = () => {
     setDni('');
     setBeneficiario(null);
+    setFamiliarInfo(null);
     setBeneficios([]);
     setSelectedBenefit('');
     setErrorMsg('');
@@ -309,6 +324,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
           {step === 'profile' && beneficiario && (
             <ProfileStep
               beneficiario={beneficiario}
+              familiarInfo={familiarInfo}
               beneficios={beneficios}
               selectedBenefit={selectedBenefit}
               setSelectedBenefit={setSelectedBenefit}
@@ -611,6 +627,7 @@ function IdentifyStep({
 // ============================================
 function ProfileStep({
   beneficiario,
+  familiarInfo,
   beneficios,
   selectedBenefit,
   setSelectedBenefit,
@@ -623,6 +640,7 @@ function ProfileStep({
   onReset,
 }: {
   beneficiario: Beneficiario;
+  familiarInfo: FamiliarInfo | null;
   beneficios: Beneficio[];
   selectedBenefit: string;
   setSelectedBenefit: (v: string) => void;
@@ -715,19 +733,53 @@ function ProfileStep({
 
           {/* Info */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p
-              style={{
-                fontSize: '10.5px',
-                fontWeight: 700,
-                color: 'rgba(255,255,255,0.85)',
-                letterSpacing: '0.18em',
-                textTransform: 'uppercase',
-                marginBottom: 4,
-                textShadow: '0 1px 2px rgba(0,0,0,0.4)',
-              }}
-            >
-              Beneficios · {tier.label}
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+              <p
+                style={{
+                  fontSize: '10.5px',
+                  fontWeight: 700,
+                  color: 'rgba(255,255,255,0.85)',
+                  letterSpacing: '0.18em',
+                  textTransform: 'uppercase',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                }}
+              >
+                Beneficios · {tier.label}
+              </p>
+              {beneficiario.es_talento_popper && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  padding: '1px 7px', borderRadius: '999px',
+                  background: 'rgba(212,160,23,0.25)', border: '1px solid rgba(212,160,23,0.6)',
+                  color: '#fff', fontSize: '9.5px', fontWeight: 700,
+                  letterSpacing: '0.1em', textTransform: 'uppercase',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                }}>★ Talento Popper</span>
+              )}
+              {familiarInfo && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  padding: '1px 7px', borderRadius: '999px',
+                  background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.3)',
+                  color: '#fff', fontSize: '9.5px', fontWeight: 700,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                }}>
+                  {familiarInfo.relacion === 'Parents' ? 'Madre/Padre' :
+                   familiarInfo.relacion === 'Spouse' ? 'Cónyuge' :
+                   familiarInfo.relacion === 'CivilUnion' ? 'Concubino/a' :
+                   familiarInfo.relacion === 'Child' ? 'Hijo/a' : 'Familiar'}
+                </span>
+              )}
+            </div>
+            {familiarInfo && (
+              <p style={{
+                fontSize: '11.5px', color: 'rgba(255,255,255,0.85)', fontWeight: 500, marginBottom: 6,
+                textShadow: '0 1px 2px rgba(0,0,0,0.35)',
+              }}>
+                Titular: {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
+              </p>
+            )}
             <h2
               style={{
                 fontSize: '20px',
@@ -1070,6 +1122,40 @@ function BenefitOption({
             }}
           >
             {benefit.descripcion}
+          </p>
+        )}
+        {/* Badges secundarios: categoría/origen/restricciones */}
+        <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+          {benefit.origen === 'interno' && (
+            <span style={{
+              fontSize: '9.5px', fontWeight: 600, color: 'var(--brand)',
+              padding: '1px 6px', borderRadius: '999px',
+              background: 'var(--brand-muted)', border: '1px solid var(--brand-border)',
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+            }}>Interno</span>
+          )}
+          {benefit.categoria && (
+            <span style={{
+              fontSize: '9.5px', fontWeight: 500, color: 'var(--text-3)',
+              padding: '1px 6px', borderRadius: '999px',
+              background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
+              letterSpacing: '0.04em', textTransform: 'capitalize',
+            }}>{benefit.categoria.replace('_', ' ')}</span>
+          )}
+          {benefit.excluye_outlet && (
+            <span style={{
+              fontSize: '9.5px', fontWeight: 500, color: 'var(--warning-text)',
+              padding: '1px 6px', borderRadius: '999px',
+              background: 'var(--warning-bg)', border: '1px solid var(--warning-border)',
+            }}>Excluye outlet</span>
+          )}
+        </div>
+        {benefit.restricciones && (
+          <p style={{
+            fontSize: '10.5px', color: 'var(--text-3)', marginTop: 6,
+            fontStyle: 'italic', lineHeight: 1.4,
+          }}>
+            ⚠ {benefit.restricciones}
           </p>
         )}
       </div>
