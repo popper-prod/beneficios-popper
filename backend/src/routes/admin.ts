@@ -2375,6 +2375,35 @@ router.post('/seed-boleterias-skipass', async (req: AuthRequest, res: Response) 
   }
 });
 
+// V3H — Crear familiar manualmente (cuando aún no está en Naaloo)
+router.post('/familiares', async (req: AuthRequest, res: Response) => {
+  try {
+    const { beneficiario_id, dni, nombre_completo, relacion, fecha_nacimiento, email, telefono, a_cargo } = req.body;
+    if (!beneficiario_id || !dni || !nombre_completo || !relacion) {
+      return res.status(400).json({ error: 'Faltan datos: beneficiario_id, dni, nombre_completo, relacion' });
+    }
+    const validRel = ['Parents', 'Spouse', 'CivilUnion', 'Child', 'Sibling', 'Other'];
+    if (!validRel.includes(relacion)) {
+      return res.status(400).json({ error: `Relación inválida. Debe ser una de: ${validRel.join(', ')}` });
+    }
+    const result = await query(
+      `INSERT INTO familiares (beneficiario_id, dni, nombre_completo, relacion, fecha_nacimiento, email, telefono, a_cargo, activo, ultima_sync)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, NOW())
+       ON CONFLICT (beneficiario_id, dni) DO UPDATE SET
+         nombre_completo=EXCLUDED.nombre_completo, relacion=EXCLUDED.relacion,
+         fecha_nacimiento=EXCLUDED.fecha_nacimiento, email=EXCLUDED.email,
+         telefono=EXCLUDED.telefono, a_cargo=EXCLUDED.a_cargo,
+         activo=TRUE, updated_at=NOW()
+       RETURNING *`,
+      [beneficiario_id, dni, nombre_completo, relacion, fecha_nacimiento || null,
+       email || null, telefono || null, a_cargo || false]
+    );
+    res.json({ familiar: result.rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error creando familiar', detalle: error.message });
+  }
+});
+
 router.get('/familiares', async (req: AuthRequest, res: Response) => {
   try {
     const result = await query(`
