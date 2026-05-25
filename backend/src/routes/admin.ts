@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
 import { verifyToken, AuthRequest } from '../middleware/auth';
-import { obtenerTodosEmpleados, naalooToBeneficiario, obtenerEmpleadoCompleto, NaalooFamiliar } from '../services/naaloo';
+import { obtenerTodosEmpleados, naalooToBeneficiario, obtenerEmpleadoCompleto, NaalooFamiliar, normalizarRelacion } from '../services/naaloo';
 import * as XLSX from 'xlsx';
 import bcrypt from 'bcryptjs';
 
@@ -1483,7 +1483,7 @@ router.post('/familiares/sync-naaloo', async (req: AuthRequest, res: Response) =
                   naaloo_id=$1, nombre_completo=$2, relacion=$3, fecha_nacimiento=$4,
                   email=$5, telefono=$6, a_cargo=$7, activo=TRUE, ultima_sync=NOW(), updated_at=NOW()
                 WHERE id=$8`,
-                [f.id, f.nombreCompleto, f.relacion || 'Other', fechaNac,
+                [f.id, f.nombreCompleto, normalizarRelacion(f.relacion), fechaNac,
                  f.email || null, f.telefonos || null, f.aCargo || false, existing.rows[0].id]
               );
               totalFamiliaresActualizados++;
@@ -1492,7 +1492,7 @@ router.post('/familiares/sync-naaloo', async (req: AuthRequest, res: Response) =
                 `INSERT INTO familiares (beneficiario_id, naaloo_id, dni, nombre_completo, relacion,
                                          fecha_nacimiento, email, telefono, a_cargo, activo, ultima_sync)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, NOW())`,
-                [b.id, f.id, f.dni, f.nombreCompleto, f.relacion || 'Other', fechaNac,
+                [b.id, f.id, f.dni, f.nombreCompleto, normalizarRelacion(f.relacion), fechaNac,
                  f.email || null, f.telefonos || null, f.aCargo || false]
               );
               totalFamiliaresNuevos++;
@@ -2372,6 +2372,29 @@ router.post('/seed-boleterias-skipass', async (req: AuthRequest, res: Response) 
     });
   } catch (error: any) {
     res.status(500).json({ error: 'Error seed boleterías', detalle: error.message });
+  }
+});
+
+// V3H FIX — Normalizar relaciones numéricas (Naaloo a veces devuelve '2' en vez de 'Spouse')
+router.post('/familiares/normalizar-relaciones', async (req: AuthRequest, res: Response) => {
+  try {
+    const updates = [
+      { from: '0', to: 'Undefined' },
+      { from: '1', to: 'Child' },
+      { from: '2', to: 'Spouse' },
+      { from: '3', to: 'Sibling' },
+      { from: '4', to: 'Other' },
+      { from: '5', to: 'Parents' },
+      { from: '6', to: 'CivilUnion' },
+    ];
+    let total = 0;
+    for (const u of updates) {
+      const r = await query(`UPDATE familiares SET relacion=$1, updated_at=NOW() WHERE relacion=$2 RETURNING id`, [u.to, u.from]);
+      total += r.rows.length;
+    }
+    res.json({ exito: true, normalizados: total });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error normalizando', detalle: error.message });
   }
 });
 

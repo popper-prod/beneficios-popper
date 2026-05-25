@@ -115,6 +115,27 @@ export interface NaalooFamiliar {
   relacion?: NaalooFamilyRelationship;
 }
 
+// Naaloo a veces devuelve relacion como número (enum index). Lo normalizamos a string.
+// Mapping basado en orden del enum FamilyRelationship en el swagger
+const RELACION_MAP: Record<string, NaalooFamilyRelationship> = {
+  '0': 'Undefined',
+  '1': 'Child',
+  '2': 'Spouse',
+  '3': 'Sibling',
+  '4': 'Other',
+  '5': 'Parents',
+  '6': 'CivilUnion',
+};
+
+export function normalizarRelacion(r: any): NaalooFamilyRelationship {
+  if (r == null) return 'Undefined';
+  const s = String(r).trim();
+  if (RELACION_MAP[s]) return RELACION_MAP[s]; // si vino como número
+  const validos: NaalooFamilyRelationship[] = ['Undefined','Child','Spouse','Sibling','Other','Parents','CivilUnion'];
+  if (validos.includes(s as NaalooFamilyRelationship)) return s as NaalooFamilyRelationship;
+  return 'Undefined';
+}
+
 // Obtiene el detalle completo de un empleado (incluye familiares)
 export async function obtenerEmpleadoCompleto(naalooId: number): Promise<{ familiares: NaalooFamiliar[] } | null> {
   try {
