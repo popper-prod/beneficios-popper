@@ -220,7 +220,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
         relaciones_familiar: '', usa_limite_jerarquia: '',
       });
     } else if (type === 'comercio') {
-      setForm({ nombre: '', direccion: '', ciudad: 'Ushuaia', provincia: 'Tierra del Fuego', telefono: '', email: '', horario_apertura: '09:00', horario_cierre: '20:00', responsable: '', logo: '' });
+      setForm({ nombre: '', direccion: '', ciudad: 'Ushuaia', provincia: 'Tierra del Fuego', telefono: '', email: '', horario_apertura: '09:00', horario_cierre: '20:00', responsable: '', logo: '', pin: '' });
     } else {
       setForm({ dni: '', nombre: '', apellido: '', email: '', telefono: '', nivel: 'bronce', departamento: '', empresa: 'Grupo Popper' });
     }
@@ -253,7 +253,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
         nombre: item.nombre || '', direccion: item.direccion || '', ciudad: item.ciudad || '', provincia: item.provincia || '',
         telefono: item.telefono || '', email: item.email || '', horario_apertura: item.horario_apertura || '',
         horario_cierre: item.horario_cierre || '', responsable: item.responsable || '', activo: item.activo ? 'true' : 'false',
-        logo: item.logo || '',
+        logo: item.logo || '', pin: '',
       });
     } else {
       setForm({
@@ -1623,6 +1623,16 @@ export default function AdminDashboard({ token, user, onLogout }: {
           <Field label="Cierre" value={form.horario_cierre || ''} onChange={v => setForm({ ...form, horario_cierre: v })} type="time" />
         </div>
         <Field label="Responsable" value={form.responsable || ''} onChange={v => setForm({ ...form, responsable: v })} />
+        <Field
+          label={modal?.mode === 'edit' ? 'PIN responsable (vacío = no cambiar)' : 'PIN responsable (4-8 dígitos, opcional)'}
+          value={form.pin || ''}
+          onChange={v => setForm({ ...form, pin: v.replace(/\D/g, '').slice(0, 8) })}
+          type="password"
+          placeholder="****"
+        />
+        <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: -8, marginBottom: 8 }}>
+          🔒 El PIN permite al cajero autorizar canjes que excedan el límite mensual del colaborador. Si no se carga, no se pueden hacer overrides.
+        </p>
         {modal?.mode === 'edit' && (
           <Field label="Estado" value={form.activo || 'true'} onChange={v => setForm({ ...form, activo: v })}
             options={[{ value: 'true', label: 'Activo' }, { value: 'false', label: 'Inactivo' }]} />

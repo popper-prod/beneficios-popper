@@ -72,7 +72,7 @@ interface HistorialItem {
   codigo_referencia: string;
 }
 
-type Step = 'loading' | 'identify' | 'profile' | 'success' | 'error';
+type Step = 'loading' | 'identify' | 'profile' | 'confirm' | 'success' | 'error';
 
 // Niveles con gradientes tipo metal real — todos suficientemente oscuros para que
 // texto blanco tenga buen contraste. Los highlights metálicos sutiles.
@@ -189,7 +189,9 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
     setSearching(false);
   };
 
-  const handleCanjear = async (overrideLimite = false) => {
+  // Step "Confirmar": cuando el colaborador clickea Canjear, pasa por aquí
+  // para que el cajero revise y confirme con un botón explícito (modo cajero).
+  const handleIrConfirmar = () => {
     if (!comercio || !beneficiario || !selectedBenefit) return;
     const benData = beneficios.find(b => b.id === selectedBenefit);
     const requiereMonto = benData?.usa_limite_jerarquia;
@@ -198,6 +200,14 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
       setErrorMsg('Ingresá el monto del ticket para continuar.');
       return;
     }
+    setErrorMsg('');
+    setStep('confirm');
+  };
+
+  // Canjear definitivo (lo dispara el cajero desde el step confirm)
+  const handleCanjearConfirmado = async (overrideLimite = false, pinResponsable?: string) => {
+    if (!comercio || !beneficiario || !selectedBenefit) return;
+    const montoNum = monto ? parseFloat(monto) : null;
     setProcessing(true);
     setErrorMsg('');
 
@@ -211,14 +221,17 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
           comercio_id: comercio.id,
           monto: montoNum,
           override_limite: overrideLimite,
+          pin_responsable: pinResponsable,
         }),
       });
       const data = await res.json();
 
       if (!res.ok) {
         if (data.requiere_override) {
-          const ok = confirm(`${data.error}\n\n¿Querés autorizar el canje igual? (excede el límite mensual)`);
-          if (ok) { setProcessing(false); return handleCanjear(true); }
+          // Volver al confirm con flag para mostrar PIN field
+          setErrorMsg(data.error);
+          setProcessing(false);
+          return;
         }
         setErrorMsg(data.error || 'No pudimos procesar el canje.');
         setProcessing(false);
@@ -358,8 +371,23 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
               setShowHistorial={setShowHistorial}
               processing={processing}
               errorMsg={errorMsg}
-              onCanjear={() => handleCanjear(false)}
+              onCanjear={handleIrConfirmar}
               onReset={handleReset}
+            />
+          )}
+
+          {step === 'confirm' && beneficiario && selectedBenefitData && comercio && (
+            <ConfirmStep
+              beneficiario={beneficiario}
+              familiarInfo={familiarInfo}
+              comercio={comercio}
+              beneficio={selectedBenefitData}
+              monto={monto}
+              processing={processing}
+              errorMsg={errorMsg}
+              onConfirmar={() => handleCanjearConfirmado(false)}
+              onConfirmarConPin={(pin) => handleCanjearConfirmado(true, pin)}
+              onCancelar={() => { setStep('profile'); setErrorMsg(''); }}
             />
           )}
 
@@ -1350,6 +1378,237 @@ function BenefitOption({
 // ============================================
 // SUCCESS
 // ============================================
+// ============================================
+// CONFIRM STEP (V3E — modo cajero)
+// El colaborador pasa el teléfono al cajero, que ve la info en grande
+// y confirma el canje con un click. Si excede el límite, pide PIN del responsable.
+// ============================================
+function ConfirmStep({
+  beneficiario, familiarInfo, comercio, beneficio, monto, processing, errorMsg,
+  onConfirmar, onConfirmarConPin, onCancelar,
+}: {
+  beneficiario: Beneficiario;
+  familiarInfo: FamiliarInfo | null;
+  comercio: Comercio;
+  beneficio: Beneficio;
+  monto: string;
+  processing: boolean;
+  errorMsg: string;
+  onConfirmar: () => void;
+  onConfirmarConPin: (pin: string) => void;
+  onCancelar: () => void;
+}) {
+  const requiereOverride: boolean = !!errorMsg && errorMsg.toLowerCase().includes('excede');
+  const [pin, setPin] = useState('');
+  const montoNum = parseFloat(monto || '0') || 0;
+  const descuento = beneficio.descuento ? Number(beneficio.descuento) : 0;
+  const ahorro = montoNum * (descuento / 100);
+  const totalAPagar = montoNum - ahorro;
+  const fullName = familiarInfo
+    ? `${beneficiario.nombre} ${beneficiario.apellido}`
+    : `${beneficiario.nombre} ${beneficiario.apellido}`;
+
+  return (
+    <div>
+      {/* Banner para el cajero */}
+      <div style={{
+        padding: '10px 14px', marginBottom: 16,
+        background: 'var(--brand-muted)', border: '1px solid var(--brand-border)',
+        borderRadius: '8px',
+        textAlign: 'center',
+      }}>
+        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--brand)', letterSpacing: '0.18em', textTransform: 'uppercase' }}>
+          📱 Pasale el teléfono al cajero
+        </p>
+        <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 2 }}>
+          {comercio.nombre} debe verificar y confirmar el canje
+        </p>
+      </div>
+
+      {/* Foto y nombre del colaborador — GRANDE */}
+      <div style={{
+        padding: 20, background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-default)', borderRadius: '14px',
+        textAlign: 'center', marginBottom: 14,
+      }}>
+        {beneficiario.foto ? (
+          <img
+            src={beneficiario.foto}
+            alt={fullName}
+            style={{
+              width: 120, height: 120, borderRadius: '50%', objectFit: 'cover',
+              border: '3px solid var(--brand)',
+              margin: '0 auto 14px', display: 'block',
+            }}
+          />
+        ) : (
+          <div style={{
+            width: 120, height: 120, borderRadius: '50%',
+            background: 'var(--brand-muted)', border: '3px solid var(--brand)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--brand)', fontWeight: 700, fontSize: '36px',
+            margin: '0 auto 14px',
+          }}>
+            {beneficiario.nombre[0]}{beneficiario.apellido[0]}
+          </div>
+        )}
+        <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.01em', marginBottom: 4 }}>
+          {fullName}
+        </h2>
+        <p style={{ fontSize: '13px', color: 'var(--text-3)' }}>
+          DNI <span style={{ fontFamily: 'var(--font-geist-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-2)' }}>
+            {beneficiario.dni}
+          </span>
+          {beneficiario.es_talento_popper && <span style={{ marginLeft: 8, color: 'var(--brand)' }}>★ Talento</span>}
+        </p>
+        {familiarInfo && (
+          <div style={{ marginTop: 10, padding: '6px 10px', background: 'var(--bg-canvas)', borderRadius: '6px', display: 'inline-block' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>Vínculo: </span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-1)' }}>
+              {familiarInfo.relacion === 'Parents' ? 'Madre/Padre' :
+               familiarInfo.relacion === 'Spouse' ? 'Cónyuge' :
+               familiarInfo.relacion === 'CivilUnion' ? 'Concubino/a' :
+               familiarInfo.relacion === 'Child' ? 'Hijo/a' : 'Familiar'}
+            </span>
+            <span style={{ fontSize: '11px', color: 'var(--text-3)' }}> de </span>
+            <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-2)' }}>
+              {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Breakdown del canje */}
+      <div style={{
+        padding: 16, background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-subtle)', borderRadius: '12px', marginBottom: 14,
+      }}>
+        <p style={{ fontSize: '11px', color: 'var(--text-3)', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>
+          Resumen del canje
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Row label="Beneficio" value={beneficio.nombre} highlight />
+          {beneficio.categoria && <Row label="Categoría" value={beneficio.categoria.replace('_', ' ')} />}
+          {montoNum > 0 && (
+            <>
+              <Row label="Monto del ticket" value={`$${montoNum.toLocaleString('es-AR')}`} mono />
+              {descuento > 0 && (
+                <>
+                  <Row label={`Descuento ${Math.round(descuento)}%`} value={`−$${Math.round(ahorro).toLocaleString('es-AR')}`} mono success />
+                  <div style={{
+                    paddingTop: 10, marginTop: 4, borderTop: '1px solid var(--border-subtle)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-2)', fontWeight: 500 }}>Total a pagar</span>
+                    <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
+                      ${Math.round(totalAPagar).toLocaleString('es-AR')}
+                    </span>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {beneficio.restricciones && (
+        <div style={{
+          padding: '8px 12px', background: 'var(--warning-bg)',
+          border: '1px solid var(--warning-border)', borderRadius: '8px', marginBottom: 14,
+        }}>
+          <p style={{ fontSize: '11.5px', color: 'var(--warning-text)' }}>⚠ {beneficio.restricciones}</p>
+        </div>
+      )}
+
+      {/* Error / Override */}
+      {errorMsg && (
+        <div style={{
+          padding: '10px 12px', background: 'var(--danger-bg)',
+          border: '1px solid var(--danger-border)', borderRadius: '8px', marginBottom: 14,
+        }}>
+          <p style={{ fontSize: '12.5px', color: 'var(--danger-text)' }}>{errorMsg}</p>
+        </div>
+      )}
+
+      {/* PIN del responsable si requiere override */}
+      {requiereOverride && (
+        <div style={{
+          padding: 14, marginBottom: 14,
+          background: 'var(--bg-elevated)', border: '1px solid var(--warning-border)', borderRadius: '10px',
+        }}>
+          <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--warning-text)', fontWeight: 600, marginBottom: 6 }}>
+            🔒 PIN del responsable para autorizar
+          </label>
+          <input
+            type="password" inputMode="numeric"
+            placeholder="****"
+            value={pin}
+            onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            style={{
+              width: '100%', height: 44, padding: '0 14px',
+              background: 'var(--bg-canvas)', border: '1px solid var(--border-default)',
+              borderRadius: '8px', color: 'var(--text-1)', fontSize: '20px', fontWeight: 600,
+              outline: 'none', textAlign: 'center', letterSpacing: '0.5em',
+            }}
+            autoFocus
+          />
+          <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 6 }}>
+            Pedile al responsable del comercio el PIN para autorizar este canje.
+          </p>
+        </div>
+      )}
+
+      {/* Botones */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={onCancelar} disabled={processing} style={{
+          height: 52, padding: '0 18px', background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-default)', borderRadius: '10px',
+          color: 'var(--text-2)', fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+        }}>
+          ← Volver
+        </button>
+        <button
+          onClick={() => requiereOverride ? onConfirmarConPin(pin) : onConfirmar()}
+          disabled={processing || (requiereOverride && pin.length < 4)}
+          style={{
+            flex: 1, height: 52, background: requiereOverride ? 'var(--warning)' : 'var(--success)',
+            color: '#0a0a0a', border: 'none', borderRadius: '10px',
+            fontSize: '15px', fontWeight: 700, cursor: processing ? 'not-allowed' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            opacity: processing || (requiereOverride && pin.length < 4) ? 0.6 : 1,
+          }}
+        >
+          {processing ? (
+            <>
+              <span style={{
+                width: 16, height: 16, borderRadius: '50%',
+                border: '2px solid currentColor', borderTopColor: 'transparent',
+                animation: 'spin 600ms linear infinite',
+              }} />
+              Procesando…
+            </>
+          ) : requiereOverride ? '✓ Autorizar con PIN' : '✓ Confirmar canje'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value, mono, success, highlight }: { label: string; value: string; mono?: boolean; success?: boolean; highlight?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+      <span style={{ fontSize: '12.5px', color: 'var(--text-3)' }}>{label}</span>
+      <span style={{
+        fontSize: highlight ? '14px' : '13px',
+        fontWeight: highlight ? 600 : 500,
+        color: success ? 'var(--success-text)' : 'var(--text-1)',
+        fontVariantNumeric: mono ? 'tabular-nums' : undefined,
+        textAlign: 'right',
+      }}>{value}</span>
+    </div>
+  );
+}
+
 function SuccessStep({
   beneficio,
   successData,

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import { query } from '../db';
 import { buscarEmpleadoPorDni, naalooToBeneficiario } from '../services/naaloo';
 
@@ -253,12 +254,44 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
   }
 });
 
+// Endpoint dedicado para validar PIN del responsable
+router.post('/verificar-pin', async (req: Request, res: Response) => {
+  try {
+    const { comercio_id, pin } = req.body;
+    if (!comercio_id || !pin) return res.status(400).json({ valid: false, error: 'Faltan datos' });
+    const r = await query(`SELECT pin_responsable FROM comercios WHERE id=$1 AND activo=TRUE`, [comercio_id])
+      .catch(() => ({ rows: [] }));
+    if (r.rows.length === 0 || !r.rows[0].pin_responsable) {
+      return res.json({ valid: false, error: 'Este comercio no tiene PIN configurado. Pedile al admin que lo configure.' });
+    }
+    const ok = await bcrypt.compare(String(pin), r.rows[0].pin_responsable);
+    res.json({ valid: ok });
+  } catch (error: any) {
+    res.status(500).json({ valid: false, error: error.message });
+  }
+});
+
 // POST /api/public/canjear - Canjear un beneficio (sin auth)
 // V3A: acepta monto, valida saldo mensual si beneficio.usa_limite_jerarquia
+// V3E: si override_limite=true, requiere pin_responsable del comercio
 router.post('/canjear', async (req: Request, res: Response) => {
   try {
-    const { dni, beneficio_id, comercio_id, monto, override_limite } = req.body;
+    const { dni, beneficio_id, comercio_id, monto, override_limite, pin_responsable } = req.body;
     const montoNum = monto != null ? parseFloat(String(monto)) : null;
+
+    // V3E: si quieren override, validar PIN
+    if (override_limite) {
+      const r = await query(`SELECT pin_responsable FROM comercios WHERE id=$1 AND activo=TRUE`, [comercio_id])
+        .catch(() => ({ rows: [] }));
+      if (r.rows.length === 0 || !r.rows[0].pin_responsable) {
+        return res.status(403).json({ error: 'Este comercio no tiene PIN configurado. No se puede autorizar overrides.' });
+      }
+      if (!pin_responsable) {
+        return res.status(401).json({ error: 'Se requiere el PIN del responsable para autorizar este canje.' });
+      }
+      const ok = await bcrypt.compare(String(pin_responsable), r.rows[0].pin_responsable);
+      if (!ok) return res.status(401).json({ error: 'PIN incorrecto.' });
+    }
 
     if (!dni || !beneficio_id || !comercio_id) {
       return res.status(400).json({ error: 'Faltan datos requeridos' });
