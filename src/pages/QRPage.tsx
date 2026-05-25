@@ -38,6 +38,7 @@ interface FamiliarInfo {
   es_familiar: true;
   relacion: string;
   titular: { dni: string; nombre: string; apellido: string };
+  foto?: string | null;
 }
 
 interface Beneficio {
@@ -1431,27 +1432,33 @@ function ConfirmStep({
         border: '1px solid var(--border-default)', borderRadius: '14px',
         textAlign: 'center', marginBottom: 14,
       }}>
-        {beneficiario.foto ? (
-          <img
-            src={beneficiario.foto}
-            alt={fullName}
-            style={{
-              width: 120, height: 120, borderRadius: '50%', objectFit: 'cover',
-              border: '3px solid var(--brand)',
-              margin: '0 auto 14px', display: 'block',
-            }}
-          />
-        ) : (
-          <div style={{
-            width: 120, height: 120, borderRadius: '50%',
-            background: 'var(--brand-muted)', border: '3px solid var(--brand)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--brand)', fontWeight: 700, fontSize: '36px',
-            margin: '0 auto 14px',
-          }}>
-            {beneficiario.nombre[0]}{beneficiario.apellido[0]}
-          </div>
-        )}
+        {(() => {
+          const fotoMostrar = familiarInfo?.foto || beneficiario.foto;
+          if (fotoMostrar) {
+            return (
+              <img
+                src={fotoMostrar}
+                alt={fullName}
+                style={{
+                  width: 120, height: 120, borderRadius: '50%', objectFit: 'cover',
+                  border: '3px solid var(--brand)',
+                  margin: '0 auto 14px', display: 'block',
+                }}
+              />
+            );
+          }
+          return (
+            <div style={{
+              width: 120, height: 120, borderRadius: '50%',
+              background: 'var(--brand-muted)', border: '3px solid var(--brand)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--brand)', fontWeight: 700, fontSize: '36px',
+              margin: '0 auto 14px',
+            }}>
+              {beneficiario.nombre[0]}{beneficiario.apellido[0]}
+            </div>
+          );
+        })()}
         <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.01em', marginBottom: 4 }}>
           {fullName}
         </h2>

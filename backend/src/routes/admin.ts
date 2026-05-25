@@ -2088,6 +2088,214 @@ router.delete('/jerarquias/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// V3F — Foto del familiar (base64 inline)
+router.post('/familiares/:id/foto', async (req: AuthRequest, res: Response) => {
+  try {
+    await query(`ALTER TABLE familiares ADD COLUMN IF NOT EXISTS foto TEXT`).catch(() => {});
+    const { foto } = req.body; // data URL base64
+    if (foto !== null && foto !== '' && (!foto || typeof foto !== 'string')) {
+      return res.status(400).json({ error: 'Foto inválida' });
+    }
+    const result = await query(
+      `UPDATE familiares SET foto=$1, updated_at=NOW() WHERE id=$2 RETURNING id`,
+      [foto || null, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Familiar no encontrado' });
+    res.json({ exito: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error guardando foto', detalle: error.message });
+  }
+});
+
+// V3F — Listado de autorizados a un beneficio (skipass principalmente)
+router.get('/autorizados/:beneficioId', async (req: AuthRequest, res: Response) => {
+  try {
+    // El beneficio define aplica_a y relaciones_familiar
+    const benRes = await query(`SELECT id, nombre, aplica_a, relaciones_familiar, categoria FROM beneficios WHERE id=$1`, [req.params.beneficioId]);
+    if (benRes.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
+    const b = benRes.rows[0];
+    const relacionesPermitidas: string[] = (b.relaciones_familiar || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+
+    // Titulares (si aplica_a in 'empleado' o 'ambos')
+    let titulares: any[] = [];
+    if (b.aplica_a === 'empleado' || b.aplica_a === 'ambos') {
+      const r = await query(`
+        SELECT id, dni, nombre, apellido, cargo, departamento, sector, fecha_ingreso
+        FROM beneficiarios WHERE activo = TRUE ORDER BY apellido, nombre
+      `);
+      titulares = r.rows;
+    }
+
+    // Familiares (si aplica_a in 'familiar' o 'ambos')
+    let familiares: any[] = [];
+    if (b.aplica_a === 'familiar' || b.aplica_a === 'ambos') {
+      let where = 'f.activo = TRUE AND b.activo = TRUE';
+      const params: any[] = [];
+      if (relacionesPermitidas.length > 0) {
+        where += ` AND f.relacion = ANY($1)`;
+        params.push(relacionesPermitidas);
+      }
+      // Try to select foto, fallback if column doesn't exist
+      let famRes;
+      try {
+        famRes = await query(`
+          SELECT f.id, f.dni, f.nombre_completo, f.relacion, f.fecha_nacimiento, f.foto,
+                 b.dni as titular_dni, b.nombre as titular_nombre, b.apellido as titular_apellido,
+                 b.cargo as titular_cargo, b.departamento as titular_departamento
+          FROM familiares f JOIN beneficiarios b ON b.id = f.beneficiario_id
+          WHERE ${where} ORDER BY b.apellido, b.nombre, f.relacion, f.nombre_completo
+        `, params);
+      } catch {
+        // foto column doesn't exist yet
+        famRes = await query(`
+          SELECT f.id, f.dni, f.nombre_completo, f.relacion, f.fecha_nacimiento,
+                 b.dni as titular_dni, b.nombre as titular_nombre, b.apellido as titular_apellido,
+                 b.cargo as titular_cargo, b.departamento as titular_departamento
+          FROM familiares f JOIN beneficiarios b ON b.id = f.beneficiario_id
+          WHERE ${where} ORDER BY b.apellido, b.nombre, f.relacion, f.nombre_completo
+        `, params);
+      }
+      familiares = famRes.rows;
+    }
+
+    res.json({ beneficio: b, titulares, familiares });
+  } catch (error: any) {
+    console.error('Error listado autorizados:', error.message);
+    res.status(500).json({ error: 'Error generando listado', detalle: error.message });
+  }
+});
+
+// V3F — Export Excel del listado de autorizados
+router.get('/autorizados/:beneficioId/excel', async (req: AuthRequest, res: Response) => {
+  try {
+    const benRes = await query(`SELECT id, nombre, aplica_a, relaciones_familiar FROM beneficios WHERE id=$1`, [req.params.beneficioId]);
+    if (benRes.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
+    const b = benRes.rows[0];
+    const relacionesPermitidas: string[] = (b.relaciones_familiar || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+
+    const wb = XLSX.utils.book_new();
+
+    if (b.aplica_a === 'empleado' || b.aplica_a === 'ambos') {
+      const r = await query(`SELECT dni, nombre, apellido, cargo, departamento, sector FROM beneficiarios WHERE activo = TRUE ORDER BY apellido, nombre`);
+      const sheet = XLSX.utils.json_to_sheet(r.rows.map((t: any) => ({
+        DNI: t.dni, Apellido: t.apellido, Nombre: t.nombre,
+        Cargo: t.cargo || '—', Departamento: t.departamento || '—', Sector: t.sector || '—',
+      })));
+      XLSX.utils.book_append_sheet(wb, sheet, 'Titulares');
+    }
+
+    if (b.aplica_a === 'familiar' || b.aplica_a === 'ambos') {
+      let where = 'f.activo = TRUE AND b.activo = TRUE';
+      const params: any[] = [];
+      if (relacionesPermitidas.length > 0) {
+        where += ` AND f.relacion = ANY($1)`;
+        params.push(relacionesPermitidas);
+      }
+      const famRes = await query(`
+        SELECT f.dni, f.nombre_completo, f.relacion, f.fecha_nacimiento,
+               b.dni as titular_dni, b.nombre as titular_nombre, b.apellido as titular_apellido,
+               b.cargo as titular_cargo
+        FROM familiares f JOIN beneficiarios b ON b.id = f.beneficiario_id
+        WHERE ${where} ORDER BY b.apellido, b.nombre, f.relacion, f.nombre_completo
+      `, params);
+      const relacionLabel: Record<string, string> = {
+        Parents: 'Madre/Padre', Spouse: 'Cónyuge', CivilUnion: 'Concubino/a',
+        Child: 'Hijo/a', Sibling: 'Hermano/a', Other: 'Otro',
+      };
+      const sheet = XLSX.utils.json_to_sheet(famRes.rows.map((f: any) => ({
+        'DNI Familiar': f.dni,
+        'Nombre Familiar': f.nombre_completo,
+        'Relación': relacionLabel[f.relacion] || f.relacion,
+        'Fecha Nac.': f.fecha_nacimiento ? new Date(f.fecha_nacimiento).toLocaleDateString('es-AR') : '',
+        'DNI Titular': f.titular_dni,
+        'Titular': `${f.titular_nombre} ${f.titular_apellido}`,
+        'Cargo Titular': f.titular_cargo || '—',
+      })));
+      XLSX.utils.book_append_sheet(wb, sheet, 'Familiares');
+    }
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const filename = `autorizados-${(b.nombre || 'beneficio').replace(/[^a-z0-9]/gi, '-').toLowerCase()}.xlsx`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error exportando', detalle: error.message });
+  }
+});
+
+// V3F — Seed boleterías + skipass
+router.post('/seed-boleterias-skipass', async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureLogoColumn();
+    await ensureBeneficiosV2();
+
+    const boleterias = [
+      { qr: 'POPPER-BOLETERIA-CIUDAD', nombre: 'Boletería Ciudad', direccion: 'Av. San Martín 1234', ciudad: 'Ushuaia' },
+      { qr: 'POPPER-BOLETERIA-CERRO', nombre: 'Boletería Cerro Castor', direccion: 'Base Cerro Castor RN 3', ciudad: 'Ushuaia' },
+    ];
+
+    const comercioIds: string[] = [];
+    for (const b of boleterias) {
+      const existing = await query(`SELECT id FROM comercios WHERE qr_code=$1`, [b.qr]);
+      if (existing.rows.length > 0) {
+        await query(`UPDATE comercios SET activo=TRUE, nombre=$1, direccion=$2, ciudad=$3, updated_at=NOW() WHERE qr_code=$4`,
+          [b.nombre, b.direccion, b.ciudad, b.qr]);
+        comercioIds.push(existing.rows[0].id);
+      } else {
+        const r = await query(
+          `INSERT INTO comercios (nombre, direccion, ciudad, provincia, qr_code, horario_apertura, horario_cierre, activo, responsable)
+           VALUES ($1, $2, $3, 'Tierra del Fuego', $4, '08:00', '20:00', TRUE, 'Punto de retiro interno') RETURNING id`,
+          [b.nombre, b.direccion, b.ciudad, b.qr]
+        );
+        comercioIds.push(r.rows[0].id);
+      }
+    }
+
+    // Upsert beneficio Skipass · Temporada con limite_total=1
+    let skipassId: string;
+    const exSki = await query(`SELECT id FROM beneficios WHERE LOWER(nombre) LIKE '%pase de esquí%' OR LOWER(nombre) LIKE '%skipass%' LIMIT 1`);
+    const hoy = new Date().toISOString().split('T')[0];
+    const finAnio = `${new Date().getFullYear()}-12-31`;
+    if (exSki.rows.length > 0) {
+      skipassId = exSki.rows[0].id;
+      await query(`UPDATE beneficios SET
+        activo=TRUE, origen='interno', categoria='skipass', modalidad='acceso', aplica_a='ambos',
+        relaciones_familiar='Parents,Spouse,CivilUnion,Child', limite_total=1,
+        nombre='Pase de Esquí · Temporada',
+        descripcion='Retiro de pase de temporada en boletería. Incluye familiares directos (madre/padre, cónyuge, concubino/a, hijos). Solo 1 por persona por temporada.',
+        updated_at=NOW() WHERE id=$1`, [skipassId]);
+    } else {
+      const r = await query(`
+        INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, fecha_inicio, fecha_fin,
+          horario_inicio, horario_fin, activo, origen, categoria, aplica_a, modalidad,
+          relaciones_familiar, limite_total)
+        VALUES ('Pase de Esquí · Temporada',
+          'Retiro de pase de temporada en boletería. Incluye familiares directos (madre/padre, cónyuge, concubino/a, hijos). Solo 1 por persona por temporada.',
+          'acceso', 'bronce', $1, $2, '08:00', '20:00', TRUE,
+          'interno', 'skipass', 'ambos', 'acceso',
+          'Parents,Spouse,CivilUnion,Child', 1) RETURNING id
+      `, [hoy, finAnio]);
+      skipassId = r.rows[0].id;
+    }
+
+    // Asociar skipass con ambas boleterías
+    for (const cid of comercioIds) {
+      await query(`INSERT INTO comercio_beneficios (comercio_id, beneficio_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [cid, skipassId]);
+    }
+
+    res.json({
+      exito: true,
+      mensaje: 'Boleterías y skipass configurados',
+      boleterias: boleterias.map(b => ({ nombre: b.nombre, qr: b.qr })),
+      skipass_id: skipassId,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error seed boleterías', detalle: error.message });
+  }
+});
+
 router.get('/familiares', async (req: AuthRequest, res: Response) => {
   try {
     const result = await query(`

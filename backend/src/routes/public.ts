@@ -94,17 +94,31 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
         return res.status(403).json({ error: 'Colaborador inactivo' });
       }
     } else {
-      // 2) ¿Es familiar? Buscar en tabla familiares
-      const familiarResult = await query(
-        `SELECT f.id as familiar_id, f.dni as familiar_dni, f.nombre_completo, f.relacion,
-                f.fecha_nacimiento, f.activo as familiar_activo,
-                b.id, b.dni, b.nombre, b.apellido, b.nivel, b.departamento, b.sector,
-                b.fecha_ingreso, b.activo, b.es_talento_popper
-         FROM familiares f
-         JOIN beneficiarios b ON b.id = f.beneficiario_id
-         WHERE f.dni = $1 LIMIT 1`,
-        [dni]
-      ).catch(() => ({ rows: [] }));
+      // 2) ¿Es familiar? Buscar en tabla familiares (con foto si existe la columna)
+      let familiarResult: any = { rows: [] };
+      try {
+        familiarResult = await query(
+          `SELECT f.id as familiar_id, f.dni as familiar_dni, f.nombre_completo, f.relacion,
+                  f.fecha_nacimiento, f.activo as familiar_activo, f.foto as familiar_foto,
+                  b.id, b.dni, b.nombre, b.apellido, b.nivel, b.departamento, b.sector,
+                  b.fecha_ingreso, b.activo, b.es_talento_popper
+           FROM familiares f
+           JOIN beneficiarios b ON b.id = f.beneficiario_id
+           WHERE f.dni = $1 LIMIT 1`,
+          [dni]
+        );
+      } catch {
+        familiarResult = await query(
+          `SELECT f.id as familiar_id, f.dni as familiar_dni, f.nombre_completo, f.relacion,
+                  f.fecha_nacimiento, f.activo as familiar_activo,
+                  b.id, b.dni, b.nombre, b.apellido, b.nivel, b.departamento, b.sector,
+                  b.fecha_ingreso, b.activo, b.es_talento_popper
+           FROM familiares f
+           JOIN beneficiarios b ON b.id = f.beneficiario_id
+           WHERE f.dni = $1 LIMIT 1`,
+          [dni]
+        ).catch(() => ({ rows: [] }));
+      }
 
       if (familiarResult.rows.length === 0) {
         // 3) Fallback Naaloo (busqueda directa por DNI)
@@ -122,6 +136,7 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
         familiar = {
           id: row.familiar_id, dni: row.familiar_dni, nombre_completo: row.nombre_completo,
           relacion: row.relacion, fecha_nacimiento: row.fecha_nacimiento,
+          foto: row.familiar_foto || null,
         };
         titular = {
           id: row.id, dni: row.dni, nombre: row.nombre, apellido: row.apellido,
@@ -243,6 +258,7 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
         es_familiar: true,
         relacion: familiar.relacion,
         titular: { dni: titular.dni, nombre: titular.nombre, apellido: titular.apellido },
+        foto: familiar.foto || null,
       } : null,
       beneficios: beneficiosConDescuento,
       comercio: comercioResult.rows[0],
@@ -331,7 +347,7 @@ router.post('/canjear', async (req: Request, res: Response) => {
 
     // 2) Beneficio (incluyendo campos V2)
     const beneficioResult = await query(
-      `SELECT id, nombre, limite_uso_diario, limite_uso_mensual, categoria, usa_limite_jerarquia
+      `SELECT id, nombre, limite_uso_diario, limite_uso_mensual, limite_total, categoria, usa_limite_jerarquia
        FROM beneficios WHERE id = $1 AND activo = TRUE`,
       [beneficio_id]
     );
@@ -359,6 +375,29 @@ router.post('/canjear', async (req: Request, res: Response) => {
       );
       if (parseInt(usosMes.rows[0].total) >= beneficio.limite_uso_mensual) {
         return res.status(429).json({ error: `Límite mensual alcanzado (${beneficio.limite_uso_mensual} por mes)` });
+      }
+    }
+
+    // V3F — Límite total (1 vez por temporada/total, ej: skipass)
+    // Buscamos el DNI exacto que escaneó (puede ser titular o familiar)
+    if (beneficio.limite_total) {
+      const usosTotal = await query(
+        `SELECT COUNT(*) as total, MAX(v.fecha_verificacion) AS ultima, MAX(c.nombre) AS comercio_nombre
+         FROM verificaciones v
+         LEFT JOIN comercios c ON c.id = v.comercio_id
+         WHERE v.beneficiario_id = $1 AND v.beneficio_id = $2 AND v.estado = 'exitoso'
+           AND (v.beneficiario_dni = $3 OR v.beneficiario_dni IS NULL)`,
+        [beneficiarioId, beneficio_id, dni]
+      );
+      const usosCount = parseInt(usosTotal.rows[0].total);
+      if (usosCount >= beneficio.limite_total) {
+        const ultima = usosTotal.rows[0].ultima;
+        const comercioPrev = usosTotal.rows[0].comercio_nombre;
+        const fechaStr = ultima ? new Date(ultima).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+        return res.status(429).json({
+          error: `Ya retiró este beneficio${fechaStr ? ` el ${fechaStr}` : ''}${comercioPrev ? ` en ${comercioPrev}` : ''}. No se permite doble retiro.`,
+          duplicado: true,
+        });
       }
     }
 
@@ -398,12 +437,12 @@ router.post('/canjear', async (req: Request, res: Response) => {
     const codigo = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
     const verificacion = await query(
       `INSERT INTO verificaciones (
-        beneficiario_id, beneficio_id, comercio_id,
+        beneficiario_id, beneficiario_dni, beneficio_id, comercio_id,
         estado, monto_original, monto_descuento, monto_final,
         codigo_referencia, monto, categoria_beneficio, usa_limite_jerarquia
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING id, estado, codigo_referencia, fecha_verificacion, monto`,
-      [beneficiarioId, beneficio_id, comercio_id, 'exitoso',
+      [beneficiarioId, dni, beneficio_id, comercio_id, 'exitoso',
        montoNum || 0, 0, montoNum || 0, codigo,
        montoNum || null, beneficio.categoria || null, !!beneficio.usa_limite_jerarquia]
     );

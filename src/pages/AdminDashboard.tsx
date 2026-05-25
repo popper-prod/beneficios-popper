@@ -147,6 +147,10 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [importandoJerarquias, setImportandoJerarquias] = useState(false);
   const [seedingInternos, setSeedingInternos] = useState(false);
 
+  // V3F — Skipass operativo
+  const [seedingBoleterias, setSeedingBoleterias] = useState(false);
+  const [exportandoSkipass, setExportandoSkipass] = useState(false);
+
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
 
@@ -560,6 +564,72 @@ export default function AdminDashboard({ token, user, onLogout }: {
       }
     } catch { alert('Error de conexión'); }
     setSeedingInternos(false);
+  };
+
+  // V3F — Seed boleterías + skipass + foto + listado
+  const handleSeedBoleteriasSkipass = async () => {
+    const ok = confirm(
+      '¿Configurar Skipass operativo?\n\n' +
+      'Esto va a:\n' +
+      '• Crear (o reactivar) 2 comercios: "Boletería Ciudad" y "Boletería Cerro Castor"\n' +
+      '• Crear/actualizar el beneficio "Pase de Esquí · Temporada" con límite 1 por persona\n' +
+      '• Asociar el skipass con ambas boleterías (se puede retirar en cualquiera, pero solo 1 vez)\n' +
+      '• Aplica a empleado + familiares (Madre/Padre, Cónyuge, Concubino, Hijos)'
+    );
+    if (!ok) return;
+    setSeedingBoleterias(true);
+    try {
+      const res = await fetch(`${API_URL}/admin/seed-boleterias-skipass`, { method: 'POST', headers });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✓ Configurado. ${data.boleterias.length} boleterías + skipass listas.\n\nQRs:\n${data.boleterias.map((b: any) => `• ${b.nombre}: ${b.qr}`).join('\n')}`);
+        fetchComercios(); fetchBeneficios();
+      } else {
+        alert(`Error: ${data.error || 'No se pudo configurar'}`);
+      }
+    } catch { alert('Error de conexión'); }
+    setSeedingBoleterias(false);
+  };
+
+  const handleExportarAutorizadosSkipass = async () => {
+    setExportandoSkipass(true);
+    try {
+      // Buscar el beneficio skipass
+      const benRes = await fetch(`${API_URL}/admin/beneficios`, { headers });
+      const benData = await benRes.json();
+      const skipass = (benData.beneficios || []).find((b: any) =>
+        (b.nombre || '').toLowerCase().includes('skipass') ||
+        (b.nombre || '').toLowerCase().includes('esquí') ||
+        b.categoria === 'skipass'
+      );
+      if (!skipass) {
+        alert('No encontré el beneficio Skipass. Hacé click primero en "Configurar Skipass".');
+        setExportandoSkipass(false);
+        return;
+      }
+      const res = await fetch(`${API_URL}/admin/autorizados/${skipass.id}/excel`, { headers });
+      if (!res.ok) { alert('Error generando el listado'); setExportandoSkipass(false); return; }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `autorizados-skipass-${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch { alert('Error de conexión'); }
+    setExportandoSkipass(false);
+  };
+
+  const handleUploadFotoFamiliar = async (familiarId: string, fotoDataUrl: string) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/familiares/${familiarId}/foto`, {
+        method: 'POST', headers, body: JSON.stringify({ foto: fotoDataUrl }),
+      });
+      if (res.ok) {
+        fetchFamiliares();
+        return true;
+      }
+      return false;
+    } catch { return false; }
   };
 
   const handleDeleteJerarquia = async (id: string, nombre: string) => {
@@ -1402,9 +1472,17 @@ export default function AdminDashboard({ token, user, onLogout }: {
           title="Familiares"
           description={`${familiares.length} familiar${familiares.length === 1 ? '' : 'es'} vinculado${familiares.length === 1 ? '' : 's'}.`}
           action={
-            <Button variant="primary" size="md" onClick={handleSyncFamiliares} loading={syncingFamiliares}>
-              {syncingFamiliares ? 'Sincronizando…' : 'Sincronizar desde Naaloo'}
-            </Button>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <Button variant="ghost" size="md" onClick={handleSeedBoleteriasSkipass} loading={seedingBoleterias}>
+                {seedingBoleterias ? 'Cargando…' : 'Configurar Skipass'}
+              </Button>
+              <Button variant="outline" size="md" onClick={handleExportarAutorizadosSkipass} loading={exportandoSkipass}>
+                {exportandoSkipass ? 'Generando…' : 'Lista autorizados Skipass'}
+              </Button>
+              <Button variant="primary" size="md" onClick={handleSyncFamiliares} loading={syncingFamiliares}>
+                {syncingFamiliares ? 'Sincronizando…' : 'Sincronizar desde Naaloo'}
+              </Button>
+            </div>
           }
         >
           {familiaresMsg && <InlineMessage tone={familiaresMsg.includes('Error') ? 'danger' : 'success'}>{familiaresMsg}</InlineMessage>}
@@ -1418,6 +1496,10 @@ export default function AdminDashboard({ token, user, onLogout }: {
           ) : (
             <DataTable
               columns={[
+                {
+                  key: 'foto', label: '', width: 48,
+                  render: (r: any) => <FamiliarFotoCell familiar={r} onUpload={handleUploadFotoFamiliar} />,
+                },
                 { key: 'dni', label: 'DNI', mono: true, sortable: true },
                 {
                   key: 'nombre_completo', label: 'Familiar', sortable: true,
@@ -1884,6 +1966,54 @@ function EscalaEditor({
         </div>
       )}
     </div>
+  );
+}
+
+// ============================================
+// V3F — FamiliarFotoCell (upload foto inline)
+// ============================================
+function FamiliarFotoCell({ familiar, onUpload }: { familiar: any; onUpload: (id: string, dataUrl: string) => Promise<boolean> }) {
+  const [uploading, setUploading] = useState(false);
+  const handleClick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (file.size > 800 * 1024) { alert('Máx 800 KB'); return; }
+      setUploading(true);
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const ok = await onUpload(familiar.id, e.target?.result as string);
+        if (!ok) alert('Error subiendo foto');
+        setUploading(false);
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  };
+  return (
+    <button
+      onClick={handleClick}
+      title={familiar.foto ? 'Cambiar foto' : 'Subir foto del DNI / persona'}
+      style={{
+        width: 36, height: 36, borderRadius: '50%',
+        background: familiar.foto ? 'transparent' : 'var(--bg-elevated)',
+        border: `1px solid ${familiar.foto ? 'var(--brand-border)' : 'var(--border-default)'}`,
+        cursor: 'pointer', padding: 0, overflow: 'hidden',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--text-3)',
+      }}
+    >
+      {uploading ? '…' : familiar.foto ? (
+        <img src={familiar.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+        </svg>
+      )}
+    </button>
   );
 }
 
