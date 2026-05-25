@@ -270,6 +270,119 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
   }
 });
 
+// V3G — Verify pass: la boletería puede llamar este endpoint diariamente
+// para confirmar si un DNI sigue autorizado a usar un beneficio dado.
+// Devuelve estado claro: válido / inactivo / no-autorizado / vencido
+router.get('/verify-pass/:dni/:beneficioId', async (req: Request, res: Response) => {
+  try {
+    const dni = req.params.dni as string;
+    const beneficioId = req.params.beneficioId as string;
+    if (!/^\d{7,8}$/.test(dni)) return res.status(400).json({ valid: false, error: 'DNI inválido' });
+
+    // 1) Beneficio existe y vigente
+    const benRes = await query(
+      `SELECT id, nombre, activo, fecha_inicio, fecha_fin, aplica_a, relaciones_familiar, limite_total
+       FROM beneficios WHERE id=$1`,
+      [beneficioId]
+    );
+    if (benRes.rows.length === 0) return res.json({ valid: false, motivo: 'Beneficio no encontrado' });
+    const b = benRes.rows[0];
+    if (!b.activo) return res.json({ valid: false, motivo: 'Beneficio inactivo', codigo: 'BENEFICIO_INACTIVO' });
+    const ahora = new Date();
+    if (b.fecha_inicio && new Date(b.fecha_inicio) > ahora) {
+      return res.json({ valid: false, motivo: `Inicia el ${new Date(b.fecha_inicio).toLocaleDateString('es-AR')}`, codigo: 'NO_VIGENTE_AUN' });
+    }
+    if (b.fecha_fin && new Date(b.fecha_fin) < ahora) {
+      return res.json({ valid: false, motivo: `Venció el ${new Date(b.fecha_fin).toLocaleDateString('es-AR')}`, codigo: 'VENCIDO' });
+    }
+
+    // 2) Identidad: titular o familiar
+    let esFamiliar = false;
+    let relacion: string | null = null;
+    let titular: any = null;
+    let portador: any = null;
+
+    const tRes = await query(`SELECT id, dni, nombre, apellido, activo, motivo_baja FROM beneficiarios WHERE dni=$1`, [dni]);
+    if (tRes.rows.length > 0) {
+      portador = tRes.rows[0]; titular = portador;
+    } else {
+      const fRes = await query(`
+        SELECT f.id as fid, f.dni as fdni, f.nombre_completo, f.relacion, f.activo as f_activo,
+               b.id, b.dni, b.nombre, b.apellido, b.activo, b.motivo_baja
+        FROM familiares f JOIN beneficiarios b ON b.id = f.beneficiario_id
+        WHERE f.dni=$1 LIMIT 1
+      `, [dni]).catch(() => ({ rows: [] }));
+      if (fRes.rows.length === 0) {
+        return res.json({ valid: false, motivo: 'DNI no encontrado en el sistema', codigo: 'NO_AUTORIZADO' });
+      }
+      const r = fRes.rows[0];
+      esFamiliar = true;
+      relacion = r.relacion;
+      titular = { id: r.id, dni: r.dni, nombre: r.nombre, apellido: r.apellido, activo: r.activo, motivo_baja: r.motivo_baja };
+      portador = { id: r.fid, dni: r.fdni, nombre_completo: r.nombre_completo, activo: r.f_activo };
+
+      if (!r.f_activo) return res.json({ valid: false, motivo: 'Vínculo familiar inactivo', codigo: 'FAMILIAR_INACTIVO' });
+    }
+
+    if (!titular.activo) {
+      return res.json({
+        valid: false,
+        motivo: `Titular dado de baja${titular.motivo_baja ? ` (${titular.motivo_baja})` : ''}`,
+        codigo: 'TITULAR_BAJA',
+        titular: { nombre: titular.nombre, apellido: titular.apellido },
+      });
+    }
+
+    // 3) Aplica_a: si es familiar, validar relación
+    if (esFamiliar) {
+      if (b.aplica_a === 'empleado') {
+        return res.json({ valid: false, motivo: 'Este beneficio aplica solo al titular', codigo: 'NO_PARA_FAMILIAR' });
+      }
+      if (b.relaciones_familiar) {
+        const permitidas = b.relaciones_familiar.split(',').map((s: string) => s.trim());
+        if (!permitidas.includes(relacion)) {
+          return res.json({ valid: false, motivo: `Relación "${relacion}" no autorizada para este beneficio`, codigo: 'RELACION_NO_AUTORIZADA' });
+        }
+      }
+    } else {
+      if (b.aplica_a === 'familiar') {
+        return res.json({ valid: false, motivo: 'Este beneficio aplica solo a familiares', codigo: 'NO_PARA_TITULAR' });
+      }
+    }
+
+    // 4) Si limite_total: ¿ya usó?
+    let yaUsado = false;
+    let usadoInfo: any = null;
+    if (b.limite_total) {
+      const usoRes = await query(`
+        SELECT MAX(v.fecha_verificacion) as ultima, MAX(c.nombre) as comercio
+        FROM verificaciones v LEFT JOIN comercios c ON c.id = v.comercio_id
+        WHERE v.beneficiario_id=$1 AND v.beneficio_id=$2 AND v.estado='exitoso'
+          AND v.beneficiario_dni=$3
+      `, [titular.id, beneficioId, dni]);
+      if (usoRes.rows[0].ultima) {
+        yaUsado = true;
+        usadoInfo = { fecha: usoRes.rows[0].ultima, comercio: usoRes.rows[0].comercio };
+      }
+    }
+
+    res.json({
+      valid: true,
+      beneficio: b.nombre,
+      portador: esFamiliar
+        ? { dni: portador.dni, nombre_completo: portador.nombre_completo, relacion }
+        : { dni: portador.dni, nombre: portador.nombre, apellido: portador.apellido },
+      titular: esFamiliar
+        ? { dni: titular.dni, nombre: titular.nombre, apellido: titular.apellido }
+        : null,
+      ya_usado: yaUsado,
+      uso_previo: usadoInfo,
+    });
+  } catch (error: any) {
+    res.status(500).json({ valid: false, error: error.message });
+  }
+});
+
 // Endpoint dedicado para validar PIN del responsable
 router.post('/verificar-pin', async (req: Request, res: Response) => {
   try {
@@ -314,19 +427,41 @@ router.post('/canjear', async (req: Request, res: Response) => {
     }
 
     // 1) Resolver beneficiario: titular o familiar (V2)
+    // V3G: validación estricta — el titular debe estar ACTIVO siempre
     let beneficiarioId: string | null = null;
-    const titularRes = await query('SELECT id FROM beneficiarios WHERE dni = $1', [dni]);
+    const titularRes = await query('SELECT id, activo, nombre, apellido, motivo_baja FROM beneficiarios WHERE dni = $1', [dni]);
     if (titularRes.rows.length > 0) {
-      beneficiarioId = titularRes.rows[0].id;
+      const t = titularRes.rows[0];
+      if (!t.activo) {
+        return res.status(403).json({
+          error: `Colaborador inactivo${t.motivo_baja ? ` (${t.motivo_baja})` : ''}. No se puede registrar el canje.`,
+          inactivo: true,
+        });
+      }
+      beneficiarioId = t.id;
     } else {
-      // ¿Familiar?
+      // ¿Familiar? Validar que tanto familiar como titular estén activos
       const famRes = await query(
-        `SELECT b.id FROM familiares f JOIN beneficiarios b ON b.id = f.beneficiario_id
-         WHERE f.dni = $1 AND f.activo = TRUE LIMIT 1`,
+        `SELECT b.id, b.activo as titular_activo, b.motivo_baja, f.activo as familiar_activo
+         FROM familiares f JOIN beneficiarios b ON b.id = f.beneficiario_id
+         WHERE f.dni = $1 LIMIT 1`,
         [dni]
       ).catch(() => ({ rows: [] }));
       if (famRes.rows.length > 0) {
-        beneficiarioId = famRes.rows[0].id;
+        const r = famRes.rows[0];
+        if (!r.titular_activo) {
+          return res.status(403).json({
+            error: `El titular de este familiar fue dado de baja${r.motivo_baja ? ` (${r.motivo_baja})` : ''}. Los beneficios familiares quedan suspendidos.`,
+            inactivo: true,
+          });
+        }
+        if (!r.familiar_activo) {
+          return res.status(403).json({
+            error: 'Vínculo familiar inactivo. Contactá a RRHH.',
+            inactivo: true,
+          });
+        }
+        beneficiarioId = r.id;
       } else {
         // Fallback Naaloo
         const empleado = await buscarEmpleadoPorDni(dni);
@@ -347,12 +482,22 @@ router.post('/canjear', async (req: Request, res: Response) => {
 
     // 2) Beneficio (incluyendo campos V2)
     const beneficioResult = await query(
-      `SELECT id, nombre, limite_uso_diario, limite_uso_mensual, limite_total, categoria, usa_limite_jerarquia
+      `SELECT id, nombre, limite_uso_diario, limite_uso_mensual, limite_total, categoria, usa_limite_jerarquia,
+              fecha_inicio, fecha_fin
        FROM beneficios WHERE id = $1 AND activo = TRUE`,
       [beneficio_id]
     );
     if (beneficioResult.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
     const beneficio = beneficioResult.rows[0];
+
+    // V3G: vigencia del beneficio
+    const ahora = new Date();
+    if (beneficio.fecha_inicio && new Date(beneficio.fecha_inicio) > ahora) {
+      return res.status(403).json({ error: `Este beneficio inicia el ${new Date(beneficio.fecha_inicio).toLocaleDateString('es-AR')}.` });
+    }
+    if (beneficio.fecha_fin && new Date(beneficio.fecha_fin) < ahora) {
+      return res.status(403).json({ error: `Este beneficio venció el ${new Date(beneficio.fecha_fin).toLocaleDateString('es-AR')}.`, vencido: true });
+    }
 
     // 3) Limite usos diario / mensual (V1)
     if (beneficio.limite_uso_diario) {

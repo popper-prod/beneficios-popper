@@ -669,7 +669,15 @@ router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
           `UPDATE beneficiarios SET activo=FALSE, naaloo_id=$1, motivo_baja='Baja detectada en Naaloo', fecha_baja=NOW(), autorizado_por='Sync Naaloo', ultima_sync=NOW(), updated_at=NOW() WHERE id=$2`,
           [emp.id, local.id]
         );
-        logInserts.push({ beneficiario_id: local.id, accion: 'sync_baja', motivo: 'Baja automatica - empleado inactivo en Naaloo' });
+        // V3G CASCADE: desactivar familiares
+        const cascada = await query(
+          `UPDATE familiares SET activo=FALSE, updated_at=NOW() WHERE beneficiario_id=$1 AND activo=TRUE RETURNING id`,
+          [local.id]
+        ).catch(() => ({ rows: [] }));
+        logInserts.push({
+          beneficiario_id: local.id, accion: 'sync_baja',
+          motivo: `Baja automatica - empleado inactivo en Naaloo${cascada.rows.length ? ` (cascada: ${cascada.rows.length} familiares desactivados)` : ''}`,
+        });
         bajas++;
         detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'baja' });
       } else {
@@ -716,25 +724,41 @@ router.post('/autorizar', async (req: AuthRequest, res: Response) => {
     }
 
     const adminNombre = (req as any).user?.nombre ? `${(req as any).user.nombre} ${(req as any).user.apellido || ''}`.trim() : 'Admin';
+    let familiaresAfectados = 0;
 
     if (accion === 'desactivar') {
       await query(
         `UPDATE beneficiarios SET activo=FALSE, motivo_baja=$1, fecha_baja=NOW(), autorizado_por=$2, updated_at=NOW() WHERE id=$3`,
         [motivo || 'Desactivacion manual', adminNombre, beneficiario_id]
       );
+      // V3G CASCADE: desactivar TODOS los familiares del titular
+      const cascada = await query(
+        `UPDATE familiares SET activo=FALSE, updated_at=NOW() WHERE beneficiario_id=$1 AND activo=TRUE RETURNING id`,
+        [beneficiario_id]
+      ).catch(() => ({ rows: [] }));
+      familiaresAfectados = cascada.rows.length;
     } else {
       await query(
         `UPDATE beneficiarios SET activo=TRUE, motivo_baja=NULL, fecha_baja=NULL, autorizado_por=NULL, updated_at=NOW() WHERE id=$1`,
         [beneficiario_id]
       );
+      // V3G CASCADE: reactivar familiares también
+      const cascada = await query(
+        `UPDATE familiares SET activo=TRUE, updated_at=NOW() WHERE beneficiario_id=$1 AND activo=FALSE RETURNING id`,
+        [beneficiario_id]
+      ).catch(() => ({ rows: [] }));
+      familiaresAfectados = cascada.rows.length;
     }
 
     await query(
       `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, $2, $3, $4)`,
-      [beneficiario_id, accion, motivo || (accion === 'desactivar' ? 'Desactivacion manual' : 'Reactivacion manual'), adminNombre]
+      [beneficiario_id, accion,
+       (motivo || (accion === 'desactivar' ? 'Desactivacion manual' : 'Reactivacion manual')) +
+       (familiaresAfectados > 0 ? ` (cascada: ${familiaresAfectados} familiares)` : ''),
+       adminNombre]
     );
 
-    res.json({ exito: true, accion });
+    res.json({ exito: true, accion, familiaresAfectados });
   } catch (error: any) {
     console.error('Error autorizando:', error.message);
     res.status(500).json({ error: 'Error procesando autorizacion', detalle: error.message });
@@ -753,17 +777,28 @@ router.post('/autorizar-bulk', async (req: AuthRequest, res: Response) => {
     const motivoFinal = motivo || (accion === 'desactivar' ? 'Desactivacion masiva' : 'Reactivacion masiva');
     let procesados = 0;
 
+    let totalFamiliaresAfectados = 0;
     for (const id of ids) {
       if (accion === 'desactivar') {
         await query(
           `UPDATE beneficiarios SET activo=FALSE, motivo_baja=$1, fecha_baja=NOW(), autorizado_por=$2, updated_at=NOW() WHERE id=$3`,
           [motivoFinal, adminNombre, id]
         );
+        const cascada = await query(
+          `UPDATE familiares SET activo=FALSE, updated_at=NOW() WHERE beneficiario_id=$1 AND activo=TRUE RETURNING id`,
+          [id]
+        ).catch(() => ({ rows: [] }));
+        totalFamiliaresAfectados += cascada.rows.length;
       } else {
         await query(
           `UPDATE beneficiarios SET activo=TRUE, motivo_baja=NULL, fecha_baja=NULL, autorizado_por=NULL, updated_at=NOW() WHERE id=$1`,
           [id]
         );
+        const cascada = await query(
+          `UPDATE familiares SET activo=TRUE, updated_at=NOW() WHERE beneficiario_id=$1 AND activo=FALSE RETURNING id`,
+          [id]
+        ).catch(() => ({ rows: [] }));
+        totalFamiliaresAfectados += cascada.rows.length;
       }
 
       await query(
@@ -773,7 +808,7 @@ router.post('/autorizar-bulk', async (req: AuthRequest, res: Response) => {
       procesados++;
     }
 
-    res.json({ exito: true, procesados, accion });
+    res.json({ exito: true, procesados, accion, familiaresAfectados: totalFamiliaresAfectados });
   } catch (error: any) {
     console.error('Error autorizacion masiva:', error.message);
     res.status(500).json({ error: 'Error procesando autorizacion masiva', detalle: error.message });
@@ -1483,6 +1518,48 @@ router.post('/familiares/sync-naaloo', async (req: AuthRequest, res: Response) =
   } catch (error: any) {
     console.error('Error sync familiares:', error.message);
     res.status(500).json({ error: 'Error sincronizando familiares', detalle: error.message });
+  }
+});
+
+// ============================================
+// PHASE 3G — Anular verificación (revocar canje ya hecho)
+// ============================================
+router.post('/anular-verificacion/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { motivo } = req.body;
+    const adminNombre = (req as any).user?.nombre ? `${(req as any).user.nombre} ${(req as any).user.apellido || ''}`.trim() : 'Admin';
+
+    const result = await query(
+      `UPDATE verificaciones SET estado='anulado', motivo_baja=$1, autorizado_por=$2, updated_at=NOW()
+       WHERE id=$3 AND estado='exitoso' RETURNING id, beneficiario_id, beneficio_id, monto`,
+      [motivo || 'Anulado por administrador', adminNombre, id]
+    ).catch(async () => {
+      // Si las columnas motivo_baja/autorizado_por no existen en verificaciones, intentar sin
+      return await query(
+        `UPDATE verificaciones SET estado='anulado' WHERE id=$1 AND estado='exitoso' RETURNING id, beneficiario_id, beneficio_id, monto`,
+        [id]
+      );
+    });
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Verificación no encontrada o ya estaba anulada' });
+    }
+
+    // Decrementar uso_actual
+    await query(`UPDATE beneficios SET uso_actual = GREATEST(0, uso_actual - 1) WHERE id=$1`, [result.rows[0].beneficio_id]);
+
+    // Log
+    await query(
+      `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por)
+       VALUES ($1, 'anular_verificacion', $2, $3)`,
+      [result.rows[0].beneficiario_id, `Anulada verificación ${id}: ${motivo || 'sin motivo'}`, adminNombre]
+    ).catch(() => {});
+
+    res.json({ exito: true, verificacion_id: id });
+  } catch (error: any) {
+    console.error('Error anulando verificación:', error.message);
+    res.status(500).json({ error: 'Error anulando', detalle: error.message });
   }
 });
 

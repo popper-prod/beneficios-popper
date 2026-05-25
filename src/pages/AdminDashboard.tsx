@@ -632,6 +632,31 @@ export default function AdminDashboard({ token, user, onLogout }: {
     } catch { return false; }
   };
 
+  // V3G — Anular verificación (canje ya registrado)
+  const handleAnularVerificacion = async (v: any) => {
+    const motivo = prompt(
+      `¿Anular esta verificación?\n\n` +
+      `Colaborador: ${v.beneficiario_nombre} ${v.beneficiario_apellido || ''}\n` +
+      `Beneficio: ${v.beneficio_nombre}\n` +
+      `Fecha: ${formatDate(v.fecha_verificacion)}\n\n` +
+      `Indicá el motivo de la anulación:`
+    );
+    if (!motivo) return;
+    try {
+      const res = await fetch(`${API_URL}/admin/anular-verificacion/${v.id}`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ motivo }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('✓ Verificación anulada');
+        fetchVerificaciones();
+      } else {
+        alert(`Error: ${data.error || 'No se pudo anular'}`);
+      }
+    } catch { alert('Error de conexión'); }
+  };
+
   const handleDeleteJerarquia = async (id: string, nombre: string) => {
     if (!confirm(`¿Eliminar jerarquía "${nombre}"?`)) return;
     try {
@@ -903,9 +928,21 @@ export default function AdminDashboard({ token, user, onLogout }: {
               { key: 'comercio_nombre', label: 'Comercio', sortable: true },
               {
                 key: 'estado', label: 'Estado',
-                render: (r: any) => <Badge tone={r.estado === 'exitoso' ? 'success' : 'danger'} dot size="sm">{r.estado}</Badge>,
+                render: (r: any) => (
+                  <Badge tone={r.estado === 'exitoso' ? 'success' : r.estado === 'anulado' ? 'warning' : 'danger'} dot size="sm">
+                    {r.estado}
+                  </Badge>
+                ),
               },
               { key: 'codigo_referencia', label: 'Código', mono: true },
+              {
+                key: 'acciones', label: '',
+                render: (r: any) => r.estado === 'exitoso' ? (
+                  <Button variant="ghost" size="sm" onClick={() => handleAnularVerificacion(r)} style={{ color: 'var(--danger-text)' }}>
+                    Anular
+                  </Button>
+                ) : null,
+              },
             ]}
             data={verificaciones}
             rowKey={(r: any) => r.id}
