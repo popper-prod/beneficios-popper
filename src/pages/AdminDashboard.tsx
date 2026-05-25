@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../components/layout/AppShell';
 import DashboardView, { Panel } from '../views/DashboardView';
+import ReportesView from '../views/ReportesView';
 import { DataTable } from '../components/ui/DataTable';
 import { Button } from '../components/ui/Button';
 import { Badge, TierBadge } from '../components/ui/Badge';
@@ -22,7 +23,7 @@ interface DashboardData {
   ultimasVerificaciones: any[];
 }
 
-type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones' | 'permisos' | 'talento' | 'familiares' | 'jerarquias';
+type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones' | 'permisos' | 'talento' | 'familiares' | 'jerarquias' | 'reportes';
 
 // gold token reemplazado por var(--brand)
 
@@ -712,6 +713,9 @@ export default function AdminDashboard({ token, user, onLogout }: {
       {activeTab === 'dashboard' && (
         loading ? <DashboardSkeleton /> : data ? <DashboardView data={data} user={user} /> : <DashboardEmpty onRetry={fetchDashboard} />
       )}
+
+      {/* ====== REPORTES ====== */}
+      {activeTab === 'reportes' && <ReportesView token={token} />}
 
       {/* ====== MOVIMIENTO ====== */}
       {activeTab === 'verificaciones' && (

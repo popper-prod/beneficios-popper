@@ -17,6 +17,7 @@ import {
   Sparkles,
   Heart,
   Layers,
+  BarChart3,
 } from 'lucide-react';
 
 // ============================================
@@ -36,7 +37,8 @@ export type NavId =
   | 'permisos'
   | 'talento'
   | 'familiares'
-  | 'jerarquias';
+  | 'jerarquias'
+  | 'reportes';
 
 interface NavItem {
   id: NavId;
@@ -48,6 +50,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard, section: 'Analítica' },
   { id: 'verificaciones', label: 'Movimiento', icon: Activity, section: 'Analítica' },
+  { id: 'reportes', label: 'Reportes', icon: BarChart3, section: 'Analítica' },
 
   { id: 'beneficios', label: 'Beneficios', icon: Gift, section: 'Catálogo' },
   { id: 'comercios', label: 'Comercios', icon: Store, section: 'Catálogo' },

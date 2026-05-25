@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query } from '../db';
 import { verifyToken, AuthRequest } from '../middleware/auth';
 import { obtenerTodosEmpleados, naalooToBeneficiario, obtenerEmpleadoCompleto, NaalooFamiliar } from '../services/naaloo';
+import * as XLSX from 'xlsx';
 
 const router = Router();
 router.use(verifyToken);
@@ -1455,6 +1456,244 @@ router.post('/familiares/sync-naaloo', async (req: AuthRequest, res: Response) =
   } catch (error: any) {
     console.error('Error sync familiares:', error.message);
     res.status(500).json({ error: 'Error sincronizando familiares', detalle: error.message });
+  }
+});
+
+// ============================================
+// PHASE 3B — REPORTES + ANALYTICS
+// ============================================
+async function buildReporte(desde: string, hasta: string) {
+  // Total general
+  const resumen = await query(`
+    SELECT
+      COUNT(*) ::int AS total_canjes,
+      COALESCE(SUM(monto), 0)::float AS total_gastado,
+      COALESCE(AVG(monto), 0)::float AS promedio_canje,
+      COUNT(*) FILTER (WHERE monto > 0)::int AS canjes_con_monto
+    FROM verificaciones
+    WHERE estado = 'exitoso' AND fecha_verificacion BETWEEN $1 AND $2
+  `, [desde, hasta]);
+
+  // Periodo anterior (mismo rango previo)
+  const fromDate = new Date(desde);
+  const toDate = new Date(hasta);
+  const diff = toDate.getTime() - fromDate.getTime();
+  const prevDesde = new Date(fromDate.getTime() - diff - 86400000).toISOString().split('T')[0];
+  const prevHasta = new Date(fromDate.getTime() - 86400000).toISOString().split('T')[0];
+  const resumenPrev = await query(`
+    SELECT COUNT(*)::int AS canjes, COALESCE(SUM(monto), 0)::float AS gastado
+    FROM verificaciones WHERE estado = 'exitoso' AND fecha_verificacion BETWEEN $1 AND $2
+  `, [prevDesde, prevHasta]);
+
+  // Por categoria
+  const porCategoria = await query(`
+    SELECT
+      COALESCE(b.categoria, 'sin_categoria') AS categoria,
+      COALESCE(b.origen, 'externo') AS origen,
+      COUNT(v.id)::int AS canjes,
+      COALESCE(SUM(v.monto), 0)::float AS gastado,
+      COALESCE(SUM(v.monto * COALESCE(v.monto_descuento, 0) / NULLIF(v.monto, 0)), 0)::float AS descuento_total
+    FROM verificaciones v
+    LEFT JOIN beneficios b ON b.id = v.beneficio_id
+    WHERE v.estado = 'exitoso' AND v.fecha_verificacion BETWEEN $1 AND $2
+    GROUP BY b.categoria, b.origen
+    ORDER BY gastado DESC
+  `, [desde, hasta]);
+
+  // Por jerarquia
+  const porJerarquia = await query(`
+    SELECT
+      j.nombre AS jerarquia,
+      j.limite_mensual::float AS limite_individual,
+      COUNT(DISTINCT b.id)::int AS colaboradores,
+      COALESCE(SUM(v.monto), 0)::float AS gastado_total
+    FROM jerarquias j
+    LEFT JOIN beneficiarios b ON b.jerarquia_id = j.id AND b.activo = TRUE
+    LEFT JOIN verificaciones v ON v.beneficiario_id = b.id
+      AND v.estado = 'exitoso' AND v.fecha_verificacion BETWEEN $1 AND $2
+      AND v.usa_limite_jerarquia = TRUE
+    WHERE j.activo = TRUE
+    GROUP BY j.id, j.nombre, j.limite_mensual
+    ORDER BY j.orden ASC, j.nombre ASC
+  `, [desde, hasta]).catch(() => ({ rows: [] }));
+
+  // Por comercio
+  const porComercio = await query(`
+    SELECT
+      c.nombre AS comercio, c.ciudad,
+      COUNT(v.id)::int AS canjes,
+      COALESCE(SUM(v.monto), 0)::float AS gastado
+    FROM verificaciones v
+    JOIN comercios c ON c.id = v.comercio_id
+    WHERE v.estado = 'exitoso' AND v.fecha_verificacion BETWEEN $1 AND $2
+    GROUP BY c.id, c.nombre, c.ciudad
+    ORDER BY gastado DESC
+    LIMIT 20
+  `, [desde, hasta]);
+
+  // Top colaboradores
+  const topColaboradores = await query(`
+    SELECT
+      b.dni, b.nombre, b.apellido, b.departamento, b.cargo,
+      b.es_talento_popper, j.nombre AS jerarquia,
+      j.limite_mensual::float AS limite_jerarquia,
+      j.limite_mensual_talento::float AS limite_jerarquia_talento,
+      COUNT(v.id)::int AS canjes,
+      COALESCE(SUM(v.monto), 0)::float AS gastado
+    FROM beneficiarios b
+    LEFT JOIN jerarquias j ON j.id = b.jerarquia_id
+    LEFT JOIN verificaciones v ON v.beneficiario_id = b.id
+      AND v.estado = 'exitoso' AND v.fecha_verificacion BETWEEN $1 AND $2
+    WHERE b.activo = TRUE
+    GROUP BY b.id, b.dni, b.nombre, b.apellido, b.departamento, b.cargo, b.es_talento_popper, j.nombre, j.limite_mensual, j.limite_mensual_talento
+    HAVING COUNT(v.id) > 0
+    ORDER BY gastado DESC
+    LIMIT 50
+  `, [desde, hasta]);
+
+  // Serie temporal (por día)
+  const serieTemporal = await query(`
+    SELECT
+      DATE(fecha_verificacion) AS fecha,
+      COUNT(*)::int AS canjes,
+      COALESCE(SUM(monto), 0)::float AS gastado
+    FROM verificaciones
+    WHERE estado = 'exitoso' AND fecha_verificacion BETWEEN $1 AND $2
+    GROUP BY DATE(fecha_verificacion)
+    ORDER BY fecha ASC
+  `, [desde, hasta]);
+
+  const r = resumen.rows[0];
+  const rp = resumenPrev.rows[0];
+  const deltaGasto = rp.gastado > 0 ? ((r.total_gastado - rp.gastado) / rp.gastado) * 100 : 0;
+  const deltaCanjes = rp.canjes > 0 ? ((r.total_canjes - rp.canjes) / rp.canjes) * 100 : 0;
+
+  return {
+    periodo: { desde, hasta, prev_desde: prevDesde, prev_hasta: prevHasta },
+    resumen: {
+      total_canjes: r.total_canjes,
+      total_gastado: r.total_gastado,
+      promedio_canje: r.promedio_canje,
+      canjes_con_monto: r.canjes_con_monto,
+      delta_gasto_pct: deltaGasto,
+      delta_canjes_pct: deltaCanjes,
+      prev_gastado: rp.gastado,
+      prev_canjes: rp.canjes,
+    },
+    por_categoria: porCategoria.rows,
+    por_jerarquia: porJerarquia.rows.map((j: any) => ({
+      ...j,
+      limite_total: (j.limite_individual || 0) * (j.colaboradores || 0),
+      utilizacion_pct: (j.limite_individual || 0) * (j.colaboradores || 0) > 0
+        ? (j.gastado_total / ((j.limite_individual || 0) * (j.colaboradores || 0))) * 100
+        : 0,
+    })),
+    por_comercio: porComercio.rows,
+    top_colaboradores: topColaboradores.rows.map((t: any) => {
+      const limite = t.es_talento_popper ? (t.limite_jerarquia_talento || 0) : (t.limite_jerarquia || 0);
+      return {
+        ...t,
+        limite_aplicable: limite,
+        saldo_restante: Math.max(0, limite - (t.gastado || 0)),
+        utilizacion_pct: limite > 0 ? (t.gastado / limite) * 100 : null,
+      };
+    }),
+    serie_temporal: serieTemporal.rows,
+  };
+}
+
+router.get('/reportes', async (req: AuthRequest, res: Response) => {
+  try {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    const desde = (req.query.desde as string) || firstDay;
+    const hasta = (req.query.hasta as string) || today.toISOString().split('T')[0];
+    const reporte = await buildReporte(desde, hasta);
+    res.json(reporte);
+  } catch (error: any) {
+    console.error('Error generando reporte:', error.message);
+    res.status(500).json({ error: 'Error generando reporte', detalle: error.message });
+  }
+});
+
+router.get('/reportes/exportar', async (req: AuthRequest, res: Response) => {
+  try {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    const desde = (req.query.desde as string) || firstDay;
+    const hasta = (req.query.hasta as string) || today.toISOString().split('T')[0];
+    const reporte = await buildReporte(desde, hasta);
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Resumen
+    const resumenSheet = XLSX.utils.json_to_sheet([{
+      'Período desde': desde,
+      'Período hasta': hasta,
+      'Total canjes': reporte.resumen.total_canjes,
+      'Total gastado': reporte.resumen.total_gastado,
+      'Promedio por canje': reporte.resumen.promedio_canje,
+      'Δ vs período anterior (gasto %)': reporte.resumen.delta_gasto_pct.toFixed(1) + '%',
+      'Δ vs período anterior (canjes %)': reporte.resumen.delta_canjes_pct.toFixed(1) + '%',
+    }]);
+    XLSX.utils.book_append_sheet(wb, resumenSheet, 'Resumen');
+
+    // Sheet 2: Por categoría
+    const categoriaSheet = XLSX.utils.json_to_sheet(
+      reporte.por_categoria.map((r: any) => ({
+        'Categoría': r.categoria, 'Origen': r.origen,
+        'Canjes': r.canjes, 'Gastado': r.gastado, 'Descuento total': r.descuento_total,
+      }))
+    );
+    XLSX.utils.book_append_sheet(wb, categoriaSheet, 'Por categoría');
+
+    // Sheet 3: Por jerarquía
+    const jerarquiaSheet = XLSX.utils.json_to_sheet(
+      reporte.por_jerarquia.map((r: any) => ({
+        'Jerarquía': r.jerarquia, 'Límite individual': r.limite_individual,
+        'Colaboradores': r.colaboradores, 'Límite total': r.limite_total,
+        'Gastado': r.gastado_total, 'Utilización %': r.utilizacion_pct.toFixed(1) + '%',
+      }))
+    );
+    XLSX.utils.book_append_sheet(wb, jerarquiaSheet, 'Por jerarquía');
+
+    // Sheet 4: Por comercio
+    const comercioSheet = XLSX.utils.json_to_sheet(
+      reporte.por_comercio.map((r: any) => ({
+        'Comercio': r.comercio, 'Ciudad': r.ciudad, 'Canjes': r.canjes, 'Gastado': r.gastado,
+      }))
+    );
+    XLSX.utils.book_append_sheet(wb, comercioSheet, 'Por comercio');
+
+    // Sheet 5: Top colaboradores
+    const topSheet = XLSX.utils.json_to_sheet(
+      reporte.top_colaboradores.map((r: any) => ({
+        'DNI': r.dni, 'Nombre': `${r.nombre} ${r.apellido}`,
+        'Departamento': r.departamento || '—', 'Cargo': r.cargo || '—',
+        'Jerarquía': r.jerarquia || '—', 'Talento': r.es_talento_popper ? 'Sí' : 'No',
+        'Canjes': r.canjes, 'Gastado': r.gastado,
+        'Límite mensual': r.limite_aplicable, 'Saldo restante': r.saldo_restante,
+        'Utilización %': r.utilizacion_pct != null ? r.utilizacion_pct.toFixed(1) + '%' : '—',
+      }))
+    );
+    XLSX.utils.book_append_sheet(wb, topSheet, 'Top colaboradores');
+
+    // Sheet 6: Serie temporal
+    const serieSheet = XLSX.utils.json_to_sheet(
+      reporte.serie_temporal.map((r: any) => ({
+        'Fecha': new Date(r.fecha).toISOString().split('T')[0],
+        'Canjes': r.canjes, 'Gastado': r.gastado,
+      }))
+    );
+    XLSX.utils.book_append_sheet(wb, serieSheet, 'Serie temporal');
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', `attachment; filename="reporte-popper-${desde}_a_${hasta}.xlsx"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Error exportando reporte:', error.message);
+    res.status(500).json({ error: 'Error exportando', detalle: error.message });
   }
 });
 
