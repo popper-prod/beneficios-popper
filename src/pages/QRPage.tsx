@@ -52,7 +52,15 @@ interface Beneficio {
   modalidad?: string;
   restricciones?: string | null;
   excluye_outlet?: boolean;
+  usa_limite_jerarquia?: boolean;
   nivel_minimo: string;
+  saldo?: {
+    limite_mensual?: number;
+    gastado_mes?: number;
+    disponible?: number;
+    jerarquia?: string;
+    sin_jerarquia?: boolean;
+  } | null;
 }
 
 interface HistorialItem {
@@ -102,6 +110,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [familiarInfo, setFamiliarInfo] = useState<FamiliarInfo | null>(null);
   const [beneficios, setBeneficios] = useState<Beneficio[]>([]);
   const [selectedBenefit, setSelectedBenefit] = useState<string>('');
+  const [monto, setMonto] = useState<string>('');
   const [dni, setDni] = useState('');
   const [searching, setSearching] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -180,8 +189,15 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
     setSearching(false);
   };
 
-  const handleCanjear = async () => {
+  const handleCanjear = async (overrideLimite = false) => {
     if (!comercio || !beneficiario || !selectedBenefit) return;
+    const benData = beneficios.find(b => b.id === selectedBenefit);
+    const requiereMonto = benData?.usa_limite_jerarquia;
+    const montoNum = monto ? parseFloat(monto) : null;
+    if (requiereMonto && (!montoNum || montoNum <= 0)) {
+      setErrorMsg('Ingresá el monto del ticket para continuar.');
+      return;
+    }
     setProcessing(true);
     setErrorMsg('');
 
@@ -193,11 +209,17 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
           dni: beneficiario.dni,
           beneficio_id: selectedBenefit,
           comercio_id: comercio.id,
+          monto: montoNum,
+          override_limite: overrideLimite,
         }),
       });
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.requiere_override) {
+          const ok = confirm(`${data.error}\n\n¿Querés autorizar el canje igual? (excede el límite mensual)`);
+          if (ok) { setProcessing(false); return handleCanjear(true); }
+        }
         setErrorMsg(data.error || 'No pudimos procesar el canje.');
         setProcessing(false);
         return;
@@ -217,6 +239,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
     setFamiliarInfo(null);
     setBeneficios([]);
     setSelectedBenefit('');
+    setMonto('');
     setErrorMsg('');
     setSuccessData(null);
     setHistorial([]);
@@ -327,13 +350,15 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
               familiarInfo={familiarInfo}
               beneficios={beneficios}
               selectedBenefit={selectedBenefit}
-              setSelectedBenefit={setSelectedBenefit}
+              setSelectedBenefit={(id) => { setSelectedBenefit(id); setMonto(''); }}
+              monto={monto}
+              setMonto={setMonto}
               historial={historial}
               showHistorial={showHistorial}
               setShowHistorial={setShowHistorial}
               processing={processing}
               errorMsg={errorMsg}
-              onCanjear={handleCanjear}
+              onCanjear={() => handleCanjear(false)}
               onReset={handleReset}
             />
           )}
@@ -631,6 +656,8 @@ function ProfileStep({
   beneficios,
   selectedBenefit,
   setSelectedBenefit,
+  monto,
+  setMonto,
   historial,
   showHistorial,
   setShowHistorial,
@@ -644,6 +671,8 @@ function ProfileStep({
   beneficios: Beneficio[];
   selectedBenefit: string;
   setSelectedBenefit: (v: string) => void;
+  monto: string;
+  setMonto: (v: string) => void;
   historial: HistorialItem[];
   showHistorial: boolean;
   setShowHistorial: (v: boolean) => void;
@@ -652,6 +681,12 @@ function ProfileStep({
   onCanjear: () => void;
   onReset: () => void;
 }) {
+  const selectedBen = beneficios.find(b => b.id === selectedBenefit);
+  const necesitaMonto = !!selectedBen?.usa_limite_jerarquia;
+  const montoNum = parseFloat(monto || '0') || 0;
+  const descuento = selectedBen?.descuento ? Number(selectedBen.descuento) : 0;
+  const ahorro = montoNum * (descuento / 100);
+  const totalAPagar = montoNum - ahorro;
   const tier = tierGradients[beneficiario.nivel] || tierGradients.bronce;
 
   return (
@@ -906,6 +941,106 @@ function ProfileStep({
               onSelect={() => setSelectedBenefit(b.id === selectedBenefit ? '' : b.id)}
             />
           ))}
+        </div>
+      )}
+
+      {/* ===== Panel monto + saldo (V3A) ===== */}
+      {selectedBen && necesitaMonto && (
+        <div
+          style={{
+            marginTop: 20,
+            padding: 16,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--brand-border)',
+            borderRadius: '12px',
+          }}
+        >
+          {/* Saldo header */}
+          {selectedBen.saldo && !selectedBen.saldo.sin_jerarquia && (
+            <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-3)', fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  Saldo mensual {selectedBen.saldo.jerarquia ? `· ${selectedBen.saldo.jerarquia}` : ''}
+                </span>
+                <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
+                  ${(selectedBen.saldo.disponible || 0).toLocaleString('es-AR')}
+                </span>
+              </div>
+              {/* Bar de progreso */}
+              <div style={{ height: 4, background: 'var(--bg-canvas)', borderRadius: 2, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${Math.min(100, ((selectedBen.saldo.gastado_mes || 0) / (selectedBen.saldo.limite_mensual || 1)) * 100)}%`,
+                    background: 'var(--brand)',
+                    transition: 'width 200ms var(--ease-out)',
+                  }}
+                />
+              </div>
+              <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 6 }}>
+                Gastado: ${(selectedBen.saldo.gastado_mes || 0).toLocaleString('es-AR')} de ${(selectedBen.saldo.limite_mensual || 0).toLocaleString('es-AR')}
+              </p>
+            </div>
+          )}
+          {selectedBen.saldo?.sin_jerarquia && (
+            <div style={{
+              padding: '8px 10px', marginBottom: 12,
+              background: 'var(--warning-bg)', border: '1px solid var(--warning-border)',
+              borderRadius: '6px',
+            }}>
+              <p style={{ fontSize: '11.5px', color: 'var(--warning-text)' }}>
+                ⚠ No tenés jerarquía asignada. El sistema no podrá controlar tu límite mensual. Pedile a RRHH que te asigne una.
+              </p>
+            </div>
+          )}
+
+          {/* Input monto */}
+          <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-2)', fontWeight: 500, marginBottom: 6 }}>
+            Monto del ticket
+          </label>
+          <div style={{ position: 'relative' }}>
+            <span style={{
+              position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
+              color: 'var(--text-3)', fontSize: '15px', fontWeight: 600,
+            }}>$</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="0"
+              value={monto}
+              onChange={e => setMonto(e.target.value)}
+              style={{
+                width: '100%', height: 48, padding: '0 14px 0 26px',
+                background: 'var(--bg-canvas)', border: '1px solid var(--border-default)',
+                borderRadius: '8px', color: 'var(--text-1)', fontSize: '20px', fontWeight: 600,
+                outline: 'none', fontVariantNumeric: 'tabular-nums',
+              }}
+              onFocus={e => { e.target.style.borderColor = 'var(--brand)'; e.target.style.boxShadow = '0 0 0 3px var(--brand-subtle)'; }}
+              onBlur={e => { e.target.style.borderColor = 'var(--border-default)'; e.target.style.boxShadow = 'none'; }}
+            />
+          </div>
+
+          {/* Cálculo en vivo */}
+          {montoNum > 0 && descuento > 0 && (
+            <div style={{
+              marginTop: 12, padding: 12,
+              background: 'var(--bg-canvas)', border: '1px solid var(--border-subtle)',
+              borderRadius: '8px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-3)', marginBottom: 4 }}>
+                <span>Subtotal</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>${montoNum.toLocaleString('es-AR')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--success-text)', marginBottom: 4 }}>
+                <span>Descuento {Math.round(descuento)}%</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>−${Math.round(ahorro).toLocaleString('es-AR')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', color: 'var(--text-1)', fontWeight: 700, paddingTop: 6, borderTop: '1px solid var(--border-subtle)', marginTop: 6 }}>
+                <span>Total a pagar</span>
+                <span style={{ color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>${Math.round(totalAPagar).toLocaleString('es-AR')}</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

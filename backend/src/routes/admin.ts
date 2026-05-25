@@ -616,11 +616,11 @@ router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
         // Empleado nuevo — insertar solo si activo en Naaloo
         if (emp.activo) {
           const inserted = await query(
-            `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, sector, empresa, fecha_ingreso, activo, naaloo_id, origen, ultima_sync)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE,$11,'naaloo',NOW())
-             ON CONFLICT (dni) DO UPDATE SET nombre=EXCLUDED.nombre, apellido=EXCLUDED.apellido, departamento=EXCLUDED.departamento, sector=EXCLUDED.sector, naaloo_id=EXCLUDED.naaloo_id, ultima_sync=NOW()
+            `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, sector, cargo, empresa, fecha_ingreso, activo, naaloo_id, origen, ultima_sync)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,TRUE,$12,'naaloo',NOW())
+             ON CONFLICT (dni) DO UPDATE SET nombre=EXCLUDED.nombre, apellido=EXCLUDED.apellido, departamento=EXCLUDED.departamento, sector=EXCLUDED.sector, cargo=EXCLUDED.cargo, naaloo_id=EXCLUDED.naaloo_id, ultima_sync=NOW()
              RETURNING id`,
-            [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.sector || null, ben.empresa, fechaValida, emp.id]
+            [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.sector || null, ben.cargo || null, ben.empresa, fechaValida, emp.id]
           );
           logInserts.push({ beneficiario_id: inserted.rows[0].id, accion: 'sync_alta', motivo: 'Alta automatica desde Naaloo' });
           altas++;
@@ -629,8 +629,8 @@ router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
       } else if (emp.activo && !local.activo) {
         // Reactivar
         await query(
-          `UPDATE beneficiarios SET activo=TRUE, nombre=$1, apellido=$2, nivel=$3, departamento=$4, sector=$5, naaloo_id=$6, motivo_baja=NULL, fecha_baja=NULL, ultima_sync=NOW(), updated_at=NOW() WHERE id=$7`,
-          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, ben.sector || null, emp.id, local.id]
+          `UPDATE beneficiarios SET activo=TRUE, nombre=$1, apellido=$2, nivel=$3, departamento=$4, sector=$5, cargo=$6, naaloo_id=$7, motivo_baja=NULL, fecha_baja=NULL, ultima_sync=NOW(), updated_at=NOW() WHERE id=$8`,
+          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, ben.sector || null, ben.cargo || null, emp.id, local.id]
         );
         logInserts.push({ beneficiario_id: local.id, accion: 'sync_alta', motivo: 'Reactivado automaticamente desde Naaloo' });
         altas++;
@@ -647,8 +647,8 @@ router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
       } else {
         // Solo actualizar datos
         await query(
-          `UPDATE beneficiarios SET nombre=$1, apellido=$2, nivel=$3, departamento=$4, sector=$5, naaloo_id=$6, ultima_sync=NOW(), updated_at=NOW() WHERE id=$7`,
-          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, ben.sector || null, emp.id, local.id]
+          `UPDATE beneficiarios SET nombre=$1, apellido=$2, nivel=$3, departamento=$4, sector=$5, cargo=$6, naaloo_id=$7, ultima_sync=NOW(), updated_at=NOW() WHERE id=$8`,
+          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, ben.sector || null, ben.cargo || null, emp.id, local.id]
         );
         actualizados++;
       }
@@ -1455,6 +1455,89 @@ router.post('/familiares/sync-naaloo', async (req: AuthRequest, res: Response) =
   } catch (error: any) {
     console.error('Error sync familiares:', error.message);
     res.status(500).json({ error: 'Error sincronizando familiares', detalle: error.message });
+  }
+});
+
+// ============================================
+// PHASE 3A — Migración para presupuesto y cargo
+// ============================================
+router.post('/migrar-presupuesto', async (req: AuthRequest, res: Response) => {
+  try {
+    // Verificaciones: monto + categoria denormalizada
+    await query(`ALTER TABLE verificaciones ADD COLUMN IF NOT EXISTS monto DECIMAL(12,2)`);
+    await query(`ALTER TABLE verificaciones ADD COLUMN IF NOT EXISTS categoria_beneficio VARCHAR(50)`);
+    await query(`ALTER TABLE verificaciones ADD COLUMN IF NOT EXISTS usa_limite_jerarquia BOOLEAN DEFAULT FALSE`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_verif_categoria ON verificaciones(categoria_beneficio) WHERE categoria_beneficio IS NOT NULL`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_verif_beneficiario_fecha ON verificaciones(beneficiario_id, fecha_verificacion)`);
+
+    // Beneficiarios: cargo (synced from Naaloo) + link a jerarquia
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS cargo VARCHAR(100)`);
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS jerarquia_id UUID`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_beneficiarios_jerarquia ON beneficiarios(jerarquia_id) WHERE jerarquia_id IS NOT NULL`);
+
+    res.json({
+      exito: true,
+      mensaje: 'Migración de presupuesto completada',
+      cambios: [
+        'verificaciones: +monto, categoria_beneficio, usa_limite_jerarquia',
+        'beneficiarios: +cargo, jerarquia_id',
+      ],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error migración presupuesto', detalle: error.message });
+  }
+});
+
+// Auto-vincular beneficiarios a jerarquias por match de nombre
+router.post('/vincular-jerarquias', async (req: AuthRequest, res: Response) => {
+  try {
+    const jerarquias = await query(`SELECT id, nombre FROM jerarquias WHERE activo = TRUE`);
+    if (jerarquias.rows.length === 0) {
+      return res.json({ exito: true, vinculados: 0, mensaje: 'No hay jerarquías cargadas. Cargá primero algunas desde el tab Jerarquías.' });
+    }
+
+    let vinculados = 0;
+    let sinMatch: string[] = [];
+    for (const j of jerarquias.rows) {
+      const result = await query(
+        `UPDATE beneficiarios SET jerarquia_id = $1
+         WHERE activo = TRUE AND jerarquia_id IS NULL
+         AND (LOWER(cargo) = LOWER($2) OR LOWER(departamento) = LOWER($2))
+         RETURNING id`,
+        [j.id, j.nombre]
+      );
+      vinculados += result.rows.length;
+    }
+
+    // Detectar cargos sin jerarquia
+    const sinJ = await query(`
+      SELECT DISTINCT cargo FROM beneficiarios
+      WHERE activo = TRUE AND jerarquia_id IS NULL AND cargo IS NOT NULL
+      LIMIT 50
+    `);
+    sinMatch = sinJ.rows.map((r: any) => r.cargo).filter(Boolean);
+
+    res.json({ exito: true, vinculados, cargosSinJerarquia: sinMatch });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error vinculando jerarquías', detalle: error.message });
+  }
+});
+
+// Consumo del mes corriente de un beneficiario por categoria
+router.get('/consumo/:beneficiarioId', async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT categoria_beneficio AS categoria, COALESCE(SUM(monto), 0)::float AS gastado, COUNT(*)::int AS canjes
+      FROM verificaciones
+      WHERE beneficiario_id = $1
+        AND fecha_verificacion >= date_trunc('month', CURRENT_DATE)
+        AND estado = 'exitoso'
+        AND monto IS NOT NULL
+      GROUP BY categoria_beneficio
+    `, [req.params.beneficiarioId]);
+    res.json({ consumo: result.rows });
+  } catch (error: any) {
+    res.json({ consumo: [] });
   }
 });
 

@@ -167,13 +167,53 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
       return true;
     });
 
-    // Anotar cada beneficio con el % aplicable calculado
+    // === Saldo mensual del titular por categoria (Phase 3A) ===
+    const consumoResult = await query(`
+      SELECT categoria_beneficio AS categoria, COALESCE(SUM(monto), 0)::float AS gastado
+      FROM verificaciones
+      WHERE beneficiario_id = $1
+        AND fecha_verificacion >= date_trunc('month', CURRENT_DATE)
+        AND estado = 'exitoso' AND monto IS NOT NULL
+      GROUP BY categoria_beneficio
+    `, [titular.id]).catch(() => ({ rows: [] }));
+    const consumoMap: Record<string, number> = {};
+    for (const r of consumoResult.rows) consumoMap[r.categoria] = r.gastado;
+
+    // Jerarquia del titular (para conocer su limite)
+    let jerarquia: any = null;
+    if (titular.id) {
+      const jRes = await query(`
+        SELECT j.id, j.nombre, j.limite_mensual::float, j.limite_mensual_talento::float
+        FROM jerarquias j JOIN beneficiarios b ON b.jerarquia_id = j.id
+        WHERE b.id = $1 LIMIT 1
+      `, [titular.id]).catch(() => ({ rows: [] }));
+      if (jRes.rows.length > 0) jerarquia = jRes.rows[0];
+    }
+    const limiteMensual = jerarquia
+      ? (esTalento ? jerarquia.limite_mensual_talento : jerarquia.limite_mensual) || 0
+      : 0;
+
+    // Anotar cada beneficio con el % aplicable + saldo restante si usa límite jerarquia
     const beneficiosConDescuento = beneficiosFiltrados.map((b: any) => {
       const descuentoCalculado = calcularDescuentoAplicable(b, antiguedadMeses, esTalento);
+      let saldoInfo: any = null;
+      if (b.usa_limite_jerarquia && jerarquia) {
+        const gastado = consumoMap[b.categoria] || 0;
+        const disponible = Math.max(0, limiteMensual - gastado);
+        saldoInfo = {
+          limite_mensual: limiteMensual,
+          gastado_mes: gastado,
+          disponible,
+          jerarquia: jerarquia.nombre,
+        };
+      } else if (b.usa_limite_jerarquia && !jerarquia) {
+        saldoInfo = { sin_jerarquia: true };
+      }
       return {
         ...b,
         descuento: descuentoCalculado != null ? descuentoCalculado : b.descuento,
         descuento_calculado: descuentoCalculado,
+        saldo: saldoInfo,
       };
     });
 
@@ -214,52 +254,58 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
 });
 
 // POST /api/public/canjear - Canjear un beneficio (sin auth)
+// V3A: acepta monto, valida saldo mensual si beneficio.usa_limite_jerarquia
 router.post('/canjear', async (req: Request, res: Response) => {
   try {
-    const { dni, beneficio_id, comercio_id } = req.body;
+    const { dni, beneficio_id, comercio_id, monto, override_limite } = req.body;
+    const montoNum = monto != null ? parseFloat(String(monto)) : null;
 
     if (!dni || !beneficio_id || !comercio_id) {
       return res.status(400).json({ error: 'Faltan datos requeridos' });
     }
 
-    // Buscar beneficiario en BD local (o crear desde Naaloo)
-    let beneficiarioId: string;
-
-    const localResult = await query('SELECT id FROM beneficiarios WHERE dni = $1', [dni]);
-
-    if (localResult.rows.length > 0) {
-      beneficiarioId = localResult.rows[0].id;
+    // 1) Resolver beneficiario: titular o familiar (V2)
+    let beneficiarioId: string | null = null;
+    const titularRes = await query('SELECT id FROM beneficiarios WHERE dni = $1', [dni]);
+    if (titularRes.rows.length > 0) {
+      beneficiarioId = titularRes.rows[0].id;
     } else {
-      // Buscar en Naaloo y sincronizar
-      const empleado = await buscarEmpleadoPorDni(dni);
-      if (!empleado) {
-        return res.status(404).json({ error: 'Colaborador no encontrado' });
+      // ¿Familiar?
+      const famRes = await query(
+        `SELECT b.id FROM familiares f JOIN beneficiarios b ON b.id = f.beneficiario_id
+         WHERE f.dni = $1 AND f.activo = TRUE LIMIT 1`,
+        [dni]
+      ).catch(() => ({ rows: [] }));
+      if (famRes.rows.length > 0) {
+        beneficiarioId = famRes.rows[0].id;
+      } else {
+        // Fallback Naaloo
+        const empleado = await buscarEmpleadoPorDni(dni);
+        if (!empleado) return res.status(404).json({ error: 'Colaborador no encontrado' });
+        const ben = naalooToBeneficiario(empleado);
+        const fechaIngreso = ben.fecha_ingreso ? new Date(ben.fecha_ingreso) : null;
+        const fechaValida = fechaIngreso && !isNaN(fechaIngreso.getTime()) ? fechaIngreso.toISOString().split('T')[0] : null;
+        const insertResult = await query(
+          `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, empresa, fecha_ingreso, activo)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (dni) DO UPDATE SET nombre = EXCLUDED.nombre, apellido = EXCLUDED.apellido, nivel = EXCLUDED.nivel, updated_at = NOW()
+           RETURNING id`,
+          [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.empresa, fechaValida, ben.activo]
+        );
+        beneficiarioId = insertResult.rows[0].id;
       }
-      const ben = naalooToBeneficiario(empleado);
-      const fechaIngreso = ben.fecha_ingreso ? new Date(ben.fecha_ingreso) : null;
-      const fechaValida = fechaIngreso && !isNaN(fechaIngreso.getTime()) ? fechaIngreso.toISOString().split('T')[0] : null;
-      const insertResult = await query(
-        `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, empresa, fecha_ingreso, activo)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         ON CONFLICT (dni) DO UPDATE SET nombre = EXCLUDED.nombre, apellido = EXCLUDED.apellido, nivel = EXCLUDED.nivel, updated_at = NOW()
-         RETURNING id`,
-        [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.empresa, fechaValida, ben.activo]
-      );
-      beneficiarioId = insertResult.rows[0].id;
     }
 
-    // Verificar beneficio
+    // 2) Beneficio (incluyendo campos V2)
     const beneficioResult = await query(
-      'SELECT id, nombre, limite_uso_diario, limite_uso_mensual FROM beneficios WHERE id = $1 AND activo = TRUE',
+      `SELECT id, nombre, limite_uso_diario, limite_uso_mensual, categoria, usa_limite_jerarquia
+       FROM beneficios WHERE id = $1 AND activo = TRUE`,
       [beneficio_id]
     );
-    if (beneficioResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Beneficio no encontrado' });
-    }
-
+    if (beneficioResult.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
     const beneficio = beneficioResult.rows[0];
 
-    // Validar limite diario
+    // 3) Limite usos diario / mensual (V1)
     if (beneficio.limite_uso_diario) {
       const usosHoy = await query(
         `SELECT COUNT(*) as total FROM verificaciones
@@ -268,11 +314,9 @@ router.post('/canjear', async (req: Request, res: Response) => {
         [beneficiarioId, beneficio_id]
       );
       if (parseInt(usosHoy.rows[0].total) >= beneficio.limite_uso_diario) {
-        return res.status(429).json({ error: `Limite diario alcanzado (${beneficio.limite_uso_diario} por dia)` });
+        return res.status(429).json({ error: `Límite diario alcanzado (${beneficio.limite_uso_diario} por día)` });
       }
     }
-
-    // Validar limite mensual
     if (beneficio.limite_uso_mensual) {
       const usosMes = await query(
         `SELECT COUNT(*) as total FROM verificaciones
@@ -281,24 +325,56 @@ router.post('/canjear', async (req: Request, res: Response) => {
         [beneficiarioId, beneficio_id]
       );
       if (parseInt(usosMes.rows[0].total) >= beneficio.limite_uso_mensual) {
-        return res.status(429).json({ error: `Limite mensual alcanzado (${beneficio.limite_uso_mensual} por mes)` });
+        return res.status(429).json({ error: `Límite mensual alcanzado (${beneficio.limite_uso_mensual} por mes)` });
       }
     }
 
-    // Registrar verificacion
-    const codigo = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    // 4) PRESUPUESTO POR JERARQUIA (V3A)
+    if (beneficio.usa_limite_jerarquia && montoNum && !override_limite) {
+      // Obtener jerarquia del beneficiario
+      const jRes = await query(`
+        SELECT b.es_talento_popper, j.id AS jid, j.nombre AS jnombre,
+               j.limite_mensual::float AS lim, j.limite_mensual_talento::float AS lim_t
+        FROM beneficiarios b LEFT JOIN jerarquias j ON j.id = b.jerarquia_id
+        WHERE b.id = $1 LIMIT 1
+      `, [beneficiarioId]).catch(() => ({ rows: [] }));
+      const jr = jRes.rows[0] || {};
+      if (jr.jid) {
+        const limite = jr.es_talento_popper ? (jr.lim_t || 0) : (jr.lim || 0);
+        // Sumar gasto del mes en esta categoria
+        const gastoRes = await query(`
+          SELECT COALESCE(SUM(monto), 0)::float AS gastado
+          FROM verificaciones
+          WHERE beneficiario_id = $1 AND categoria_beneficio = $2
+            AND fecha_verificacion >= date_trunc('month', CURRENT_DATE)
+            AND estado = 'exitoso'
+        `, [beneficiarioId, beneficio.categoria]);
+        const gastado = gastoRes.rows[0]?.gastado || 0;
+        if (limite > 0 && (gastado + montoNum) > limite) {
+          return res.status(429).json({
+            error: `Excede el límite mensual de ${jr.jnombre} ($${limite.toLocaleString('es-AR')}). ` +
+                   `Ya gastaste $${gastado.toLocaleString('es-AR')}. Disponible: $${(limite - gastado).toLocaleString('es-AR')}.`,
+            saldo: { limite, gastado, disponible: limite - gastado, monto_solicitado: montoNum },
+            requiere_override: true,
+          });
+        }
+      }
+    }
 
+    // 5) Registrar verificacion (con monto + categoria denormalizada)
+    const codigo = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
     const verificacion = await query(
       `INSERT INTO verificaciones (
         beneficiario_id, beneficio_id, comercio_id,
         estado, monto_original, monto_descuento, monto_final,
-        codigo_referencia
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id, estado, codigo_referencia, fecha_verificacion`,
-      [beneficiarioId, beneficio_id, comercio_id, 'exitoso', 0, 0, 0, codigo]
+        codigo_referencia, monto, categoria_beneficio, usa_limite_jerarquia
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING id, estado, codigo_referencia, fecha_verificacion, monto`,
+      [beneficiarioId, beneficio_id, comercio_id, 'exitoso',
+       montoNum || 0, 0, montoNum || 0, codigo,
+       montoNum || null, beneficio.categoria || null, !!beneficio.usa_limite_jerarquia]
     );
 
-    // Incrementar uso
     await query('UPDATE beneficios SET uso_actual = uso_actual + 1 WHERE id = $1', [beneficio_id]);
 
     res.json({
