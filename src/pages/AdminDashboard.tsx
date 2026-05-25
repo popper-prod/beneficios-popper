@@ -22,7 +22,7 @@ interface DashboardData {
   ultimasVerificaciones: any[];
 }
 
-type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones' | 'permisos';
+type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones' | 'permisos' | 'talento' | 'familiares' | 'jerarquias';
 
 // gold token reemplazado por var(--brand)
 
@@ -125,6 +125,23 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [importingCatalog, setImportingCatalog] = useState(false);
   const [importCatalogMsg, setImportCatalogMsg] = useState('');
 
+  // V2 — Talento Popper
+  const [talentos, setTalentos] = useState<any[]>([]);
+  const [talentoSearch, setTalentoSearch] = useState('');
+  const [talentoMsg, setTalentoMsg] = useState('');
+
+  // V2 — Familiares
+  const [familiares, setFamiliares] = useState<any[]>([]);
+  const [syncingFamiliares, setSyncingFamiliares] = useState(false);
+  const [familiaresMsg, setFamiliaresMsg] = useState('');
+
+  // V2 — Jerarquías
+  const [jerarquias, setJerarquias] = useState<any[]>([]);
+  const [jerarquiaModal, setJerarquiaModal] = useState<{ mode: 'create' | 'edit'; item?: any } | null>(null);
+  const [jerarquiaForm, setJerarquiaForm] = useState<Record<string, string>>({});
+  const [jerarquiaSaving, setJerarquiaSaving] = useState(false);
+  const [jerarquiaMsg, setJerarquiaMsg] = useState('');
+
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
 
@@ -175,6 +192,9 @@ export default function AdminDashboard({ token, user, onLogout }: {
     if (activeTab === 'beneficiarios') fetchBeneficiarios();
     if (activeTab === 'autorizaciones') { fetchBeneficiarios(); fetchAuthLogs(); fetchAreasSectores(); }
     if (activeTab === 'permisos') { fetchAdmins(); fetchMiPerfil(); }
+    if (activeTab === 'talento') { fetchTalentos(); fetchBeneficiarios(); }
+    if (activeTab === 'familiares') fetchFamiliares();
+    if (activeTab === 'jerarquias') fetchJerarquias();
   }, [activeTab]);
 
   // ============================================
@@ -319,6 +339,124 @@ export default function AdminDashboard({ token, user, onLogout }: {
       setImportCatalogMsg('Error de conexión');
     }
     setImportingCatalog(false);
+  };
+
+  // ============================================
+  // V2 — TALENTO POPPER
+  // ============================================
+  const fetchTalentos = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/talento-popper`, { headers });
+      if (res.ok) { const d = await res.json(); setTalentos(d.talentos || []); }
+    } catch { /* silencioso */ }
+  };
+
+  const handleToggleTalento = async (beneficiarioId: string, nuevoEstado: boolean) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/talento-popper/toggle`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ beneficiarioId, activo: nuevoEstado }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTalentoMsg(nuevoEstado ? '✓ Agregado al programa Talento Popper' : '✓ Quitado del programa');
+        fetchTalentos(); fetchBeneficiarios();
+      } else setTalentoMsg(`Error: ${data.error}`);
+    } catch { setTalentoMsg('Error de conexión'); }
+  };
+
+  // ============================================
+  // V2 — FAMILIARES
+  // ============================================
+  const fetchFamiliares = async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/familiares`, { headers });
+      if (res.ok) { const d = await res.json(); setFamiliares(d.familiares || []); }
+    } catch { /* silencioso */ }
+  };
+
+  const handleSyncFamiliares = async () => {
+    if (!confirm('Sincronizar familiares desde Naaloo? Esto puede tardar 1-3 minutos para 500+ empleados.')) return;
+    setSyncingFamiliares(true);
+    setFamiliaresMsg('Sincronizando con Naaloo… puede tardar varios minutos.');
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120000);
+      const res = await fetch(`${API_URL}/admin/familiares/sync-naaloo`, { method: 'POST', headers, signal: controller.signal });
+      clearTimeout(timeout);
+      const data = await res.json();
+      if (res.ok) {
+        setFamiliaresMsg(
+          `✓ Sincronización completa: ${data.resumen.empleadosProcesados} empleados procesados, ` +
+          `${data.resumen.familiaresNuevos} familiares nuevos, ${data.resumen.familiaresActualizados} actualizados.`
+        );
+        fetchFamiliares();
+      } else setFamiliaresMsg(`Error: ${data.error}`);
+    } catch {
+      setFamiliaresMsg('La sincronización continúa en el servidor. Recargá en unos minutos.');
+      setTimeout(fetchFamiliares, 10000);
+    }
+    setSyncingFamiliares(false);
+  };
+
+  // ============================================
+  // V2 — JERARQUIAS
+  // ============================================
+  const fetchJerarquias = async () => {
+    try {
+      // Asegurar migración primero
+      await fetch(`${API_URL}/admin/migrar-jerarquias`, { method: 'POST', headers }).catch(() => {});
+      const res = await fetch(`${API_URL}/admin/jerarquias`, { headers });
+      if (res.ok) { const d = await res.json(); setJerarquias(d.jerarquias || []); }
+    } catch { /* silencioso */ }
+  };
+
+  const openJerarquia = (mode: 'create' | 'edit', item?: any) => {
+    setJerarquiaMsg('');
+    if (mode === 'edit' && item) {
+      setJerarquiaForm({
+        nombre: item.nombre || '',
+        orden: String(item.orden || 0),
+        limite_mensual: String(item.limite_mensual || 0),
+        limite_mensual_talento: String(item.limite_mensual_talento || 0),
+        notas: item.notas || '',
+      });
+    } else {
+      setJerarquiaForm({ nombre: '', orden: '0', limite_mensual: '0', limite_mensual_talento: '0', notas: '' });
+    }
+    setJerarquiaModal({ mode, item });
+  };
+
+  const handleSaveJerarquia = async () => {
+    setJerarquiaSaving(true);
+    setJerarquiaMsg('');
+    try {
+      const url = jerarquiaModal?.mode === 'create'
+        ? `${API_URL}/admin/jerarquias`
+        : `${API_URL}/admin/jerarquias/${jerarquiaModal?.item.id}`;
+      const method = jerarquiaModal?.mode === 'create' ? 'POST' : 'PUT';
+      const body = {
+        nombre: jerarquiaForm.nombre,
+        orden: parseInt(jerarquiaForm.orden || '0', 10),
+        limite_mensual: parseFloat(jerarquiaForm.limite_mensual || '0'),
+        limite_mensual_talento: parseFloat(jerarquiaForm.limite_mensual_talento || '0'),
+        notas: jerarquiaForm.notas,
+        activo: true,
+      };
+      const res = await fetch(url, { method, headers, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (res.ok) { setJerarquiaModal(null); fetchJerarquias(); }
+      else setJerarquiaMsg(data.error || 'Error');
+    } catch { setJerarquiaMsg('Error de conexión'); }
+    setJerarquiaSaving(false);
+  };
+
+  const handleDeleteJerarquia = async (id: string, nombre: string) => {
+    if (!confirm(`¿Eliminar jerarquía "${nombre}"?`)) return;
+    try {
+      const res = await fetch(`${API_URL}/admin/jerarquias/${id}`, { method: 'DELETE', headers });
+      if (res.ok) fetchJerarquias();
+    } catch { /* */ }
   };
 
   // Autorizaciones: ejecutar migracion
@@ -1070,6 +1208,184 @@ export default function AdminDashboard({ token, user, onLogout }: {
         </PageSection>
       )}
 
+      {/* ====== TALENTO POPPER ====== */}
+      {activeTab === 'talento' && (
+        <PageSection
+          title="Talento Popper"
+          description={`${talentos.length} colaborador${talentos.length === 1 ? '' : 'es'} en el programa.`}
+        >
+          {talentoMsg && <InlineMessage tone={talentoMsg.includes('Error') ? 'danger' : 'success'}>{talentoMsg}</InlineMessage>}
+          <Panel title="Programa actual" description="Estos colaboradores acceden a porcentajes y límites mejorados.">
+            {talentos.length === 0 ? (
+              <EmptyView icon={<SparklesIcon size={28} />} title="Sin colaboradores en el programa" description="Buscalos abajo y marcalos como Talento Popper." />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {talentos.map((t: any) => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--brand-muted)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 600 }}>
+                      {t.nombre?.[0]}{t.apellido?.[0]}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '13px', color: 'var(--text-1)', fontWeight: 500 }}>{t.nombre} {t.apellido}</p>
+                      <p style={{ fontSize: '11px', color: 'var(--text-3)' }}>DNI {t.dni} · {t.departamento || 'S/D'}{t.sector ? ` · ${t.sector}` : ''}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => handleToggleTalento(t.id, false)} style={{ color: 'var(--danger-text)' }}>Quitar</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title="Agregar al programa" description="Buscá por nombre, DNI o departamento. Click para marcar como Talento Popper.">
+            <input
+              type="text"
+              placeholder="Buscar colaborador…"
+              value={talentoSearch}
+              onChange={(e) => setTalentoSearch(e.target.value)}
+              style={{
+                width: '100%', height: 36, padding: '0 12px',
+                background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+                borderRadius: '6px', color: 'var(--text-1)', fontSize: '13px', outline: 'none',
+                marginBottom: 12,
+              }}
+            />
+            {talentoSearch.length >= 2 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 400, overflowY: 'auto' }}>
+                {beneficiarios
+                  .filter((b: any) => !b.es_talento_popper && b.activo)
+                  .filter((b: any) => {
+                    const q = talentoSearch.toLowerCase();
+                    return (b.nombre + ' ' + b.apellido).toLowerCase().includes(q) ||
+                           b.dni?.includes(q) ||
+                           (b.departamento || '').toLowerCase().includes(q);
+                  })
+                  .slice(0, 50)
+                  .map((b: any) => (
+                    <div key={b.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                      background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '6px',
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: '12.5px', color: 'var(--text-1)', fontWeight: 500 }}>{b.nombre} {b.apellido}</p>
+                        <p style={{ fontSize: '11px', color: 'var(--text-3)' }}>DNI {b.dni} · {b.departamento || 'S/D'}</p>
+                      </div>
+                      <Button variant="primary" size="sm" onClick={() => handleToggleTalento(b.id, true)}>+ Talento</Button>
+                    </div>
+                  ))
+                }
+              </div>
+            )}
+          </Panel>
+        </PageSection>
+      )}
+
+      {/* ====== FAMILIARES ====== */}
+      {activeTab === 'familiares' && (
+        <PageSection
+          title="Familiares"
+          description={`${familiares.length} familiar${familiares.length === 1 ? '' : 'es'} vinculado${familiares.length === 1 ? '' : 's'}.`}
+          action={
+            <Button variant="primary" size="md" onClick={handleSyncFamiliares} loading={syncingFamiliares}>
+              {syncingFamiliares ? 'Sincronizando…' : 'Sincronizar desde Naaloo'}
+            </Button>
+          }
+        >
+          {familiaresMsg && <InlineMessage tone={familiaresMsg.includes('Error') ? 'danger' : 'success'}>{familiaresMsg}</InlineMessage>}
+          {familiares.length === 0 ? (
+            <EmptyView
+              icon={<HeartIcon size={28} />}
+              title="Sin familiares cargados"
+              description="Click en 'Sincronizar desde Naaloo' para importar madres, padres, cónyuges, concubinos e hijos de cada colaborador."
+              action={<Button variant="primary" onClick={handleSyncFamiliares} loading={syncingFamiliares}>Sincronizar ahora</Button>}
+            />
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'dni', label: 'DNI', mono: true, sortable: true },
+                {
+                  key: 'nombre_completo', label: 'Familiar', sortable: true,
+                  render: (r: any) => <span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{r.nombre_completo}</span>,
+                },
+                {
+                  key: 'relacion', label: 'Relación', sortable: true,
+                  render: (r: any) => <RelacionBadge relacion={r.relacion} />,
+                },
+                {
+                  key: 'titular', label: 'Titular', sortable: true,
+                  accessor: (r: any) => `${r.titular_nombre || ''} ${r.titular_apellido || ''}`,
+                  render: (r: any) => <span style={{ color: 'var(--text-3)' }}>{r.titular_nombre} {r.titular_apellido} <span style={{ color: 'var(--text-4)' }}>({r.titular_dni})</span></span>,
+                },
+                {
+                  key: 'fecha_nacimiento', label: 'Nacimiento', sortable: true,
+                  render: (r: any) => r.fecha_nacimiento ? new Date(r.fecha_nacimiento).toLocaleDateString('es-AR') : '—',
+                },
+                {
+                  key: 'a_cargo', label: 'A cargo',
+                  render: (r: any) => r.a_cargo ? <Badge tone="success" size="sm">Sí</Badge> : <span style={{ color: 'var(--text-4)' }}>No</span>,
+                },
+              ]}
+              data={familiares}
+              rowKey={(r: any) => r.id}
+              searchPlaceholder="Buscar por DNI, nombre o titular…"
+              empty={{ title: 'Sin familiares', description: 'Sincronizá con Naaloo.' }}
+            />
+          )}
+        </PageSection>
+      )}
+
+      {/* ====== JERARQUIAS ====== */}
+      {activeTab === 'jerarquias' && (
+        <PageSection
+          title="Jerarquías y límites"
+          description="Definí los cargos/jerarquías de la empresa y el límite mensual de gasto en indumentaria, calzado, accesorios y equipos."
+          action={<Button variant="primary" size="md" leftIcon={<PlusIcon size={13} />} onClick={() => openJerarquia('create')}>Nueva jerarquía</Button>}
+        >
+          {jerarquias.length === 0 ? (
+            <EmptyView
+              icon={<LayersIcon size={28} />}
+              title="Sin jerarquías definidas"
+              description="Creá la primera jerarquía. Ej: 'Operario' con límite $50.000/mes, 'Supervisor' con $100.000/mes, etc."
+              action={<Button variant="primary" leftIcon={<PlusIcon size={13} />} onClick={() => openJerarquia('create')}>Crear primera jerarquía</Button>}
+            />
+          ) : (
+            <DataTable
+              columns={[
+                { key: 'orden', label: 'Orden', sortable: true, width: 80 },
+                {
+                  key: 'nombre', label: 'Jerarquía', sortable: true,
+                  render: (r: any) => <span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{r.nombre}</span>,
+                },
+                {
+                  key: 'limite_mensual', label: 'Límite mensual', mono: true, sortable: true,
+                  render: (r: any) => <span style={{ color: 'var(--brand)' }}>${Number(r.limite_mensual).toLocaleString('es-AR')}</span>,
+                },
+                {
+                  key: 'limite_mensual_talento', label: 'Límite Talento', mono: true, sortable: true,
+                  render: (r: any) => <span style={{ color: 'var(--brand)' }}>${Number(r.limite_mensual_talento).toLocaleString('es-AR')}</span>,
+                },
+                {
+                  key: 'notas', label: 'Notas',
+                  render: (r: any) => <span style={{ color: 'var(--text-3)', fontSize: '11.5px' }}>{r.notas || '—'}</span>,
+                },
+                {
+                  key: 'actions', label: '',
+                  render: (r: any) => (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <Button variant="ghost" size="sm" onClick={() => openJerarquia('edit', r)}>Editar</Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteJerarquia(r.id, r.nombre)} style={{ color: 'var(--danger-text)' }}>Eliminar</Button>
+                    </div>
+                  ),
+                },
+              ]}
+              data={jerarquias}
+              rowKey={(r: any) => r.id}
+              searchPlaceholder="Buscar jerarquía…"
+              empty={{ title: 'Sin jerarquías' }}
+            />
+          )}
+        </PageSection>
+      )}
+
       {/* ============ MODALES ============ */}
 
       {/* Modal Beneficio */}
@@ -1183,10 +1499,42 @@ export default function AdminDashboard({ token, user, onLogout }: {
         </div>
       </Modal>
 
+      {/* Modal Jerarquía */}
+      <Modal open={!!jerarquiaModal} onClose={() => setJerarquiaModal(null)} title={jerarquiaModal?.mode === 'create' ? 'Nueva jerarquía' : 'Editar jerarquía'}>
+        <Field label="Nombre del cargo" value={jerarquiaForm.nombre || ''} onChange={v => setJerarquiaForm({ ...jerarquiaForm, nombre: v })} placeholder="Operario, Supervisor, Jefe…" required />
+        <Field label="Orden de aparición" value={jerarquiaForm.orden || '0'} onChange={v => setJerarquiaForm({ ...jerarquiaForm, orden: v })} type="number" />
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Límite mensual $" value={jerarquiaForm.limite_mensual || '0'} onChange={v => setJerarquiaForm({ ...jerarquiaForm, limite_mensual: v })} type="number" placeholder="50000" required />
+          <Field label="Límite Talento $" value={jerarquiaForm.limite_mensual_talento || '0'} onChange={v => setJerarquiaForm({ ...jerarquiaForm, limite_mensual_talento: v })} type="number" placeholder="80000" />
+        </div>
+        <Field label="Notas (opcional)" value={jerarquiaForm.notas || ''} onChange={v => setJerarquiaForm({ ...jerarquiaForm, notas: v })} placeholder="Comentarios internos sobre este cargo" />
+        {jerarquiaMsg && <p style={{ fontSize: '12px', color: 'var(--danger-text)', textAlign: 'center', margin: '8px 0' }}>{jerarquiaMsg}</p>}
+        <Button variant="primary" size="lg" onClick={handleSaveJerarquia} loading={jerarquiaSaving} style={{ width: '100%' }}>
+          {jerarquiaModal?.mode === 'create' ? 'Crear jerarquía' : 'Guardar cambios'}
+        </Button>
+      </Modal>
+
       {/* Selección all hidden helper */}
       <span style={{ display: 'none' }} aria-hidden="true">{selectAll.toString().length}</span>
     </AppShell>
   );
+}
+
+// ============================================
+// V2 — RelacionBadge para familiares
+// ============================================
+function RelacionBadge({ relacion }: { relacion: string }) {
+  const map: Record<string, { tone: 'brand' | 'success' | 'info' | 'warning' | 'neutral'; label: string }> = {
+    Parents: { tone: 'info', label: 'Madre/Padre' },
+    Spouse: { tone: 'success', label: 'Cónyuge' },
+    CivilUnion: { tone: 'success', label: 'Concubino/a' },
+    Child: { tone: 'brand', label: 'Hijo/a' },
+    Sibling: { tone: 'neutral', label: 'Hermano/a' },
+    Other: { tone: 'neutral', label: 'Otro' },
+    Undefined: { tone: 'neutral', label: '—' },
+  };
+  const m = map[relacion] || map.Undefined;
+  return <Badge tone={m.tone} size="sm">{m.label}</Badge>;
 }
 
 // ============================================
@@ -1578,5 +1926,23 @@ const QrCodeIcon = ({ size }: { size: number }) => (
 const KeyRoundIcon = ({ size }: { size: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M2 18v3h3l11-11a4 4 0 1 0-3-3L2 18z" />
+  </svg>
+);
+const SparklesIcon = ({ size }: { size: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+const HeartIcon = ({ size }: { size: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+  </svg>
+);
+const LayersIcon = ({ size }: { size: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+    <polyline points="2 17 12 22 22 17" />
+    <polyline points="2 12 12 17 22 12" />
   </svg>
 );

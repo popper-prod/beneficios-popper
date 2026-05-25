@@ -1405,6 +1405,81 @@ router.post('/familiares/sync-naaloo', async (req: AuthRequest, res: Response) =
   }
 });
 
+// ============================================
+// JERARQUIAS — cargos con límite mensual $ para indumentaria/calzado/etc
+// ============================================
+router.post('/migrar-jerarquias', async (req: AuthRequest, res: Response) => {
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS jerarquias (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        nombre VARCHAR(100) NOT NULL UNIQUE,
+        orden INT DEFAULT 0,
+        limite_mensual DECIMAL(12,2) DEFAULT 0,
+        limite_mensual_talento DECIMAL(12,2) DEFAULT 0,
+        activo BOOLEAN DEFAULT TRUE,
+        notas TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_jerarquias_orden ON jerarquias(orden)`);
+    res.json({ exito: true, mensaje: 'Tabla jerarquias creada' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error migración jerarquías', detalle: error.message });
+  }
+});
+
+router.get('/jerarquias', async (req: AuthRequest, res: Response) => {
+  try {
+    const includeInactive = req.query.include_inactive === 'true';
+    const where = includeInactive ? '' : 'WHERE activo = TRUE';
+    const result = await query(`SELECT * FROM jerarquias ${where} ORDER BY orden ASC, nombre ASC`);
+    res.json({ jerarquias: result.rows });
+  } catch (error: any) {
+    // si la tabla aún no existe
+    res.json({ jerarquias: [] });
+  }
+});
+
+router.post('/jerarquias', async (req: AuthRequest, res: Response) => {
+  try {
+    const { nombre, orden, limite_mensual, limite_mensual_talento, notas } = req.body;
+    if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
+    const result = await query(
+      `INSERT INTO jerarquias (nombre, orden, limite_mensual, limite_mensual_talento, notas)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [nombre, orden || 0, limite_mensual || 0, limite_mensual_talento || 0, notas || null]
+    );
+    res.json({ jerarquia: result.rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error creando jerarquía', detalle: error.message });
+  }
+});
+
+router.put('/jerarquias/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { nombre, orden, limite_mensual, limite_mensual_talento, notas, activo } = req.body;
+    const result = await query(
+      `UPDATE jerarquias SET nombre=$1, orden=$2, limite_mensual=$3, limite_mensual_talento=$4,
+       notas=$5, activo=$6, updated_at=NOW() WHERE id=$7 RETURNING *`,
+      [nombre, orden || 0, limite_mensual || 0, limite_mensual_talento || 0, notas || null, activo !== false, req.params.id]
+    );
+    res.json({ jerarquia: result.rows[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error editando jerarquía', detalle: error.message });
+  }
+});
+
+router.delete('/jerarquias/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    await query(`DELETE FROM jerarquias WHERE id = $1`, [req.params.id]);
+    res.json({ exito: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Error eliminando jerarquía', detalle: error.message });
+  }
+});
+
 router.get('/familiares', async (req: AuthRequest, res: Response) => {
   try {
     const result = await query(`

@@ -14,6 +14,9 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Search,
+  Sparkles,
+  Heart,
+  Layers,
 } from 'lucide-react';
 
 // ============================================
@@ -30,7 +33,10 @@ export type NavId =
   | 'beneficiarios'
   | 'qrcodes'
   | 'autorizaciones'
-  | 'permisos';
+  | 'permisos'
+  | 'talento'
+  | 'familiares'
+  | 'jerarquias';
 
 interface NavItem {
   id: NavId;
@@ -46,8 +52,11 @@ const navItems: NavItem[] = [
   { id: 'beneficios', label: 'Beneficios', icon: Gift, section: 'Catálogo' },
   { id: 'comercios', label: 'Comercios', icon: Store, section: 'Catálogo' },
   { id: 'qrcodes', label: 'Códigos QR', icon: QrCode, section: 'Catálogo' },
+  { id: 'jerarquias', label: 'Jerarquías', icon: Layers, section: 'Catálogo' },
 
   { id: 'beneficiarios', label: 'Colaboradores', icon: Users, section: 'Personas' },
+  { id: 'familiares', label: 'Familiares', icon: Heart, section: 'Personas' },
+  { id: 'talento', label: 'Talento Popper', icon: Sparkles, section: 'Personas' },
   { id: 'autorizaciones', label: 'Autorizaciones', icon: ShieldCheck, section: 'Personas' },
   { id: 'permisos', label: 'Permisos', icon: KeyRound, section: 'Personas' },
 ];
