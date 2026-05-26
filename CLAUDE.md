@@ -237,5 +237,6 @@ cd backend && npx tsc --noEmit # backend
 - **RRHH del cliente**: sistema Naaloo — fuente de verdad para empleados activos
 - **Catálogo 2026**: hardcodeado en `admin.ts` como `CATALOGO_2026[]`, importable desde el panel
 
-> ⚠️ Aunque el código tiene referencias a "Popper" en varios lugares (rutas, strings, CATALOGO_2026),
-> la arquitectura es multi-tenant en potencia — cada cliente tendría su propio deploy con su propia DB.
+> **Roadmap**: Recluta también tiene un ATS y un LMS funcionando como productos separados.
+> La visión es eventualmente unificarlos bajo una sola empresa/plataforma, pero por ahora
+> cada producto sigue siendo un deploy independiente por cliente. No hay integración entre ellos aún.
