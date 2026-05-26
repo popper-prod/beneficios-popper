@@ -155,6 +155,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [gestionComercio, setGestionComercio] = useState<any | null>(null);
   const [beneficiosAsignados, setBeneficiosAsignados] = useState<Set<string>>(new Set());
   const [togglingBeneficio, setTogglingBeneficio] = useState<string | null>(null);
+  const [copiedQrId, setCopiedQrId] = useState<string | null>(null);
 
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
@@ -1254,11 +1255,11 @@ export default function AdminDashboard({ token, user, onLogout }: {
               {comercios.map((c: any) => {
                 const qrUrl = `${baseUrl}#/qr/${c.qr_code}`;
                 const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}&margin=12&color=ededee&bgcolor=16161a`;
-                const [copied, setCopied] = useState(false);
+                const copied = copiedQrId === c.id;
                 const handleCopy = () => {
                   navigator.clipboard?.writeText(qrUrl);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
+                  setCopiedQrId(c.id);
+                  setTimeout(() => setCopiedQrId(id => id === c.id ? null : id), 2000);
                 };
                 return (
                   <div key={c.id} style={{

@@ -231,7 +231,11 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
               b.max_invitados, b.cubre_invitados
        FROM beneficios b
        INNER JOIN comercio_beneficios cb ON cb.beneficio_id = b.id
-       WHERE cb.comercio_id = $1 AND b.activo = TRUE`,
+       WHERE cb.comercio_id = $1 AND b.activo = TRUE
+         AND (b.fecha_inicio IS NULL OR b.fecha_inicio <= NOW())
+         AND (b.fecha_fin   IS NULL OR b.fecha_fin   >= NOW())
+         AND (b.horario_inicio IS NULL OR b.horario_fin IS NULL
+              OR (CURRENT_TIME >= b.horario_inicio::time AND CURRENT_TIME <= b.horario_fin::time))`,
       [comercioId]
     );
 
@@ -626,14 +630,16 @@ router.post('/canjear', async (req: Request, res: Response) => {
       }
     }
 
-    // 2) Beneficio (incluyendo campos V2)
+    // 2) Beneficio: validar que esté activo Y asignado a este comercio
     const beneficioResult = await query(
-      `SELECT id, nombre, limite_uso_diario, limite_uso_mensual, limite_total, categoria, usa_limite_jerarquia,
-              fecha_inicio, fecha_fin, descuento, escala_descuentos, modalidad, aplica_a
-       FROM beneficios WHERE id = $1 AND activo = TRUE`,
-      [beneficio_id]
+      `SELECT b.id, b.nombre, b.limite_uso_diario, b.limite_uso_mensual, b.limite_total, b.categoria, b.usa_limite_jerarquia,
+              b.fecha_inicio, b.fecha_fin, b.descuento, b.escala_descuentos, b.modalidad, b.aplica_a
+       FROM beneficios b
+       INNER JOIN comercio_beneficios cb ON cb.beneficio_id = b.id AND cb.comercio_id = $2
+       WHERE b.id = $1 AND b.activo = TRUE`,
+      [beneficio_id, comercio_id]
     );
-    if (beneficioResult.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
+    if (beneficioResult.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado o no habilitado en este comercio' });
     const beneficio = beneficioResult.rows[0];
 
     // Validar que beneficios de Talento solo puedan usarlos talento
@@ -799,12 +805,26 @@ router.get('/historial/:dni', async (req: Request, res: Response) => {
     const dni = req.params.dni as string;
     if (!/^\d{7,8}$/.test(dni)) return res.status(400).json({ error: 'DNI invalido' });
 
-    const beneficiario = await query('SELECT id, nombre, apellido FROM beneficiarios WHERE dni = $1', [dni]);
-    if (beneficiario.rows.length === 0) return res.json({ historial: [] });
+    // Buscar titular directo
+    let beneficiarioId: string | null = null;
+    const beneficiario = await query('SELECT id FROM beneficiarios WHERE dni = $1', [dni]);
+    if (beneficiario.rows.length > 0) {
+      beneficiarioId = beneficiario.rows[0].id;
+    } else {
+      // ¿Es un familiar? Buscar el titular para traer historial del grupo familiar
+      const famRes = await query(
+        `SELECT b.id FROM familiares f JOIN beneficiarios b ON b.id = f.beneficiario_id WHERE f.dni = $1 LIMIT 1`,
+        [dni]
+      ).catch(() => ({ rows: [] }));
+      if (famRes.rows.length > 0) beneficiarioId = famRes.rows[0].id;
+    }
+    if (!beneficiarioId) return res.json({ historial: [] });
 
     const result = await query(
       `SELECT v.fecha_verificacion, v.estado, v.codigo_referencia,
-              ben.nombre as beneficio_nombre, ben.tipo as beneficio_tipo, ben.descuento,
+              v.monto_descuento, v.monto_final, v.monto_original,
+              ben.nombre as beneficio_nombre, ben.tipo as beneficio_tipo,
+              ben.tipo_descuento, ben.valor_fijo,
               c.nombre as comercio_nombre
        FROM verificaciones v
        LEFT JOIN beneficios ben ON ben.id = v.beneficio_id
@@ -812,7 +832,7 @@ router.get('/historial/:dni', async (req: Request, res: Response) => {
        WHERE v.beneficiario_id = $1 AND v.estado = 'exitoso'
        ORDER BY v.fecha_verificacion DESC
        LIMIT 50`,
-      [beneficiario.rows[0].id]
+      [beneficiarioId]
     );
 
     res.json({

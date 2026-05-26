@@ -74,7 +74,11 @@ interface HistorialItem {
   fecha_verificacion: string;
   beneficio_nombre: string;
   beneficio_tipo: string;
-  descuento: number | null;
+  tipo_descuento: string | null;
+  monto_descuento: number | null;
+  monto_final: number | null;
+  monto_original: number | null;
+  valor_fijo: number | null;
   comercio_nombre: string;
   codigo_referencia: string;
 }
@@ -1186,11 +1190,30 @@ function ProfileStep({
                       </span>
                     </p>
                   </div>
-                  {h.descuento && (
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
-                      −{Math.round(Number(h.descuento))}%
-                    </span>
-                  )}
+                  {(() => {
+                    if (h.tipo_descuento === 'gratuito') {
+                      return (
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '3px 8px', borderRadius: '20px' }}>
+                          GRATIS
+                        </span>
+                      );
+                    }
+                    if (h.monto_descuento && Number(h.monto_descuento) > 0) {
+                      return (
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
+                          −${Math.round(Number(h.monto_descuento)).toLocaleString('es-AR')}
+                        </span>
+                      );
+                    }
+                    if (h.valor_fijo && Number(h.valor_fijo) > 0) {
+                      return (
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
+                          ${Number(h.valor_fijo).toLocaleString('es-AR')}
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               ))}
             </div>
@@ -1381,31 +1404,28 @@ function BenefitOption({
           </p>
         )}
       </div>
-      {(benefit.descuento || benefit.valor_fijo) && (
+      {(benefit.tipo_descuento === 'gratuito' || benefit.descuento || benefit.valor_fijo) && (
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          {benefit.descuento && (
-            benefit.tipo_descuento === 'gratuito' ? (
-              <span style={{
-                fontSize: '13px', fontWeight: 700, color: '#16a34a',
-                background: '#dcfce7', padding: '4px 10px', borderRadius: '20px',
-                display: 'inline-block',
-              }}>
-                GRATIS
+          {benefit.tipo_descuento === 'gratuito' ? (
+            <span style={{
+              fontSize: '13px', fontWeight: 700, color: '#16a34a',
+              background: '#dcfce7', padding: '4px 10px', borderRadius: '20px',
+              display: 'inline-block',
+            }}>
+              GRATIS
+            </span>
+          ) : benefit.descuento ? (
+            <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 1, color: selected ? 'var(--brand)' : 'var(--text-1)' }}>
+              <span style={{ fontSize: '22px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                {Math.round(Number(benefit.descuento))}
               </span>
-            ) : (
-              <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 1, color: selected ? 'var(--brand)' : 'var(--text-1)' }}>
-                <span style={{ fontSize: '22px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', lineHeight: 1 }}>
-                  {Math.round(Number(benefit.descuento))}
-                </span>
-                <span style={{ fontSize: '13px', fontWeight: 600 }}>%</span>
-              </div>
-            )
-          )}
-          {benefit.valor_fijo && !benefit.descuento && (
+              <span style={{ fontSize: '13px', fontWeight: 600 }}>%</span>
+            </div>
+          ) : benefit.valor_fijo ? (
             <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
               ${Number(benefit.valor_fijo).toLocaleString('es-AR')}
             </span>
-          )}
+          ) : null}
         </div>
       )}
       {/* radio circle */}
