@@ -4,7 +4,7 @@ import DashboardView, { Panel } from '../views/DashboardView';
 import ReportesView from '../views/ReportesView';
 import { DataTable } from '../components/ui/DataTable';
 import { Button } from '../components/ui/Button';
-import { Badge, TierBadge } from '../components/ui/Badge';
+import { Badge } from '../components/ui/Badge';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://beneficios-backend-jfpx.onrender.com/api';
 
@@ -968,7 +968,6 @@ export default function AdminDashboard({ token, user, onLogout }: {
                 render: (r: any) => <span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{r.beneficiario_nombre} {r.beneficiario_apellido}</span>,
               },
               { key: 'dni', label: 'DNI', mono: true, sortable: true },
-              { key: 'nivel', label: 'Nivel', render: (r: any) => <TierBadge tier={r.nivel} /> },
               {
                 key: 'beneficio_nombre', label: 'Beneficio', sortable: true,
                 render: (r: any) => <span style={{ color: 'var(--brand)' }}>{r.beneficio_nombre}</span>,
@@ -1050,7 +1049,6 @@ export default function AdminDashboard({ token, user, onLogout }: {
                     </div>
                   )}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, fontSize: '12px' }}>
-                    <Row label="Nivel mínimo"><TierBadge tier={b.nivel_minimo} /></Row>
                     <Row label="Usos">{b.uso_actual || 0}</Row>
                     {b.horario_inicio && <Row label="Horario">{b.horario_inicio} – {b.horario_fin || '—'}</Row>}
                   </div>
@@ -1141,7 +1139,6 @@ export default function AdminDashboard({ token, user, onLogout }: {
                 render: (r: any) => <span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{r.nombre} {r.apellido}</span>,
               },
               { key: 'email', label: 'Email', sortable: true, render: (r: any) => <span style={{ color: 'var(--text-3)' }}>{r.email || '—'}</span> },
-              { key: 'nivel', label: 'Nivel', sortable: true, render: (r: any) => <TierBadge tier={r.nivel} /> },
               { key: 'departamento', label: 'Departamento', sortable: true, render: (r: any) => <span style={{ color: 'var(--text-3)' }}>{r.departamento || '—'}</span> },
               { key: 'activo', label: 'Estado', render: (r: any) => <Badge tone={r.activo ? 'success' : 'danger'} size="sm" dot>{r.activo ? 'Activo' : 'Inactivo'}</Badge> },
               {
@@ -1413,7 +1410,6 @@ export default function AdminDashboard({ token, user, onLogout }: {
                   accessor: (r: any) => `${r.nombre} ${r.apellido}`,
                   render: (r: any) => <span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{r.nombre} {r.apellido}</span>,
                 },
-                { key: 'nivel', label: 'Nivel', render: (r: any) => <TierBadge tier={r.nivel} /> },
                 { key: 'departamento', label: 'Área', sortable: true, render: (r: any) => <span style={{ color: 'var(--text-3)' }}>{r.departamento || '—'}</span> },
                 { key: 'sector', label: 'Sector', sortable: true, render: (r: any) => <span style={{ color: 'var(--text-3)' }}>{r.sector || '—'}</span> },
                 { key: 'activo', label: 'Estado', render: (r: any) => <Badge tone={r.activo ? 'success' : 'danger'} size="sm" dot>{r.activo ? 'Activo' : 'Inactivo'}</Badge> },

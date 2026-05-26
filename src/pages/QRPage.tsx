@@ -81,34 +81,8 @@ interface HistorialItem {
 
 type Step = 'loading' | 'identify' | 'profile' | 'confirm' | 'success' | 'error';
 
-// Niveles con gradientes tipo metal real — todos suficientemente oscuros para que
-// texto blanco tenga buen contraste. Los highlights metálicos sutiles.
-const tierGradients: Record<string, { gradient: string; ringColor: string; textColor: string; label: string }> = {
-  bronce: {
-    gradient: 'linear-gradient(135deg, #5a3a1f 0%, #8b5a2b 40%, #a06b3a 50%, #8b5a2b 60%, #5a3a1f 100%)',
-    ringColor: '#b97842',
-    textColor: '#e8b888',
-    label: 'Bronce',
-  },
-  plata: {
-    gradient: 'linear-gradient(135deg, #3a4250 0%, #5a6470 40%, #7a8696 50%, #5a6470 60%, #3a4250 100%)',
-    ringColor: '#94a3b8',
-    textColor: '#e2e8f0',
-    label: 'Plata',
-  },
-  oro: {
-    gradient: 'linear-gradient(135deg, #5e4e29 0%, #9d8649 40%, #b89656 50%, #9d8649 60%, #5e4e29 100%)',
-    ringColor: '#d4a017',
-    textColor: '#fce884',
-    label: 'Oro',
-  },
-  platinum: {
-    gradient: 'linear-gradient(135deg, #2a2e36 0%, #4a525c 40%, #6a7280 50%, #4a525c 60%, #2a2e36 100%)',
-    ringColor: '#9ca3af',
-    textColor: '#f4f4f5',
-    label: 'Platinum',
-  },
-};
+// Card unificada — estilo premium oscuro sin distinción de nivel
+const CARD_GRADIENT = 'linear-gradient(160deg, #0d1f35 0%, #162944 45%, #1a3352 55%, #0d1f35 100%)';
 
 export default function QRPage({ qrCode }: { qrCode: string }) {
   const [step, setStep] = useState<Step>('loading');
@@ -736,39 +710,30 @@ function ProfileStep({
   const descuento = selectedBen?.descuento ? Number(selectedBen.descuento) : 0;
   const ahorro = montoNum * (descuento / 100);
   const totalAPagar = montoNum - ahorro;
-  const tier = tierGradients[beneficiario.nivel] || tierGradients.bronce;
   const saldoDisponible = selectedBen?.saldo?.disponible ?? Infinity;
   const montoExcedeSaldo = necesitaMonto && montoNum > 0 && saldoDisponible !== Infinity && montoNum > saldoDisponible;
 
   return (
     <div>
-      {/* ===== Membership Card estilo Apple Wallet ===== */}
+      {/* ===== Membership Card ===== */}
       <div
         style={{
           position: 'relative',
           padding: '20px',
-          background: tier.gradient,
+          background: CARD_GRADIENT,
           borderRadius: '16px',
           marginBottom: 24,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.18)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)',
           overflow: 'hidden',
+          borderTop: '2px solid rgba(191,163,99,0.35)',
         }}
       >
-        {/* Highlight metálico arriba */}
+        {/* Highlight sutil arriba */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'radial-gradient(ellipse at 80% 0%, rgba(255,255,255,0.18), transparent 50%)',
-            pointerEvents: 'none',
-          }}
-        />
-        {/* Vignette oscuro para garantizar contraste del texto */}
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'linear-gradient(180deg, rgba(0,0,0,0.18) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.25) 100%)',
+            background: 'radial-gradient(ellipse at 70% 0%, rgba(191,163,99,0.12), transparent 55%)',
             pointerEvents: 'none',
           }}
         />
@@ -808,7 +773,7 @@ function ProfileStep({
                   justifyContent: 'center',
                   fontSize: '24px',
                   fontWeight: 600,
-                  color: tier.textColor,
+                  color: 'rgba(255,255,255,0.9)',
                   letterSpacing: '-0.02em',
                 }}
               >
@@ -830,7 +795,7 @@ function ProfileStep({
                   textShadow: '0 1px 2px rgba(0,0,0,0.4)',
                 }}
               >
-                Beneficios · {tier.label}
+                Grupo Popper · Beneficios
               </p>
               {beneficiario.es_talento_popper && (
                 <span style={{
