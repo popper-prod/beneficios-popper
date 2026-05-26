@@ -151,6 +151,11 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [seedingBoleterias, setSeedingBoleterias] = useState(false);
   const [exportandoSkipass, setExportandoSkipass] = useState(false);
 
+  // Gestión de beneficios por comercio
+  const [gestionComercio, setGestionComercio] = useState<any | null>(null);
+  const [beneficiosAsignados, setBeneficiosAsignados] = useState<Set<string>>(new Set());
+  const [togglingBeneficio, setTogglingBeneficio] = useState<string | null>(null);
+
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
 
@@ -333,6 +338,42 @@ export default function AdminDashboard({ token, user, onLogout }: {
     } catch (e: any) {
       alert(`Error de conexión al eliminar: ${e?.message || ''}`);
     }
+  };
+
+  // Gestión de beneficios por comercio
+  const openGestionBeneficios = async (comercio: any) => {
+    setGestionComercio(comercio);
+    try {
+      const res = await fetch(`${API_URL}/admin/comercio-beneficios/${comercio.id}`, { headers });
+      const data = await res.json();
+      setBeneficiosAsignados(new Set((data.beneficios || []).map((b: any) => b.id)));
+    } catch { setBeneficiosAsignados(new Set()); }
+    // Asegurar que los beneficios estén cargados
+    if (beneficios.length === 0) {
+      const res = await fetch(`${API_URL}/admin/beneficios`, { headers }).catch(() => null);
+      if (res?.ok) { const d = await res.json(); setBeneficios(d.beneficios || []); }
+    }
+  };
+
+  const toggleBeneficioComercio = async (beneficioId: string) => {
+    if (!gestionComercio || togglingBeneficio) return;
+    setTogglingBeneficio(beneficioId);
+    const asignado = beneficiosAsignados.has(beneficioId);
+    try {
+      const res = await fetch(`${API_URL}/admin/comercio-beneficios`, {
+        method: asignado ? 'DELETE' : 'POST',
+        headers,
+        body: JSON.stringify({ comercio_id: gestionComercio.id, beneficio_id: beneficioId }),
+      });
+      if (res.ok) {
+        setBeneficiosAsignados(prev => {
+          const next = new Set(prev);
+          asignado ? next.delete(beneficioId) : next.add(beneficioId);
+          return next;
+        });
+      }
+    } catch { /* silencioso */ }
+    setTogglingBeneficio(null);
   };
 
   // Imprimir hoja QR de un comercio/boletería
@@ -1114,6 +1155,17 @@ export default function AdminDashboard({ token, user, onLogout }: {
                       <p style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '12px', color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>{c.qr_code}</p>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => { navigator.clipboard?.writeText(`${baseUrl}#/qr/${c.qr_code}`); }} title="Copiar URL"><CopyIcon size={13} /></Button>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      leftIcon={<GiftIcon size={12} />}
+                      onClick={() => openGestionBeneficios(c)}
+                      style={{ width: '100%' }}
+                    >
+                      Gestionar beneficios
+                    </Button>
                   </div>
                   <CardFooterActions onEdit={() => openEdit('comercio', c)} onDelete={() => handleDelete('comercio', c.id, c.nombre)} />
                 </ItemCard>
@@ -1942,6 +1994,81 @@ export default function AdminDashboard({ token, user, onLogout }: {
         <Button variant="primary" size="lg" onClick={handleSave} loading={saving} style={{ width: '100%' }}>
           {modal?.mode === 'create' ? 'Crear colaborador' : 'Guardar cambios'}
         </Button>
+      </Modal>
+
+      {/* Modal Gestión de Beneficios por Comercio */}
+      <Modal
+        open={!!gestionComercio}
+        onClose={() => { setGestionComercio(null); setBeneficiosAsignados(new Set()); }}
+        title={`Beneficios · ${gestionComercio?.nombre || ''}`}
+      >
+        <p style={{ fontSize: '12px', color: 'var(--text-3)', marginBottom: 14, lineHeight: 1.5 }}>
+          Activá o desactivá los beneficios disponibles en este punto de venta. Los cambios se guardan al instante.
+        </p>
+        {beneficios.filter((b: any) => b.activo).length === 0 ? (
+          <p style={{ fontSize: '12.5px', color: 'var(--text-3)', textAlign: 'center', padding: '20px 0' }}>
+            No hay beneficios activos. Creá beneficios primero.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {beneficios.filter((b: any) => b.activo).map((b: any) => {
+              const asignado = beneficiosAsignados.has(b.id);
+              const loading = togglingBeneficio === b.id;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => toggleBeneficioComercio(b.id)}
+                  disabled={loading}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 12px', borderRadius: '10px', cursor: loading ? 'wait' : 'pointer',
+                    background: asignado ? 'rgba(191,163,99,0.09)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${asignado ? 'rgba(191,163,99,0.3)' : 'rgba(255,255,255,0.07)'}`,
+                    textAlign: 'left', transition: 'all 150ms ease',
+                    opacity: loading ? 0.6 : 1,
+                  }}
+                >
+                  {/* Toggle visual */}
+                  <div style={{
+                    width: 36, height: 20, borderRadius: 10, flexShrink: 0, position: 'relative',
+                    background: asignado ? 'var(--brand)' : 'rgba(255,255,255,0.12)',
+                    transition: 'background 150ms ease',
+                  }}>
+                    <div style={{
+                      position: 'absolute', top: 2, left: asignado ? 18 : 2, width: 16, height: 16,
+                      borderRadius: '50%', background: 'white',
+                      transition: 'left 150ms ease',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
+                    }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: '13px', fontWeight: 500, color: asignado ? 'var(--text-1)' : 'var(--text-2)', marginBottom: 1 }}>
+                      {b.nombre}
+                    </p>
+                    <p style={{ fontSize: '11px', color: 'var(--text-4)' }}>
+                      {b.categoria || b.tipo || '—'}{b.aplica_a && b.aplica_a !== 'empleado' ? ` · ${b.aplica_a === 'ambos' ? 'Titular y familiar' : b.aplica_a === 'talento' ? '★ Talento' : 'Solo familiar'}` : ''}
+                    </p>
+                  </div>
+                  {asignado && (
+                    <span style={{
+                      fontSize: '10px', fontWeight: 700, color: 'var(--brand)',
+                      background: 'rgba(191,163,99,0.12)', padding: '2px 8px', borderRadius: '20px',
+                      letterSpacing: '0.06em', textTransform: 'uppercase',
+                    }}>Activo</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <p style={{ fontSize: '11px', color: 'var(--text-4)' }}>
+            {beneficiosAsignados.size} de {beneficios.filter((b: any) => b.activo).length} beneficios activos
+          </p>
+          <Button variant="primary" size="sm" onClick={() => { setGestionComercio(null); setBeneficiosAsignados(new Set()); }}>
+            Listo
+          </Button>
+        </div>
       </Modal>
 
       {/* Modal motivo de desactivación */}
