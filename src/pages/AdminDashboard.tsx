@@ -222,6 +222,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
         origen: 'externo', categoria: '', aplica_a: 'empleado', modalidad: 'descuento',
         escala_descuentos: '', restricciones: '', excluye_outlet: '',
         relaciones_familiar: '', usa_limite_jerarquia: '',
+        max_invitados: '', cubre_invitados: '',
       });
     } else if (type === 'comercio') {
       setForm({ nombre: '', direccion: '', ciudad: 'Ushuaia', provincia: 'Tierra del Fuego', telefono: '', email: '', horario_apertura: '09:00', horario_cierre: '20:00', responsable: '', logo: '', pin: '' });
@@ -251,6 +252,8 @@ export default function AdminDashboard({ token, user, onLogout }: {
         excluye_outlet: item.excluye_outlet ? 'true' : '',
         relaciones_familiar: item.relaciones_familiar || '',
         usa_limite_jerarquia: item.usa_limite_jerarquia ? 'true' : '',
+        max_invitados: item.max_invitados != null ? String(item.max_invitados) : '',
+        cubre_invitados: item.cubre_invitados ? 'true' : '',
       });
     } else if (type === 'comercio') {
       setForm({
@@ -291,6 +294,9 @@ export default function AdminDashboard({ token, user, onLogout }: {
       // V2 — booleanos del checkbox vienen como string 'true' / ''
       body.excluye_outlet = body.excluye_outlet === 'true';
       body.usa_limite_jerarquia = body.usa_limite_jerarquia === 'true';
+      // V4 — Talento
+      body.max_invitados = parseInt(body.max_invitados) || 0;
+      body.cubre_invitados = body.cubre_invitados === 'true';
       // legacy: tipo = modalidad si no se setea
       if (!body.tipo) body.tipo = body.modalidad || 'descuento';
 
@@ -1650,6 +1656,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
               { value: 'empleado', label: 'Solo empleado' },
               { value: 'familiar', label: 'Solo familiares' },
               { value: 'ambos', label: 'Empleado y familiares' },
+              { value: 'talento', label: 'Talento Popper (exclusivo)' },
             ]} />
           <Field label="Modalidad" value={form.modalidad || 'descuento'} onChange={v => setForm({ ...form, modalidad: v })}
             options={[
@@ -1665,15 +1672,38 @@ export default function AdminDashboard({ token, user, onLogout }: {
             onChange={v => setForm({ ...form, relaciones_familiar: v })}
           />
         )}
+        {form.aplica_a === 'talento' && (
+          <div style={{ padding: '12px 14px', background: 'rgba(191,163,99,0.07)', border: '1px solid rgba(191,163,99,0.2)', borderRadius: '10px', marginBottom: 4 }}>
+            <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--brand)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Configuración Talento</p>
+            <Field
+              label="Máx. invitados por canje"
+              value={form.max_invitados || ''}
+              onChange={v => setForm({ ...form, max_invitados: v })}
+              type="number"
+              placeholder="0 = sin invitados"
+            />
+            <CheckboxField
+              label="La empresa cubre a los invitados"
+              checked={form.cubre_invitados === 'true'}
+              onChange={v => setForm({ ...form, cubre_invitados: v ? 'true' : '' })}
+            />
+          </div>
+        )}
 
         {/* === Valor === */}
-        <SectionDivider label="Valor del beneficio" />
-        <EscalaEditor
-          value={form.escala_descuentos || ''}
-          onChange={v => setForm({ ...form, escala_descuentos: v })}
-          fallbackDescuento={form.descuento || ''}
-          onFallbackChange={v => setForm({ ...form, descuento: v })}
-        />
+        {form.categoria === 'skipass' ? (
+          <SkipassConfigSection form={form} setForm={setForm} />
+        ) : (
+          <>
+            <SectionDivider label="Valor del beneficio" />
+            <EscalaEditor
+              value={form.escala_descuentos || ''}
+              onChange={v => setForm({ ...form, escala_descuentos: v })}
+              fallbackDescuento={form.descuento || ''}
+              onFallbackChange={v => setForm({ ...form, descuento: v })}
+            />
+          </>
+        )}
         <Field label="Valor fijo $ (alternativo)" value={form.valor_fijo || ''} onChange={v => setForm({ ...form, valor_fijo: v })} type="number" placeholder="Solo si modalidad = valor fijo" />
 
         {/* === Restricciones === */}
@@ -1988,6 +2018,100 @@ function EscalaEditor({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================
+// Skipass Config Section — configuración de temporada y descuentos
+// ============================================
+function SkipassConfigSection({ form, setForm }: { form: any; setForm: (f: any) => void }) {
+  let escala: any = {};
+  try {
+    if (form.escala_descuentos) {
+      escala = typeof form.escala_descuentos === 'string'
+        ? JSON.parse(form.escala_descuentos)
+        : form.escala_descuentos;
+    }
+  } catch { /* escala vacía */ }
+
+  const familiarPct: number = escala.familiar?.porcentaje ?? 50;
+  const permiteFamiliarSinTitular: boolean = escala.permite_familiar_sin_titular !== false;
+
+  const patchEscala = (patch: Record<string, any>) => {
+    const year = form.fecha_inicio
+      ? new Date(form.fecha_inicio).getFullYear().toString()
+      : new Date().getFullYear().toString();
+    const next = {
+      titular: { tipo: 'gratuito', porcentaje: 100 },
+      familiar: { tipo: 'descuento', porcentaje: familiarPct },
+      temporada: year,
+      permite_familiar_sin_titular: permiteFamiliarSinTitular,
+      ...escala,
+      ...patch,
+    };
+    setForm({ ...form, escala_descuentos: JSON.stringify(next), aplica_a: 'ambos' });
+  };
+
+  return (
+    <div>
+      <SectionDivider label="Configuración Skipass · Temporada" />
+
+      {/* Titular: siempre gratis */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 14px', marginBottom: 8,
+        background: 'var(--success-muted, #f0fdf4)', border: '1px solid var(--success-border, #bbf7d0)',
+        borderRadius: '8px',
+      }}>
+        <div>
+          <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-1)' }}>Titular (colaborador)</span>
+          <p style={{ fontSize: '11px', color: 'var(--text-3)', margin: '2px 0 0' }}>
+            Siempre gratuito — no se puede modificar
+          </p>
+        </div>
+        <span style={{
+          fontSize: '12px', fontWeight: 700, color: '#16a34a',
+          background: '#dcfce7', padding: '3px 10px', borderRadius: '20px',
+        }}>
+          GRATIS
+        </span>
+      </div>
+
+      {/* Familiar: % configurable */}
+      <div style={{ marginBottom: 8 }}>
+        <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-2)', marginBottom: 6, fontWeight: 500 }}>
+          Descuento para familiares (% sobre valor residente)
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={familiarPct}
+            onChange={e => patchEscala({ familiar: { tipo: 'descuento', porcentaje: Number(e.target.value) || 0 } })}
+            style={{
+              width: 90, height: 36, padding: '0 10px',
+              background: 'var(--bg-canvas)', border: '1px solid var(--border-default)',
+              borderRadius: '6px', color: 'var(--text-1)', fontSize: '14px', outline: 'none',
+            }}
+          />
+          <span style={{ fontSize: '13px', color: 'var(--text-2)', fontWeight: 500 }}>%</span>
+          <span style={{ fontSize: '11.5px', color: 'var(--text-3)' }}>
+            → aplica a Madre/Padre, Cónyuge, Concubino/a, Hijos
+          </span>
+        </div>
+      </div>
+
+      {/* Permite familiar sin titular */}
+      <CheckboxField
+        label="Familiar puede retirar el skipass sin que el titular esté presente"
+        checked={permiteFamiliarSinTitular}
+        onChange={v => patchEscala({ permite_familiar_sin_titular: v })}
+      />
+      <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 6, marginBottom: 4 }}>
+        Los menores de 18 años siempre requieren un adulto autorizado, independientemente de esta configuración.
+      </p>
     </div>
   );
 }

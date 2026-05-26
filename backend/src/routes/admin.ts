@@ -186,6 +186,11 @@ async function ensureBeneficiosV2() {
     await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS excluye_outlet BOOLEAN DEFAULT FALSE`);
     await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS relaciones_familiar VARCHAR(100)`);
     await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS usa_limite_jerarquia BOOLEAN DEFAULT FALSE`);
+    // V4 — Talento: invitados
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS max_invitados INT DEFAULT 0`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS cubre_invitados BOOLEAN DEFAULT FALSE`);
+    // V4 — verificaciones: registrar cantidad de invitados
+    await query(`ALTER TABLE verificaciones ADD COLUMN IF NOT EXISTS invitados_count INT DEFAULT 0`);
     beneficiosV2Ensured = true;
   } catch { /* silencioso */ }
 }
@@ -199,6 +204,8 @@ router.post('/beneficios', async (req: AuthRequest, res: Response) => {
       // V2 fields
       origen, categoria, aplica_a, modalidad, escala_descuentos,
       restricciones, excluye_outlet, relaciones_familiar, usa_limite_jerarquia,
+      // V4 — Talento
+      max_invitados, cubre_invitados,
     } = req.body;
     if (!nombre || !tipo || !fecha_inicio || !fecha_fin) {
       return res.status(400).json({ error: 'Faltan campos requeridos' });
@@ -208,16 +215,18 @@ router.post('/beneficios', async (req: AuthRequest, res: Response) => {
                               fecha_inicio, fecha_fin, horario_inicio, horario_fin,
                               limite_uso_diario, limite_uso_mensual, activo,
                               origen, categoria, aplica_a, modalidad, escala_descuentos,
-                              restricciones, excluye_outlet, relaciones_familiar, usa_limite_jerarquia)
+                              restricciones, excluye_outlet, relaciones_familiar, usa_limite_jerarquia,
+                              max_invitados, cubre_invitados)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE,
-               $13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+               $13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
       [nombre, descripcion || null, tipo, nivel_minimo || 'bronce', descuento || null, valor_fijo || null,
        fecha_inicio, fecha_fin, horario_inicio || null, horario_fin || null,
        limite_uso_diario || null, limite_uso_mensual || null,
        origen || 'externo', categoria || null, aplica_a || 'empleado', modalidad || 'descuento',
        escala_descuentos ? JSON.stringify(escala_descuentos) : null,
        restricciones || null, !!excluye_outlet,
-       relaciones_familiar || null, !!usa_limite_jerarquia]
+       relaciones_familiar || null, !!usa_limite_jerarquia,
+       parseInt(max_invitados) || 0, !!cubre_invitados]
     );
     res.json({ beneficio: result.rows[0] });
   } catch (error: any) {
@@ -236,6 +245,8 @@ router.put('/beneficios/:id', async (req: AuthRequest, res: Response) => {
       horario_inicio, horario_fin, limite_uso_diario, limite_uso_mensual, activo,
       origen, categoria, aplica_a, modalidad, escala_descuentos,
       restricciones, excluye_outlet, relaciones_familiar, usa_limite_jerarquia,
+      // V4 — Talento
+      max_invitados, cubre_invitados,
     } = req.body;
     const result = await query(
       `UPDATE beneficios SET nombre=$1, descripcion=$2, tipo=$3, nivel_minimo=$4, descuento=$5,
@@ -243,15 +254,17 @@ router.put('/beneficios/:id', async (req: AuthRequest, res: Response) => {
         limite_uso_diario=$11, limite_uso_mensual=$12, activo=$13,
         origen=$14, categoria=$15, aplica_a=$16, modalidad=$17, escala_descuentos=$18,
         restricciones=$19, excluye_outlet=$20, relaciones_familiar=$21, usa_limite_jerarquia=$22,
+        max_invitados=$23, cubre_invitados=$24,
         updated_at=NOW()
-       WHERE id=$23 RETURNING *`,
+       WHERE id=$25 RETURNING *`,
       [nombre, descripcion || null, tipo, nivel_minimo || 'bronce', descuento || null, valor_fijo || null,
        fecha_inicio, fecha_fin, horario_inicio || null, horario_fin || null,
        limite_uso_diario || null, limite_uso_mensual || null, activo !== false,
        origen || 'externo', categoria || null, aplica_a || 'empleado', modalidad || 'descuento',
        escala_descuentos ? JSON.stringify(escala_descuentos) : null,
        restricciones || null, !!excluye_outlet,
-       relaciones_familiar || null, !!usa_limite_jerarquia, id]
+       relaciones_familiar || null, !!usa_limite_jerarquia,
+       parseInt(max_invitados) || 0, !!cubre_invitados, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
     res.json({ beneficio: result.rows[0] });
@@ -2300,6 +2313,66 @@ router.get('/autorizados/:beneficioId/excel', async (req: AuthRequest, res: Resp
     res.send(buffer);
   } catch (error: any) {
     res.status(500).json({ error: 'Error exportando', detalle: error.message });
+  }
+});
+
+// PUT /api/admin/beneficios/:id/skipass-config — Configurar temporada + descuentos skipass
+router.put('/beneficios/:id/skipass-config', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      fecha_inicio,                   // "2026-06-21"
+      fecha_fin,                      // "2026-10-12"
+      familiar_descuento,             // number: 50 = 50% descuento para familiares
+      permite_familiar_sin_titular,   // boolean
+      relaciones_familiar,            // "Parents,Spouse,CivilUnion,Child"
+    } = req.body;
+
+    if (!fecha_inicio || !fecha_fin) {
+      return res.status(400).json({ error: 'fecha_inicio y fecha_fin son requeridas' });
+    }
+
+    const escala_descuentos = {
+      titular: { tipo: 'gratuito', porcentaje: 100 },
+      familiar: { tipo: 'descuento', porcentaje: Number(familiar_descuento) || 50 },
+      temporada: new Date(fecha_inicio).getFullYear().toString(),
+      permite_familiar_sin_titular: !!permite_familiar_sin_titular,
+    };
+
+    const adminNombre = (req as any).user?.nombre
+      ? `${(req as any).user.nombre} ${(req as any).user.apellido || ''}`.trim()
+      : (req as any).user?.username || 'Admin';
+
+    const result = await query(
+      `UPDATE beneficios
+       SET fecha_inicio=$1, fecha_fin=$2,
+           escala_descuentos=$3,
+           aplica_a='ambos',
+           relaciones_familiar=$4,
+           modalidad='acceso', categoria='skipass', origen='interno',
+           updated_at=NOW()
+       WHERE id=$5
+       RETURNING id, nombre, fecha_inicio, fecha_fin, escala_descuentos, relaciones_familiar`,
+      [fecha_inicio, fecha_fin, JSON.stringify(escala_descuentos),
+       relaciones_familiar || 'Parents,Spouse,CivilUnion,Child', id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Beneficio no encontrado' });
+    }
+
+    await query(
+      `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por)
+       SELECT gen_random_uuid(), 'config_skipass',
+         $1, $2
+       WHERE FALSE`, // solo para auditoría conceptual — tabla no tiene campo "config"
+      [`Skipass configurado: temporada ${escala_descuentos.temporada}, familiar ${escala_descuentos.familiar.porcentaje}%`, adminNombre]
+    ).catch(() => {});
+
+    res.json({ exito: true, beneficio: result.rows[0] });
+  } catch (error: any) {
+    console.error('Error config skipass:', error.message);
+    res.status(500).json({ error: 'Error guardando configuración skipass', detalle: error.message });
   }
 });
 

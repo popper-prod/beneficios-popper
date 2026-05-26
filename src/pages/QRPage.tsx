@@ -58,6 +58,9 @@ interface Beneficio {
   excluye_outlet?: boolean;
   usa_limite_jerarquia?: boolean;
   nivel_minimo: string;
+  tipo_descuento?: 'gratuito' | 'descuento' | null;
+  max_invitados?: number;
+  cubre_invitados?: boolean;
   saldo?: {
     limite_mensual?: number;
     gastado_mes?: number;
@@ -119,6 +122,8 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [searching, setSearching] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [overrideRequired, setOverrideRequired] = useState(false);
+  const [invitadosCount, setInvitadosCount] = useState(0);
   const [successData, setSuccessData] = useState<any>(null);
   const [historial, setHistorial] = useState<HistorialItem[]>([]);
   const [showHistorial, setShowHistorial] = useState(false);
@@ -227,17 +232,19 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
           override_limite: overrideLimite,
           pin_responsable: pinResponsable,
           retirado_por_dni: retiradoPorDni,
+          invitados_count: invitadosCount,
         }),
       });
       const data = await res.json();
 
       if (!res.ok) {
         if (data.requiere_override) {
-          // Volver al confirm con flag para mostrar PIN field
+          setOverrideRequired(true);
           setErrorMsg(data.error);
           setProcessing(false);
           return;
         }
+        setOverrideRequired(false);
         setErrorMsg(data.error || 'No pudimos procesar el canje.');
         setProcessing(false);
         return;
@@ -258,7 +265,9 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
     setBeneficios([]);
     setSelectedBenefit('');
     setMonto('');
+    setInvitadosCount(0);
     setErrorMsg('');
+    setOverrideRequired(false);
     setSuccessData(null);
     setHistorial([]);
     setShowHistorial(false);
@@ -368,9 +377,11 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
               familiarInfo={familiarInfo}
               beneficios={beneficios}
               selectedBenefit={selectedBenefit}
-              setSelectedBenefit={(id) => { setSelectedBenefit(id); setMonto(''); }}
+              setSelectedBenefit={(id) => { setSelectedBenefit(id); setMonto(''); setInvitadosCount(0); }}
               monto={monto}
               setMonto={setMonto}
+              invitadosCount={invitadosCount}
+              setInvitadosCount={setInvitadosCount}
               historial={historial}
               showHistorial={showHistorial}
               setShowHistorial={setShowHistorial}
@@ -387,11 +398,13 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
               familiarInfo={familiarInfo}
               beneficio={selectedBenefitData}
               monto={monto}
+              invitadosCount={invitadosCount}
               processing={processing}
               errorMsg={errorMsg}
+              overrideRequired={overrideRequired}
               onConfirmar={(retiradoPorDni?: string) => handleCanjearConfirmado(false, undefined, retiradoPorDni)}
               onConfirmarConPin={(pin, retiradoPorDni?: string) => handleCanjearConfirmado(true, pin, retiradoPorDni)}
-              onCancelar={() => { setStep('profile'); setErrorMsg(''); }}
+              onCancelar={() => { setStep('profile'); setErrorMsg(''); setOverrideRequired(false); }}
             />
           )}
 
@@ -690,6 +703,8 @@ function ProfileStep({
   setSelectedBenefit,
   monto,
   setMonto,
+  invitadosCount,
+  setInvitadosCount,
   historial,
   showHistorial,
   setShowHistorial,
@@ -705,6 +720,8 @@ function ProfileStep({
   setSelectedBenefit: (v: string) => void;
   monto: string;
   setMonto: (v: string) => void;
+  invitadosCount: number;
+  setInvitadosCount: (v: number) => void;
   historial: HistorialItem[];
   showHistorial: boolean;
   setShowHistorial: (v: boolean) => void;
@@ -720,6 +737,8 @@ function ProfileStep({
   const ahorro = montoNum * (descuento / 100);
   const totalAPagar = montoNum - ahorro;
   const tier = tierGradients[beneficiario.nivel] || tierGradients.bronce;
+  const saldoDisponible = selectedBen?.saldo?.disponible ?? Infinity;
+  const montoExcedeSaldo = necesitaMonto && montoNum > 0 && saldoDisponible !== Infinity && montoNum > saldoDisponible;
 
   return (
     <div>
@@ -976,6 +995,60 @@ function ProfileStep({
         </div>
       )}
 
+      {/* ===== Panel invitados (V4 Talento) ===== */}
+      {selectedBen && beneficiario.es_talento_popper && (selectedBen.max_invitados ?? 0) > 0 && (
+        <div
+          style={{
+            marginTop: 16,
+            padding: 16,
+            background: 'rgba(191,163,99,0.06)',
+            border: '1px solid rgba(191,163,99,0.2)',
+            borderRadius: '12px',
+          }}
+        >
+          <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--brand)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>
+            Invitados
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <p style={{ fontSize: '13px', color: 'var(--text-1)', fontWeight: 500 }}>
+                {invitadosCount === 0 ? 'Sin invitados' : `${invitadosCount} invitado${invitadosCount !== 1 ? 's' : ''}`}
+              </p>
+              <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 2 }}>
+                Máx. {selectedBen.max_invitados} · {selectedBen.cubre_invitados ? 'Empresa cubre' : 'Pagan aparte'}
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                onClick={() => setInvitadosCount(Math.max(0, invitadosCount - 1))}
+                disabled={invitadosCount === 0}
+                style={{
+                  width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--border-default)',
+                  background: 'var(--bg-elevated)', color: 'var(--text-1)', fontSize: '20px',
+                  cursor: invitadosCount === 0 ? 'not-allowed' : 'pointer',
+                  opacity: invitadosCount === 0 ? 0.4 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >−</button>
+              <span style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-1)', minWidth: 28, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
+                {invitadosCount}
+              </span>
+              <button
+                onClick={() => setInvitadosCount(Math.min(selectedBen.max_invitados ?? 0, invitadosCount + 1))}
+                disabled={invitadosCount >= (selectedBen.max_invitados ?? 0)}
+                style={{
+                  width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--brand)',
+                  background: 'var(--brand)', color: 'var(--brand-fg)', fontSize: '20px',
+                  cursor: invitadosCount >= (selectedBen.max_invitados ?? 0) ? 'not-allowed' : 'pointer',
+                  opacity: invitadosCount >= (selectedBen.max_invitados ?? 0) ? 0.4 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >+</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ===== Panel monto + saldo (V3A) ===== */}
       {selectedBen && necesitaMonto && (
         <div
@@ -1003,7 +1076,9 @@ function ProfileStep({
                 <div
                   style={{
                     height: '100%',
-                    width: `${Math.min(100, ((selectedBen.saldo.gastado_mes || 0) / (selectedBen.saldo.limite_mensual || 1)) * 100)}%`,
+                    width: selectedBen.saldo.limite_mensual
+                      ? `${Math.min(100, ((selectedBen.saldo.gastado_mes || 0) / selectedBen.saldo.limite_mensual) * 100)}%`
+                      : '0%',
                     background: 'var(--brand)',
                     transition: 'width 200ms var(--ease-out)',
                   }}
@@ -1051,6 +1126,21 @@ function ProfileStep({
               onBlur={e => { e.target.style.borderColor = 'var(--border-default)'; e.target.style.boxShadow = 'none'; }}
             />
           </div>
+
+          {/* Warning en tiempo real: monto excede saldo */}
+          {montoExcedeSaldo && (
+            <div style={{
+              marginTop: 8, padding: '8px 12px',
+              background: 'var(--warning-bg)', border: '1px solid var(--warning-border)',
+              borderRadius: '8px', display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ fontSize: '16px' }}>⚠</span>
+              <p style={{ fontSize: '12px', color: 'var(--warning-text)', lineHeight: 1.4 }}>
+                El monto excede el saldo disponible (<strong>${saldoDisponible.toLocaleString('es-AR')}</strong>).
+                Al confirmar, el responsable del comercio deberá autorizar con su PIN.
+              </p>
+            </div>
+          )}
 
           {/* Cálculo en vivo */}
           {montoNum > 0 && descuento > 0 && (
@@ -1329,27 +1419,22 @@ function BenefitOption({
       {(benefit.descuento || benefit.valor_fijo) && (
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
           {benefit.descuento && (
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'baseline',
-                gap: 1,
-                color: selected ? 'var(--brand)' : 'var(--text-1)',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: '22px',
-                  fontWeight: 700,
-                  fontVariantNumeric: 'tabular-nums',
-                  letterSpacing: '-0.02em',
-                  lineHeight: 1,
-                }}
-              >
-                {Math.round(Number(benefit.descuento))}
+            benefit.tipo_descuento === 'gratuito' ? (
+              <span style={{
+                fontSize: '13px', fontWeight: 700, color: '#16a34a',
+                background: '#dcfce7', padding: '4px 10px', borderRadius: '20px',
+                display: 'inline-block',
+              }}>
+                GRATIS
               </span>
-              <span style={{ fontSize: '13px', fontWeight: 600 }}>%</span>
-            </div>
+            ) : (
+              <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 1, color: selected ? 'var(--brand)' : 'var(--text-1)' }}>
+                <span style={{ fontSize: '22px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                  {Math.round(Number(benefit.descuento))}
+                </span>
+                <span style={{ fontSize: '13px', fontWeight: 600 }}>%</span>
+              </div>
+            )
           )}
           {benefit.valor_fijo && !benefit.descuento && (
             <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
@@ -1388,20 +1473,21 @@ function BenefitOption({
 // y confirma el canje con un click. Si excede el límite, pide PIN del responsable.
 // ============================================
 function ConfirmStep({
-  beneficiario, familiarInfo, beneficio, monto, processing, errorMsg,
+  beneficiario, familiarInfo, beneficio, monto, invitadosCount, processing, errorMsg, overrideRequired,
   onConfirmar, onConfirmarConPin, onCancelar,
 }: {
   beneficiario: Beneficiario;
   familiarInfo: FamiliarInfo | null;
   beneficio: Beneficio;
   monto: string;
+  invitadosCount: number;
   processing: boolean;
   errorMsg: string;
+  overrideRequired: boolean;
   onConfirmar: (retiradoPorDni?: string) => void;
   onConfirmarConPin: (pin: string, retiradoPorDni?: string) => void;
   onCancelar: () => void;
 }) {
-  const requiereOverride: boolean = !!errorMsg && errorMsg.toLowerCase().includes('excede');
   const [pin, setPin] = useState('');
   const esMenor = familiarInfo?.es_menor === true;
   const [retiradoPorDni, setRetiradoPorDni] = useState('');
@@ -1409,9 +1495,8 @@ function ConfirmStep({
   const descuento = beneficio.descuento ? Number(beneficio.descuento) : 0;
   const ahorro = montoNum * (descuento / 100);
   const totalAPagar = montoNum - ahorro;
-  const fullName = familiarInfo
-    ? `${beneficiario.nombre} ${beneficiario.apellido}`
-    : `${beneficiario.nombre} ${beneficiario.apellido}`;
+  const esGratis = beneficio.tipo_descuento === 'gratuito';
+  const fullName = `${beneficiario.nombre} ${beneficiario.apellido}`;
 
   return (
     <div>
@@ -1515,6 +1600,29 @@ function ConfirmStep({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Row label="Beneficio" value={beneficio.nombre} highlight />
           {beneficio.categoria && <Row label="Categoría" value={beneficio.categoria.replace('_', ' ')} />}
+          {invitadosCount > 0 && (
+            <Row
+              label="Invitados"
+              value={`${invitadosCount} persona${invitadosCount !== 1 ? 's' : ''}${beneficio.cubre_invitados ? ' (empresa cubre)' : ''}`}
+            />
+          )}
+
+          {/* Condición de precio — siempre visible */}
+          {esGratis ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+              <span style={{ fontSize: '12.5px', color: 'var(--text-3)' }}>Condición</span>
+              <span style={{
+                fontSize: '13px', fontWeight: 700, color: '#16a34a',
+                background: '#dcfce7', padding: '3px 12px', borderRadius: '20px',
+              }}>GRATIS</span>
+            </div>
+          ) : descuento > 0 && montoNum === 0 ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+              <span style={{ fontSize: '12.5px', color: 'var(--text-3)' }}>Descuento aplicable</span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--brand)' }}>{Math.round(descuento)}% OFF</span>
+            </div>
+          ) : null}
+
           {montoNum > 0 && (
             <>
               <Row label="Monto del ticket" value={`$${montoNum.toLocaleString('es-AR')}`} mono />
@@ -1614,22 +1722,31 @@ function ConfirmStep({
       )}
 
       {/* PIN del responsable si requiere override */}
-      {requiereOverride && (
+      {overrideRequired && (
         <div style={{
           padding: 14, marginBottom: 14,
           background: 'var(--bg-elevated)', border: '1px solid var(--warning-border)', borderRadius: '10px',
         }}>
-          <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--warning-text)', fontWeight: 600, marginBottom: 6 }}>
-            🔒 PIN del responsable para autorizar
-          </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <label style={{ fontSize: '11.5px', color: 'var(--warning-text)', fontWeight: 600 }}>
+              🔒 PIN del responsable para autorizar
+            </label>
+            <span style={{
+              fontSize: '11px', fontWeight: 600,
+              color: pin.length >= 4 ? 'var(--success-text)' : 'var(--text-3)',
+            }}>
+              {pin.length}/4 {pin.length >= 4 ? '✓' : ''}
+            </span>
+          </div>
           <input
             type="password" inputMode="numeric"
-            placeholder="****"
+            placeholder="• • • •"
             value={pin}
             onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
             style={{
               width: '100%', height: 44, padding: '0 14px',
-              background: 'var(--bg-canvas)', border: '1px solid var(--border-default)',
+              background: 'var(--bg-canvas)',
+              border: `1px solid ${pin.length >= 4 ? 'var(--success-border, #86efac)' : 'var(--border-default)'}`,
               borderRadius: '8px', color: 'var(--text-1)', fontSize: '20px', fontWeight: 600,
               outline: 'none', textAlign: 'center', letterSpacing: '0.5em',
             }}
@@ -1653,19 +1770,19 @@ function ConfirmStep({
         <button
           onClick={() => {
             const rp = esMenor ? retiradoPorDni : undefined;
-            requiereOverride ? onConfirmarConPin(pin, rp) : onConfirmar(rp);
+            overrideRequired ? onConfirmarConPin(pin, rp) : onConfirmar(rp);
           }}
           disabled={
             processing ||
-            (requiereOverride && pin.length < 4) ||
+            (overrideRequired && pin.length < 4) ||
             (esMenor && retiradoPorDni.length < 7)
           }
           style={{
-            flex: 1, height: 52, background: requiereOverride ? 'var(--warning)' : 'var(--success)',
+            flex: 1, height: 52, background: overrideRequired ? 'var(--warning)' : 'var(--success)',
             color: '#0a0a0a', border: 'none', borderRadius: '10px',
             fontSize: '15px', fontWeight: 700, cursor: processing ? 'not-allowed' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            opacity: processing || (requiereOverride && pin.length < 4) || (esMenor && retiradoPorDni.length < 7) ? 0.6 : 1,
+            opacity: processing || (overrideRequired && pin.length < 4) || (esMenor && retiradoPorDni.length < 7) ? 0.6 : 1,
           }}
         >
           {processing ? (
@@ -1677,7 +1794,7 @@ function ConfirmStep({
               }} />
               Procesando…
             </>
-          ) : requiereOverride ? '✓ Autorizar con PIN' : '✓ Confirmar canje'}
+          ) : overrideRequired ? '✓ Autorizar con PIN' : '✓ Confirmar canje'}
         </button>
       </div>
     </div>
@@ -1758,14 +1875,26 @@ function SuccessStep({
           {beneficio.nombre}
         </h1>
         {beneficio.descuento && (
-          <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'baseline', gap: 4, color: 'var(--brand)' }}>
-            <span style={{ fontSize: '32px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', lineHeight: 1 }}>
-              {Math.round(Number(beneficio.descuento))}%
-            </span>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-              de descuento
-            </span>
-          </div>
+          beneficio.tipo_descuento === 'gratuito' ? (
+            <div style={{ marginTop: 10 }}>
+              <span style={{
+                fontSize: '18px', fontWeight: 700, color: '#16a34a',
+                background: '#dcfce7', padding: '6px 18px', borderRadius: '24px',
+                display: 'inline-block', letterSpacing: '0.05em',
+              }}>
+                GRATIS
+              </span>
+            </div>
+          ) : (
+            <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'baseline', gap: 4, color: 'var(--brand)' }}>
+              <span style={{ fontSize: '32px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                {Math.round(Number(beneficio.descuento))}%
+              </span>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                de descuento
+              </span>
+            </div>
+          )
         )}
       </div>
 

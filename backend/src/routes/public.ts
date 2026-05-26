@@ -70,29 +70,46 @@ async function getAdultosAutorizados(titularId: string, dniMenor: string): Promi
 }
 
 // Calcular % aplicable de un beneficio dado el titular (antiguedad + talento)
-function calcularDescuentoAplicable(beneficio: any, antiguedadMeses: number, esTalento: boolean): number | null {
-  // Si tiene escala_descuentos (modelo V2), usar reglas
+function calcularDescuentoAplicable(
+  beneficio: any,
+  antiguedadMeses: number,
+  esTalento: boolean,
+  esFamiliar?: boolean,
+): { porcentaje: number | null; tipo: 'gratuito' | 'descuento' | null } {
   if (beneficio.escala_descuentos) {
     const escala = typeof beneficio.escala_descuentos === 'string'
       ? JSON.parse(beneficio.escala_descuentos)
       : beneficio.escala_descuentos;
 
-    // Talento override: aplica el % máximo desde el día 1
-    if (esTalento && escala.talento_porcentaje != null) {
-      return escala.talento_porcentaje;
+    // Skipass/acceso: tiers explícitos titular vs familiar
+    if (escala.titular != null || escala.familiar != null) {
+      if (esFamiliar && escala.familiar != null) {
+        const p = escala.familiar.porcentaje ?? null;
+        return { porcentaje: p, tipo: escala.familiar.tipo === 'gratuito' ? 'gratuito' : 'descuento' };
+      }
+      if (!esFamiliar && escala.titular != null) {
+        const tipo = escala.titular.tipo === 'gratuito' ? 'gratuito' : 'descuento';
+        const p = tipo === 'gratuito' ? 100 : (escala.titular.porcentaje ?? null);
+        return { porcentaje: p, tipo };
+      }
     }
 
-    // Buscar tier que aplique (el de antiguedad_min_meses más alto que cumpla)
+    // Talento override
+    if (esTalento && escala.talento_porcentaje != null) {
+      return { porcentaje: escala.talento_porcentaje, tipo: 'descuento' };
+    }
+
+    // Tiers por antigüedad
     if (Array.isArray(escala.tiers)) {
       const aplicables = escala.tiers
         .filter((t: any) => antiguedadMeses >= (t.antiguedad_min_meses || 0))
         .sort((a: any, b: any) => (b.antiguedad_min_meses || 0) - (a.antiguedad_min_meses || 0));
-      if (aplicables.length > 0) return aplicables[0].porcentaje;
+      if (aplicables.length > 0) return { porcentaje: aplicables[0].porcentaje, tipo: 'descuento' };
     }
   }
 
-  // Fallback: descuento simple del modelo viejo
-  return beneficio.descuento != null ? Number(beneficio.descuento) : null;
+  const p = beneficio.descuento != null ? Number(beneficio.descuento) : null;
+  return { porcentaje: p, tipo: p != null ? 'descuento' : null };
 }
 
 // GET /api/public/beneficiario/:comercioId/:dni - Datos del colaborador + beneficios disponibles
@@ -199,9 +216,9 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
       }
     }
 
-    // Calcular antiguedad en meses
+    // Calcular antiguedad en meses (mínimo 0 para evitar negativos por fechas futuras en BD)
     const antiguedadMeses = titular.fecha_ingreso
-      ? Math.floor((Date.now() - new Date(titular.fecha_ingreso).getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+      ? Math.max(0, Math.floor((Date.now() - new Date(titular.fecha_ingreso).getTime()) / (1000 * 60 * 60 * 24 * 30.44)))
       : 0;
     const esTalento = !!titular.es_talento_popper;
 
@@ -210,7 +227,8 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
       `SELECT b.id, b.nombre, b.descripcion, b.tipo, b.descuento, b.valor_fijo,
               b.horario_inicio, b.horario_fin, b.nivel_minimo,
               b.origen, b.categoria, b.aplica_a, b.modalidad, b.escala_descuentos,
-              b.restricciones, b.excluye_outlet, b.relaciones_familiar, b.usa_limite_jerarquia
+              b.restricciones, b.excluye_outlet, b.relaciones_familiar, b.usa_limite_jerarquia,
+              b.max_invitados, b.cubre_invitados
        FROM beneficios b
        INNER JOIN comercio_beneficios cb ON cb.beneficio_id = b.id
        WHERE cb.comercio_id = $1 AND b.activo = TRUE`,
@@ -219,6 +237,8 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
 
     // Filtrado por aplica_a + relación familiar
     const beneficiosFiltrados = beneficiosResult.rows.filter((b: any) => {
+      // Beneficios exclusivos de Talento: solo visibles para talento
+      if (b.aplica_a === 'talento') return esTalento;
       // Si es familiar, beneficio debe permitirlo
       if (esFamiliar) {
         if (b.aplica_a && b.aplica_a === 'empleado') return false;
@@ -262,7 +282,7 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
 
     // Anotar cada beneficio con el % aplicable + saldo restante si usa límite jerarquia
     const beneficiosConDescuento = beneficiosFiltrados.map((b: any) => {
-      const descuentoCalculado = calcularDescuentoAplicable(b, antiguedadMeses, esTalento);
+      const { porcentaje: descuentoCalculado, tipo: tipoDescuento } = calcularDescuentoAplicable(b, antiguedadMeses, esTalento, esFamiliar);
       let saldoInfo: any = null;
       if (b.usa_limite_jerarquia && jerarquia) {
         const gastado = consumoMap[b.categoria] || 0;
@@ -280,6 +300,7 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
         ...b,
         descuento: descuentoCalculado != null ? descuentoCalculado : b.descuento,
         descuento_calculado: descuentoCalculado,
+        tipo_descuento: tipoDescuento,
         saldo: saldoInfo,
       };
     });
@@ -294,8 +315,8 @@ router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response)
     res.json({
       beneficiario: {
         dni: esFamiliar ? familiar.dni : titular.dni,
-        nombre: esFamiliar ? familiar.nombre_completo.split(' ')[0] : titular.nombre,
-        apellido: esFamiliar ? familiar.nombre_completo.split(' ').slice(1).join(' ') : titular.apellido,
+        nombre: esFamiliar ? (familiar.nombre_completo || '').split(' ')[0] || familiar.nombre_completo : titular.nombre,
+        apellido: esFamiliar ? (familiar.nombre_completo || '').split(' ').slice(1).join(' ') || '' : titular.apellido,
         foto,
         nivel: titular.nivel,
         departamento: titular.departamento,
@@ -459,7 +480,7 @@ router.post('/verificar-pin', async (req: Request, res: Response) => {
 // V3E: si override_limite=true, requiere pin_responsable del comercio
 router.post('/canjear', async (req: Request, res: Response) => {
   try {
-    const { dni, beneficio_id, comercio_id, monto, override_limite, pin_responsable, retirado_por_dni } = req.body;
+    const { dni, beneficio_id, comercio_id, monto, override_limite, pin_responsable, retirado_por_dni, invitados_count } = req.body;
     const montoNum = monto != null ? parseFloat(String(monto)) : null;
 
     // V3E: si quieren override, validar PIN
@@ -483,6 +504,7 @@ router.post('/canjear', async (req: Request, res: Response) => {
     // 1) Resolver beneficiario: titular o familiar (V2)
     // V3G: validación estricta — el titular debe estar ACTIVO siempre
     let beneficiarioId: string | null = null;
+    let esFamiliarCanje = false;
     const titularRes = await query('SELECT id, activo, nombre, apellido, motivo_baja FROM beneficiarios WHERE dni = $1', [dni]);
     if (titularRes.rows.length > 0) {
       const t = titularRes.rows[0];
@@ -516,6 +538,7 @@ router.post('/canjear', async (req: Request, res: Response) => {
           });
         }
         beneficiarioId = r.id;
+        esFamiliarCanje = true;
       } else {
         // Fallback Naaloo
         const empleado = await buscarEmpleadoPorDni(dni);
@@ -606,12 +629,23 @@ router.post('/canjear', async (req: Request, res: Response) => {
     // 2) Beneficio (incluyendo campos V2)
     const beneficioResult = await query(
       `SELECT id, nombre, limite_uso_diario, limite_uso_mensual, limite_total, categoria, usa_limite_jerarquia,
-              fecha_inicio, fecha_fin
+              fecha_inicio, fecha_fin, descuento, escala_descuentos, modalidad, aplica_a
        FROM beneficios WHERE id = $1 AND activo = TRUE`,
       [beneficio_id]
     );
     if (beneficioResult.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
     const beneficio = beneficioResult.rows[0];
+
+    // Validar que beneficios de Talento solo puedan usarlos talento
+    if (beneficio.aplica_a === 'talento') {
+      const tRes = await query(
+        `SELECT es_talento_popper FROM beneficiarios WHERE id=$1 LIMIT 1`,
+        [beneficiarioId]
+      ).catch(() => ({ rows: [] }));
+      if (!tRes.rows[0]?.es_talento_popper) {
+        return res.status(403).json({ error: 'Este beneficio es exclusivo para Talento Popper.' });
+      }
+    }
 
     // V3G: vigencia del beneficio
     const ahora = new Date();
@@ -703,20 +737,36 @@ router.post('/canjear', async (req: Request, res: Response) => {
 
     // 5) Registrar verificacion (con monto + categoria denormalizada)
     const codigo = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+
+    // Calcular descuento real: necesitamos antiguedadMeses y esTalento del titular
+    const titularDataRes = await query(
+      `SELECT fecha_ingreso, es_talento_popper FROM beneficiarios WHERE id=$1 LIMIT 1`,
+      [beneficiarioId]
+    ).catch(() => ({ rows: [] }));
+    const tdRow = titularDataRes.rows[0] || {};
+    const antiguedadMeses = tdRow.fecha_ingreso
+      ? Math.max(0, Math.floor((Date.now() - new Date(tdRow.fecha_ingreso).getTime()) / (1000 * 60 * 60 * 24 * 30.44)))
+      : 0;
+    const esTalento = !!tdRow.es_talento_popper;
+
+    const { porcentaje: pctDescuento } = calcularDescuentoAplicable(beneficio, antiguedadMeses, esTalento, esFamiliarCanje);
+    const montoDescuento = montoNum > 0 && pctDescuento ? Math.round(montoNum * (pctDescuento / 100)) : 0;
+    const montoFinal = montoNum > 0 ? montoNum - montoDescuento : 0;
+
+    const invCount = parseInt(String(invitados_count)) || 0;
     const verificacion = await query(
       `INSERT INTO verificaciones (
         beneficiario_id, beneficiario_dni, beneficio_id, comercio_id,
         estado, monto_original, monto_descuento, monto_final,
         codigo_referencia, monto, categoria_beneficio, usa_limite_jerarquia,
-        retirado_por_dni, retirado_por_nombre
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        retirado_por_dni, retirado_por_nombre, invitados_count
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING id, estado, codigo_referencia, fecha_verificacion, monto`,
       [beneficiarioId, dni, beneficio_id, comercio_id, 'exitoso',
-       montoNum || 0, 0, montoNum || 0, codigo,
+       montoNum || 0, montoDescuento, montoFinal, codigo,
        montoNum || null, beneficio.categoria || null, !!beneficio.usa_limite_jerarquia,
-       retiradoPorInfo?.dni || null, retiradoPorInfo?.nombre || null]
+       retiradoPorInfo?.dni || null, retiradoPorInfo?.nombre || null, invCount]
     ).catch(async () => {
-      // Fallback si la columna retirado_por_* no existe aún
       return await query(
         `INSERT INTO verificaciones (
           beneficiario_id, beneficiario_dni, beneficio_id, comercio_id,
@@ -725,7 +775,7 @@ router.post('/canjear', async (req: Request, res: Response) => {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING id, estado, codigo_referencia, fecha_verificacion, monto`,
         [beneficiarioId, dni, beneficio_id, comercio_id, 'exitoso',
-         montoNum || 0, 0, montoNum || 0, codigo,
+         montoNum || 0, montoDescuento, montoFinal, codigo,
          montoNum || null, beneficio.categoria || null, !!beneficio.usa_limite_jerarquia]
       );
     });
