@@ -335,6 +335,58 @@ export default function AdminDashboard({ token, user, onLogout }: {
     }
   };
 
+  // Imprimir hoja QR de un comercio/boletería
+  const handlePrintQR = (comercio: any) => {
+    const qrUrl = `${baseUrl}#/qr/${comercio.qr_code}`;
+    const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=${encodeURIComponent(qrUrl)}&margin=16&color=111111&bgcolor=ffffff`;
+    const pw = window.open('', '_blank');
+    if (!pw) return;
+    pw.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Terminal · ${comercio.nombre}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:32px}
+    .card{border:2px solid #111;border-radius:20px;padding:40px 36px;max-width:440px;width:100%;display:flex;flex-direction:column;align-items:center;gap:0}
+    .brand{font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#999;margin-bottom:28px}
+    .qr-wrap{background:#f9f9f9;border-radius:12px;padding:12px;margin-bottom:28px}
+    .qr-wrap img{display:block;width:260px;height:260px}
+    .name{font-size:24px;font-weight:800;text-align:center;letter-spacing:-0.02em;margin-bottom:6px}
+    .address{font-size:13px;color:#888;text-align:center;margin-bottom:24px}
+    hr{width:100%;border:none;border-top:1px solid #eee;margin-bottom:20px}
+    .steps{display:flex;flex-direction:column;gap:10px;width:100%;margin-bottom:20px}
+    .step{display:flex;align-items:flex-start;gap:10px;font-size:12.5px;color:#555;line-height:1.5}
+    .num{min-width:22px;height:22px;background:#111;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px}
+    .url{font-family:monospace;font-size:10px;color:#aaa;text-align:center;word-break:break-all;padding:8px 12px;background:#f5f5f5;border-radius:8px;width:100%}
+    .badge{display:inline-block;padding:3px 10px;background:#111;color:#fff;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-top:16px}
+    @media print{body{padding:16px}.card{border:1.5px solid #111}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <p class="brand">Grupo Popper · Sistema de Beneficios</p>
+    <div class="qr-wrap">
+      <img src="${qrImg}" alt="QR ${comercio.nombre}"/>
+    </div>
+    <h1 class="name">${comercio.nombre}</h1>
+    ${comercio.direccion ? `<p class="address">${comercio.direccion}${comercio.ciudad ? ` · ${comercio.ciudad}` : ''}</p>` : '<div style="margin-bottom:24px"></div>'}
+    <hr/>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><span>Abrí la URL en la tablet o escaneá el QR con tu teléfono.</span></div>
+      <div class="step"><div class="num">2</div><span>El colaborador presenta su DNI físico al cajero.</span></div>
+      <div class="step"><div class="num">3</div><span>El cajero ingresa el DNI y confirma el beneficio disponible.</span></div>
+    </div>
+    <p class="url">${qrUrl}</p>
+    <span class="badge">Solo uso interno</span>
+  </div>
+  <script>window.onload=()=>{ setTimeout(()=>window.print(), 400); }</script>
+</body>
+</html>`);
+    pw.document.close();
+  };
+
   // Exportar CSV
   const handleExportCSV = async () => {
     try {
@@ -1112,51 +1164,141 @@ export default function AdminDashboard({ token, user, onLogout }: {
       {/* ====== QR CODES ====== */}
       {activeTab === 'qrcodes' && (
         <PageSection
-          title="Códigos QR"
-          description="Generá e imprimí los QR de cada comercio adherido."
+          title="Terminales de puntos de venta"
+          description="Configurá las tablets de cada boletería o comercio adherido."
         >
+          {/* Banner de instrucciones para supervisores */}
+          <div style={{
+            padding: '16px 18px', marginBottom: 20,
+            background: 'rgba(191,163,99,0.07)', border: '1px solid rgba(191,163,99,0.2)',
+            borderRadius: '12px', display: 'flex', gap: 16, alignItems: 'flex-start',
+          }}>
+            <div style={{ fontSize: '20px', marginTop: 1 }}>🖥️</div>
+            <div>
+              <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--brand)', marginBottom: 6 }}>
+                Cómo configurar una tablet en la boletería
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {[
+                  'Abrí el navegador de la tablet y escribí la URL de esa boletería (o escaneá el QR).',
+                  'Activá el modo pantalla completa (F11 en Chrome, o "Agregar a inicio" en iOS/Android).',
+                  'La pantalla queda fija en esa terminal. El cajero solo ingresa el DNI del colaborador.',
+                ].map((step, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span style={{
+                      minWidth: 18, height: 18, borderRadius: '50%',
+                      background: 'var(--brand)', color: 'var(--brand-fg)',
+                      fontSize: '10px', fontWeight: 700,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1,
+                    }}>{i + 1}</span>
+                    <p style={{ fontSize: '12px', color: 'var(--text-2)', lineHeight: 1.5 }}>{step}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {comercios.length === 0 ? (
             <EmptyView icon={<QrCodeIcon size={28} />} title="No hay comercios" description="Agregá comercios primero desde la sección Comercios." />
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
               {comercios.map((c: any) => {
                 const qrUrl = `${baseUrl}#/qr/${c.qr_code}`;
-                const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrUrl)}&margin=10&color=ededee&bgcolor=16161a`;
+                const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}&margin=12&color=ededee&bgcolor=16161a`;
+                const [copied, setCopied] = useState(false);
+                const handleCopy = () => {
+                  navigator.clipboard?.writeText(qrUrl);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                };
                 return (
-                  <ItemCard key={c.id}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div key={c.id} style={{
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+                    borderRadius: '16px', overflow: 'hidden',
+                    display: 'flex', flexDirection: 'column',
+                  }}>
+                    {/* Header */}
+                    <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{
-                        width: 40, height: 40, borderRadius: '8px',
-                        background: c.logo ? 'var(--bg-canvas)' : 'var(--brand-muted)',
-                        border: `1px solid ${c.logo ? 'var(--border-subtle)' : 'var(--brand-border)'}`,
+                        width: 36, height: 36, borderRadius: '8px',
+                        background: c.activo ? 'var(--brand-muted)' : 'var(--bg-surface)',
+                        border: `1px solid ${c.activo ? 'var(--brand-border)' : 'var(--border-subtle)'}`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         overflow: 'hidden', flexShrink: 0,
-                        color: 'var(--brand)', fontWeight: 700, fontSize: '12px',
+                        color: 'var(--brand)', fontWeight: 700, fontSize: '11px',
                       }}>
                         {c.logo
                           ? <img src={c.logo} alt={c.nombre} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                           : c.nombre.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-1)' }}>{c.nombre}</p>
-                        <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 2 }}>{c.direccion}</p>
+                        <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.nombre}</p>
+                        <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 1 }}>{c.ciudad || c.direccion || '—'}</p>
+                      </div>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700,
+                        background: c.activo ? 'var(--success-bg)' : 'var(--bg-surface)',
+                        color: c.activo ? 'var(--success-text)' : 'var(--text-4)',
+                        border: `1px solid ${c.activo ? 'var(--success-border)' : 'var(--border-subtle)'}`,
+                        flexShrink: 0,
+                      }}>
+                        {c.activo ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </div>
+
+                    {/* QR */}
+                    <div style={{
+                      padding: 20, display: 'flex', justifyContent: 'center',
+                      background: 'var(--bg-canvas)',
+                    }}>
+                      <div style={{ padding: 8, background: '#16161a', borderRadius: '10px' }}>
+                        <img src={qrImg} alt={`QR ${c.nombre}`} style={{ width: 200, height: 200, display: 'block' }} />
                       </div>
                     </div>
-                    <div style={{
-                      padding: 12, background: 'var(--bg-surface)', borderRadius: '8px',
-                      border: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'center', marginBottom: 10,
-                    }}>
-                      <img src={qrImg} alt={`QR ${c.nombre}`} style={{ width: 200, height: 200, display: 'block' }} />
+
+                    {/* URL */}
+                    <div style={{ padding: '8px 16px 12px', borderTop: '1px solid var(--border-subtle)' }}>
+                      <p style={{
+                        fontSize: '10px', color: 'var(--text-4)', fontFamily: 'var(--font-geist-mono)',
+                        wordBreak: 'break-all', textAlign: 'center', lineHeight: 1.5,
+                        padding: '6px 10px', background: 'var(--bg-surface)', borderRadius: '6px',
+                      }}>{qrUrl}</p>
                     </div>
-                    <p style={{
-                      fontSize: '10.5px', color: 'var(--text-3)', textAlign: 'center', marginBottom: 10,
-                      fontFamily: 'var(--font-geist-mono)', wordBreak: 'break-all',
-                    }}>{qrUrl}</p>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <Button variant="secondary" size="sm" leftIcon={<CopyIcon size={12} />} onClick={() => { navigator.clipboard?.writeText(qrUrl); }} style={{ flex: 1 }}>Copiar URL</Button>
-                      <Button variant="ghost" size="sm" leftIcon={<DownloadIcon size={12} />} onClick={() => window.open(qrImg, '_blank')} style={{ flex: 1 }}>Descargar</Button>
+
+                    {/* Acciones */}
+                    <div style={{ padding: '0 12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {/* Abrir terminal — botón primario */}
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        leftIcon={<MonitorIcon size={13} />}
+                        onClick={() => window.open(qrUrl, '_blank')}
+                        style={{ width: '100%' }}
+                      >
+                        Abrir terminal
+                      </Button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          leftIcon={<CopyIcon size={12} />}
+                          onClick={handleCopy}
+                          style={{ flex: 1, color: copied ? 'var(--success-text)' : undefined }}
+                        >
+                          {copied ? '¡Copiado!' : 'Copiar URL'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          leftIcon={<PrinterIcon size={12} />}
+                          onClick={() => handlePrintQR(c)}
+                          style={{ flex: 1 }}
+                        >
+                          Imprimir
+                        </Button>
+                      </div>
                     </div>
-                  </ItemCard>
+                  </div>
                 );
               })}
             </div>
@@ -2530,6 +2672,19 @@ const SparklesIcon = ({ size }: { size: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
     <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+const PrinterIcon = ({ size }: { size: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 6 2 18 2 18 9" />
+    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    <rect x="6" y="14" width="12" height="8" />
+  </svg>
+);
+const MonitorIcon = ({ size }: { size: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="3" width="20" height="14" rx="2" />
+    <path d="M8 21h8M12 17v4" />
   </svg>
 );
 const HeartIcon = ({ size }: { size: number }) => (
