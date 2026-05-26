@@ -2,8 +2,12 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from '../db';
 import { buscarEmpleadoPorDni, naalooToBeneficiario } from '../services/naaloo';
+import { canjearLimiter, beneficiarioLimiter, publicLimiter } from '../middleware/rateLimit';
 
 const router = Router();
+
+// Rate limiting global para todos los endpoints públicos
+router.use(publicLimiter);
 
 // GET /api/public/comercio/:qrCode - Info del comercio por QR code
 router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
@@ -117,7 +121,7 @@ function calcularDescuentoAplicable(
 }
 
 // GET /api/public/beneficiario/:comercioId/:dni - Datos del colaborador + beneficios disponibles
-router.get('/beneficiario/:comercioId/:dni', async (req: Request, res: Response) => {
+router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Request, res: Response) => {
   try {
     const comercioId = req.params.comercioId as string;
     const dni = req.params.dni as string;
@@ -486,7 +490,7 @@ router.post('/verificar-pin', async (req: Request, res: Response) => {
 // POST /api/public/canjear - Canjear un beneficio (sin auth)
 // V3A: acepta monto, valida saldo mensual si beneficio.usa_limite_jerarquia
 // V3E: si override_limite=true, requiere pin_responsable del comercio
-router.post('/canjear', async (req: Request, res: Response) => {
+router.post('/canjear', canjearLimiter, async (req: Request, res: Response) => {
   try {
     const { dni, beneficio_id, comercio_id, monto, override_limite, pin_responsable, retirado_por_dni, invitados_count } = req.body;
     const montoNum = monto != null ? parseFloat(String(monto)) : null;

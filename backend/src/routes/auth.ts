@@ -6,6 +6,7 @@ import { query } from '../db';
 import { generateToken, AuthRequest } from '../middleware/auth';
 import { validate } from '../middleware/validation';
 import { loginNaaloo } from '../services/naaloo';
+import { loginLimiter } from '../middleware/rateLimit';
 
 const router = Router();
 
@@ -26,7 +27,7 @@ const RegisterSchema = z.object({
 });
 
 // Login hibrido: intenta Naaloo (email+pass) primero, luego local (admin.popper fallback)
-router.post('/login', validate(LoginSchema), async (req: AuthRequest, res: Response) => {
+router.post('/login', loginLimiter, validate(LoginSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { username, password } = req.body;
     const esEmail = username.includes('@');
@@ -131,7 +132,7 @@ router.post('/login', validate(LoginSchema), async (req: AuthRequest, res: Respo
 // El backend lo verifica con las claves publicas de Google, extrae el email
 // y comprueba que el beneficiario tenga es_admin = TRUE
 // ============================================
-router.post('/login-google', async (req: AuthRequest, res: Response) => {
+router.post('/login-google', loginLimiter, async (req: AuthRequest, res: Response) => {
   try {
     if (!GOOGLE_CLIENT_ID) {
       return res.status(500).json({ error: 'Google Sign-In no esta configurado en el servidor (falta GOOGLE_CLIENT_ID).' });

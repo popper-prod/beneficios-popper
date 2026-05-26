@@ -127,41 +127,82 @@ router.get('/verificaciones', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /api/admin/beneficios - Listar beneficios
+// GET /api/admin/beneficios - Listar beneficios (con paginación)
 router.get('/beneficios', async (req: AuthRequest, res: Response) => {
   try {
     const includeInactive = req.query.include_inactive === 'true' || req.query.all === 'true';
+    const page = Math.max(1, parseInt(req.query.page as string || '1'));
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string || '100')));
+    const offset = (page - 1) * limit;
     const whereClause = includeInactive ? '' : 'WHERE activo = TRUE';
-    const result = await query(
-      `SELECT * FROM beneficios ${whereClause} ORDER BY created_at DESC`
-    );
-    res.json({ beneficios: result.rows });
+    const [countRes, dataRes] = await Promise.all([
+      query(`SELECT COUNT(*) as total FROM beneficios ${whereClause}`),
+      query(`SELECT * FROM beneficios ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+    ]);
+    res.json({
+      beneficios: dataRes.rows,
+      total: parseInt(countRes.rows[0].total),
+      page,
+      totalPages: Math.ceil(parseInt(countRes.rows[0].total) / limit),
+    });
   } catch (error: any) {
     res.status(500).json({ error: 'Error cargando beneficios' });
   }
 });
 
-// GET /api/admin/comercios - Listar comercios
+// GET /api/admin/comercios - Listar comercios (con paginación)
 router.get('/comercios', async (req: AuthRequest, res: Response) => {
   try {
     const includeInactive = req.query.include_inactive === 'true' || req.query.all === 'true';
+    const page = Math.max(1, parseInt(req.query.page as string || '1'));
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string || '100')));
+    const offset = (page - 1) * limit;
     const whereClause = includeInactive ? '' : 'WHERE activo = TRUE';
-    const result = await query(
-      `SELECT * FROM comercios ${whereClause} ORDER BY created_at DESC`
-    );
-    res.json({ comercios: result.rows });
+    const [countRes, dataRes] = await Promise.all([
+      query(`SELECT COUNT(*) as total FROM comercios ${whereClause}`),
+      query(`SELECT * FROM comercios ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+    ]);
+    res.json({
+      comercios: dataRes.rows,
+      total: parseInt(countRes.rows[0].total),
+      page,
+      totalPages: Math.ceil(parseInt(countRes.rows[0].total) / limit),
+    });
   } catch (error: any) {
     res.status(500).json({ error: 'Error cargando comercios' });
   }
 });
 
-// GET /api/admin/beneficiarios - Listar beneficiarios
+// GET /api/admin/beneficiarios - Listar beneficiarios (con paginación y búsqueda)
 router.get('/beneficiarios', async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      'SELECT * FROM beneficiarios ORDER BY created_at DESC'
-    );
-    res.json({ beneficiarios: result.rows });
+    const page = Math.max(1, parseInt(req.query.page as string || '1'));
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string || '100')));
+    const offset = (page - 1) * limit;
+    const q = (req.query.q as string || '').trim();
+
+    let whereClause = '';
+    const params: any[] = [];
+    if (q) {
+      whereClause = `WHERE (LOWER(nombre) LIKE LOWER($1) OR LOWER(apellido) LIKE LOWER($1) OR dni LIKE $1 OR LOWER(email) LIKE LOWER($1))`;
+      params.push(`%${q}%`);
+    }
+
+    const countParams = [...params];
+    const dataParams = [...params, limit, offset];
+    const limitIdx = params.length + 1;
+    const offsetIdx = params.length + 2;
+
+    const [countRes, dataRes] = await Promise.all([
+      query(`SELECT COUNT(*) as total FROM beneficiarios ${whereClause}`, countParams),
+      query(`SELECT * FROM beneficiarios ${whereClause} ORDER BY created_at DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`, dataParams),
+    ]);
+    res.json({
+      beneficiarios: dataRes.rows,
+      total: parseInt(countRes.rows[0].total),
+      page,
+      totalPages: Math.ceil(parseInt(countRes.rows[0].total) / limit),
+    });
   } catch (error: any) {
     res.status(500).json({ error: 'Error cargando beneficiarios' });
   }
@@ -648,7 +689,7 @@ router.post('/migrar-autorizaciones', async (req: AuthRequest, res: Response) =>
   }
 });
 
-// POST /api/admin/sync-naaloo - Sincronizar empleados con Naaloo
+// POST /api/admin/sync-naaloo - Sincronizar empleados con Naaloo (batch optimizado)
 router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
   try {
     const empleados = await obtenerTodosEmpleados();
@@ -658,89 +699,138 @@ router.post('/sync-naaloo', async (req: AuthRequest, res: Response) => {
 
     const adminNombre = (req as any).user?.nombre ? `${(req as any).user.nombre} ${(req as any).user.apellido || ''}`.trim() : 'Sistema';
 
-    // Pre-cargar TODOS los beneficiarios locales en memoria (1 sola query)
+    // 1) Cargar todo el estado local en memoria — 1 query
     const localResult = await query('SELECT id, dni, activo, naaloo_id FROM beneficiarios');
     const localMap = new Map<string, { id: string; activo: boolean; naaloo_id: number | null }>();
-    for (const row of localResult.rows) {
-      localMap.set(row.dni, { id: row.id, activo: row.activo, naaloo_id: row.naaloo_id });
-    }
+    for (const row of localResult.rows) localMap.set(row.dni, row);
 
-    let altas = 0, bajas = 0, actualizados = 0;
+    // 2) Clasificar empleados en grupos
+    type BenRow = { dni: string; nombre: string; apellido: string; email: string | null; telefono: string | null; nivel: string; departamento: string | null; sector: string | null; cargo: string | null; empresa: string; fecha_ingreso: string | null; naaloo_id: number };
+    const toInsert: BenRow[] = [];
+    const toReactivate: Array<{ id: string } & BenRow> = [];
+    const toBaja: string[] = [];        // local IDs
+    const toUpdate: Array<{ id: string } & BenRow> = [];
     const detalles: { dni: string; nombre: string; accion: string }[] = [];
-    const logInserts: { beneficiario_id: string; accion: string; motivo: string }[] = [];
 
     for (const emp of empleados) {
       const ben = naalooToBeneficiario(emp);
       const fechaIngreso = ben.fecha_ingreso ? new Date(ben.fecha_ingreso) : null;
       const fechaValida = fechaIngreso && !isNaN(fechaIngreso.getTime()) ? fechaIngreso.toISOString().split('T')[0] : null;
+      const row: BenRow = {
+        dni: ben.dni, nombre: ben.nombre, apellido: ben.apellido,
+        email: ben.email || null, telefono: (ben.telefono || '').substring(0, 20) || null,
+        nivel: ben.nivel, departamento: ben.departamento || null, sector: ben.sector || null,
+        cargo: ben.cargo || null, empresa: ben.empresa, fecha_ingreso: fechaValida, naaloo_id: emp.id,
+      };
       const local = localMap.get(ben.dni);
 
       if (!local) {
-        // Empleado nuevo — insertar solo si activo en Naaloo
-        if (emp.activo) {
-          const inserted = await query(
-            `INSERT INTO beneficiarios (dni, nombre, apellido, email, telefono, nivel, departamento, sector, cargo, empresa, fecha_ingreso, activo, naaloo_id, origen, ultima_sync)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,TRUE,$12,'naaloo',NOW())
-             ON CONFLICT (dni) DO UPDATE SET nombre=EXCLUDED.nombre, apellido=EXCLUDED.apellido, departamento=EXCLUDED.departamento, sector=EXCLUDED.sector, cargo=EXCLUDED.cargo, naaloo_id=EXCLUDED.naaloo_id, ultima_sync=NOW()
-             RETURNING id`,
-            [ben.dni, ben.nombre, ben.apellido, ben.email || null, (ben.telefono || '').substring(0, 20) || null, ben.nivel, ben.departamento || null, ben.sector || null, ben.cargo || null, ben.empresa, fechaValida, emp.id]
-          );
-          logInserts.push({ beneficiario_id: inserted.rows[0].id, accion: 'sync_alta', motivo: 'Alta automatica desde Naaloo' });
-          altas++;
-          detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'alta' });
-        }
+        if (emp.activo) { toInsert.push(row); detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'alta' }); }
       } else if (emp.activo && !local.activo) {
-        // Reactivar
-        await query(
-          `UPDATE beneficiarios SET activo=TRUE, nombre=$1, apellido=$2, nivel=$3, departamento=$4, sector=$5, cargo=$6, naaloo_id=$7, motivo_baja=NULL, fecha_baja=NULL, ultima_sync=NOW(), updated_at=NOW() WHERE id=$8`,
-          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, ben.sector || null, ben.cargo || null, emp.id, local.id]
-        );
-        logInserts.push({ beneficiario_id: local.id, accion: 'sync_alta', motivo: 'Reactivado automaticamente desde Naaloo' });
-        altas++;
-        detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'reactivado' });
+        toReactivate.push({ id: local.id, ...row }); detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'reactivado' });
       } else if (!emp.activo && local.activo) {
-        // Baja
-        await query(
-          `UPDATE beneficiarios SET activo=FALSE, naaloo_id=$1, motivo_baja='Baja detectada en Naaloo', fecha_baja=NOW(), autorizado_por='Sync Naaloo', ultima_sync=NOW(), updated_at=NOW() WHERE id=$2`,
-          [emp.id, local.id]
-        );
-        // V3G CASCADE: desactivar familiares
-        const cascada = await query(
-          `UPDATE familiares SET activo=FALSE, updated_at=NOW() WHERE beneficiario_id=$1 AND activo=TRUE RETURNING id`,
-          [local.id]
-        ).catch(() => ({ rows: [] }));
-        logInserts.push({
-          beneficiario_id: local.id, accion: 'sync_baja',
-          motivo: `Baja automatica - empleado inactivo en Naaloo${cascada.rows.length ? ` (cascada: ${cascada.rows.length} familiares desactivados)` : ''}`,
-        });
-        bajas++;
-        detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'baja' });
+        toBaja.push(local.id); detalles.push({ dni: ben.dni, nombre: `${ben.nombre} ${ben.apellido}`, accion: 'baja' });
       } else {
-        // Solo actualizar datos
-        await query(
-          `UPDATE beneficiarios SET nombre=$1, apellido=$2, nivel=$3, departamento=$4, sector=$5, cargo=$6, naaloo_id=$7, ultima_sync=NOW(), updated_at=NOW() WHERE id=$8`,
-          [ben.nombre, ben.apellido, ben.nivel, ben.departamento || null, ben.sector || null, ben.cargo || null, emp.id, local.id]
-        );
-        actualizados++;
+        toUpdate.push({ id: local.id, ...row });
       }
     }
 
-    // Insertar todos los logs de una vez
-    for (const log of logInserts) {
-      await query(
-        `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ($1, $2, $3, $4)`,
-        [log.beneficiario_id, log.accion, log.motivo, adminNombre]
+    // 3) Ejecutar operaciones en batch
+
+    // ALTAS: batch upsert con unnest
+    let altaIds: string[] = [];
+    if (toInsert.length > 0) {
+      // Construir un INSERT ... VALUES multi-row con ON CONFLICT DO UPDATE
+      const valuePlaceholders = toInsert.map((_, i) => {
+        const base = i * 12;
+        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11},TRUE,$${base+12},'naaloo',NOW())`;
+      }).join(',');
+      const values = toInsert.flatMap(r => [r.dni, r.nombre, r.apellido, r.email, r.telefono, r.nivel, r.departamento, r.sector, r.cargo, r.empresa, r.fecha_ingreso, r.naaloo_id]);
+      const insertRes = await query(
+        `INSERT INTO beneficiarios (dni,nombre,apellido,email,telefono,nivel,departamento,sector,cargo,empresa,fecha_ingreso,activo,naaloo_id,origen,ultima_sync)
+         VALUES ${valuePlaceholders}
+         ON CONFLICT (dni) DO UPDATE SET nombre=EXCLUDED.nombre,apellido=EXCLUDED.apellido,departamento=EXCLUDED.departamento,
+           sector=EXCLUDED.sector,cargo=EXCLUDED.cargo,naaloo_id=EXCLUDED.naaloo_id,ultima_sync=NOW()
+         RETURNING id`,
+        values
       );
+      altaIds = insertRes.rows.map((r: any) => r.id);
+    }
+
+    // REACTIVACIONES: una UPDATE por beneficiario (pocos casos normalmente)
+    const reactivaIds: string[] = [];
+    for (const r of toReactivate) {
+      await query(
+        `UPDATE beneficiarios SET activo=TRUE,nombre=$1,apellido=$2,nivel=$3,departamento=$4,sector=$5,cargo=$6,naaloo_id=$7,motivo_baja=NULL,fecha_baja=NULL,ultima_sync=NOW(),updated_at=NOW() WHERE id=$8`,
+        [r.nombre, r.apellido, r.nivel, r.departamento, r.sector, r.cargo, r.naaloo_id, r.id]
+      );
+      reactivaIds.push(r.id);
+    }
+
+    // BAJAS: batch UPDATE + cascade familiares
+    if (toBaja.length > 0) {
+      const placeholders = toBaja.map((_, i) => `$${i + 1}`).join(',');
+      await query(
+        `UPDATE beneficiarios SET activo=FALSE,motivo_baja='Baja detectada en Naaloo',fecha_baja=NOW(),autorizado_por='Sync Naaloo',ultima_sync=NOW(),updated_at=NOW()
+         WHERE id IN (${placeholders})`,
+        toBaja
+      );
+      await query(
+        `UPDATE familiares SET activo=FALSE,updated_at=NOW() WHERE beneficiario_id IN (${placeholders}) AND activo=TRUE`,
+        toBaja
+      ).catch(() => {});
+    }
+
+    // ACTUALIZACIONES: batch UPDATE con CASE WHEN (más eficiente que N queries)
+    if (toUpdate.length > 0) {
+      const placeholders = toUpdate.map((_, i) => {
+        const base = i * 8;
+        return `($${base+1}::uuid,$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8})`;
+      }).join(',');
+      const values = toUpdate.flatMap(r => [r.id, r.nombre, r.apellido, r.nivel, r.departamento, r.sector, r.cargo, r.naaloo_id]);
+      await query(
+        `UPDATE beneficiarios b SET nombre=v.nombre,apellido=v.apellido,nivel=v.nivel,departamento=v.departamento,
+           sector=v.sector,cargo=v.cargo,naaloo_id=v.naaloo_id::int,ultima_sync=NOW(),updated_at=NOW()
+         FROM (VALUES ${placeholders}) AS v(id,nombre,apellido,nivel,departamento,sector,cargo,naaloo_id)
+         WHERE b.id = v.id::uuid`,
+        values
+      ).catch(async () => {
+        // Fallback individual si el batch falla (tipos incompatibles, etc.)
+        for (const r of toUpdate) {
+          await query(
+            `UPDATE beneficiarios SET nombre=$1,apellido=$2,nivel=$3,departamento=$4,sector=$5,cargo=$6,naaloo_id=$7,ultima_sync=NOW(),updated_at=NOW() WHERE id=$8`,
+            [r.nombre, r.apellido, r.nivel, r.departamento, r.sector, r.cargo, r.naaloo_id, r.id]
+          ).catch(() => {});
+        }
+      });
+    }
+
+    // 4) Logs en batch
+    const logRows = [
+      ...altaIds.map(id => [id, 'sync_alta', 'Alta automatica desde Naaloo', adminNombre]),
+      ...reactivaIds.map(id => [id, 'sync_alta', 'Reactivado automaticamente desde Naaloo', adminNombre]),
+      ...toBaja.map(id => [id, 'sync_baja', 'Baja automatica - empleado inactivo en Naaloo', adminNombre]),
+    ];
+    if (logRows.length > 0) {
+      const logPlaceholders = logRows.map((_, i) => {
+        const base = i * 4;
+        return `($${base+1},$${base+2},$${base+3},$${base+4})`;
+      }).join(',');
+      await query(
+        `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por) VALUES ${logPlaceholders}`,
+        logRows.flat()
+      ).catch(() => {});
     }
 
     res.json({
       exito: true,
       resumen: {
         totalNaaloo: empleados.length,
-        altas,
-        bajas,
-        actualizados,
-        sinCambios: empleados.length - altas - bajas - actualizados,
+        altas: toInsert.length,
+        reactivados: toReactivate.length,
+        bajas: toBaja.length,
+        actualizados: toUpdate.length,
+        sinCambios: empleados.length - toInsert.length - toReactivate.length - toBaja.length - toUpdate.length,
       },
       detalles,
     });
