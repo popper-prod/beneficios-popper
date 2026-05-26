@@ -213,6 +213,10 @@ router.post('/login-google', async (req: AuthRequest, res: Response) => {
 });
 
 router.post('/register', validate(RegisterSchema), async (req: AuthRequest, res: Response) => {
+  // Registro deshabilitado en producción. Los accesos se gestionan vía Naaloo + permisos de admin.
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ error: 'Registro deshabilitado. Los accesos se asignan desde el panel de administración.' });
+  }
   try {
     const { username, email, password, nombre, apellido } = req.body;
 

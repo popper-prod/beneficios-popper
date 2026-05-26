@@ -8,7 +8,29 @@ import adminRoutes from './routes/admin';
 
 const app = express();
 
-app.use(cors());
+const ALLOWED_ORIGINS = [
+  'https://beneficios-qr.vercel.app',
+  'https://beneficios.recluta.com.ar',
+  // Vercel preview deployments
+  /^https:\/\/beneficios-.*\.vercel\.app$/,
+  // Desarrollo local
+  'http://localhost:5173',
+  'http://localhost:4173',
+  'http://localhost:3000',
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Requests sin origin (curl, Postman, keep-alive interno)
+    if (!origin) return callback(null, true);
+    const allowed = ALLOWED_ORIGINS.some(o =>
+      typeof o === 'string' ? o === origin : o.test(origin)
+    );
+    if (allowed) return callback(null, true);
+    callback(new Error(`CORS: origin no permitido: ${origin}`));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 app.get('/api/health', async (req: Request, res: Response) => {

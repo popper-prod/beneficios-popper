@@ -449,13 +449,31 @@ router.put('/beneficiarios/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// DELETE /api/admin/beneficiarios/:id - Eliminar beneficiario
+// DELETE /api/admin/beneficiarios/:id - Eliminar beneficiario (soft si tiene verificaciones)
 router.delete('/beneficiarios/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await query('DELETE FROM beneficiarios WHERE id = $1 RETURNING id', [id]);
+    // Verificar si tiene verificaciones históricas
+    const used = await query('SELECT COUNT(*)::int AS c FROM verificaciones WHERE beneficiario_id = $1', [id]);
+    const usageCount = used.rows[0]?.c || 0;
+
+    if (usageCount === 0) {
+      // Sin historial: hard delete (también limpia familiares)
+      await query('DELETE FROM familiares WHERE beneficiario_id = $1', [id]);
+      const result = await query('DELETE FROM beneficiarios WHERE id = $1 RETURNING id', [id]);
+      if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficiario no encontrado' });
+      return res.json({ eliminado: true, modo: 'hard' });
+    }
+
+    // Con historial: soft delete para preservar integridad del historial
+    const result = await query(
+      `UPDATE beneficiarios SET activo = FALSE, motivo_baja = 'Dado de baja manualmente', fecha_baja = NOW(), updated_at = NOW() WHERE id = $1 RETURNING id`,
+      [id]
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficiario no encontrado' });
-    res.json({ eliminado: true });
+    // Cascada: desactivar familiares también
+    await query('UPDATE familiares SET activo = FALSE, updated_at = NOW() WHERE beneficiario_id = $1', [id]).catch(() => {});
+    res.json({ eliminado: true, modo: 'soft', verificaciones: usageCount });
   } catch (error: any) {
     console.error('Error eliminando beneficiario:', error.message);
     res.status(500).json({ error: 'Error eliminando beneficiario' });
@@ -557,9 +575,11 @@ router.get('/exportar-verificaciones', async (req: AuthRequest, res: Response) =
     if (hasta) { where += ` AND v.fecha_verificacion <= $${idx++}`; params.push(hasta); }
 
     const result = await query(`
-      SELECT v.fecha_verificacion, v.estado, v.codigo_referencia, v.monto_original, v.monto_descuento, v.monto_final,
-             b.dni, b.nombre as beneficiario_nombre, b.apellido as beneficiario_apellido, b.nivel,
-             ben.nombre as beneficio_nombre, ben.tipo as beneficio_tipo, ben.descuento,
+      SELECT v.fecha_verificacion, v.estado, v.codigo_referencia,
+             v.monto_original, v.monto_descuento, v.monto_final,
+             COALESCE(v.beneficiario_dni, b.dni) as dni,
+             b.nombre as beneficiario_nombre, b.apellido as beneficiario_apellido, b.nivel,
+             ben.nombre as beneficio_nombre, ben.tipo as beneficio_tipo,
              c.nombre as comercio_nombre, c.direccion as comercio_direccion
       FROM verificaciones v
       LEFT JOIN beneficiarios b ON b.id = v.beneficiario_id
@@ -567,16 +587,18 @@ router.get('/exportar-verificaciones', async (req: AuthRequest, res: Response) =
       LEFT JOIN comercios c ON c.id = v.comercio_id
       ${where}
       ORDER BY v.fecha_verificacion DESC
+      LIMIT 10000
     `, params);
 
-    // CSV
-    const headers = ['Fecha', 'Estado', 'Codigo', 'DNI', 'Colaborador', 'Nivel', 'Beneficio', 'Tipo', 'Descuento%', 'Comercio', 'Direccion'];
+    // CSV — usa monto_descuento real del canje, no el % actual del beneficio
+    const headers = ['Fecha', 'Estado', 'Codigo', 'DNI', 'Colaborador', 'Nivel', 'Beneficio', 'Tipo', 'Monto Original', 'Descuento $', 'Monto Final', 'Comercio', 'Direccion'];
     const rows = result.rows.map((r: any) => [
       new Date(r.fecha_verificacion).toLocaleString('es-AR'),
       r.estado, r.codigo_referencia, r.dni,
       `${r.beneficiario_nombre || ''} ${r.beneficiario_apellido || ''}`.trim(),
       r.nivel || '', r.beneficio_nombre || '', r.beneficio_tipo || '',
-      r.descuento || '', r.comercio_nombre || '', r.comercio_direccion || '',
+      r.monto_original ?? '', r.monto_descuento ?? '', r.monto_final ?? '',
+      r.comercio_nombre || '', r.comercio_direccion || '',
     ]);
 
     const csv = [headers.join(','), ...rows.map((r: string[]) => r.map(c => `"${(c || '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');

@@ -108,6 +108,10 @@ function calcularDescuentoAplicable(
     }
   }
 
+  // Beneficio gratuito simple (sin escala_descuentos)
+  if (beneficio.tipo === 'gratuito') {
+    return { porcentaje: 100, tipo: 'gratuito' };
+  }
   const p = beneficio.descuento != null ? Number(beneficio.descuento) : null;
   return { porcentaje: p, tipo: p != null ? 'descuento' : null };
 }
