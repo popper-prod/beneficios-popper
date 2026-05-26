@@ -157,10 +157,24 @@ export default function AdminDashboard({ token, user, onLogout }: {
   const [togglingBeneficio, setTogglingBeneficio] = useState<string | null>(null);
   const [copiedQrId, setCopiedQrId] = useState<string | null>(null);
 
+  // Alertas del sistema
+  const [alertas, setAlertas] = useState<any[]>([]);
+  const [alertasDismissed, setAlertasDismissed] = useState<Set<number>>(new Set());
+
   // Form state
   const [form, setForm] = useState<Record<string, string>>({});
 
   const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+
+  const fetchAlertas = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/admin/alertas`, { headers });
+      if (res.ok) {
+        const d = await res.json();
+        setAlertas(d.alertas || []);
+      }
+    } catch (e) { /* silencioso */ }
+  }, [token]);
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -198,7 +212,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
     } catch (e) { console.error(e); }
   };
 
-  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+  useEffect(() => { fetchDashboard(); fetchAlertas(); }, [fetchDashboard, fetchAlertas]);
 
   useEffect(() => {
     if (activeTab === 'verificaciones') fetchVerificaciones();
@@ -973,8 +987,50 @@ export default function AdminDashboard({ token, user, onLogout }: {
     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
   });
 
+  const alertasVisibles = alertas.filter((_, i) => !alertasDismissed.has(i));
+
+  const ALERTA_COLORS: Record<string, { bg: string; border: string; text: string; icon: string }> = {
+    error:   { bg: 'var(--danger-bg)',  border: 'var(--danger-border)',  text: 'var(--danger-text)',  icon: '🚨' },
+    warning: { bg: 'var(--warning-bg)', border: 'var(--warning-border)', text: 'var(--warning-text)', icon: '⚠️' },
+    info:    { bg: 'var(--brand-muted)', border: 'var(--brand-border)', text: 'var(--brand)',         icon: 'ℹ️' },
+  };
+
   return (
     <AppShell activeTab={activeTab} onTabChange={(t) => setActiveTab(t as Tab)} user={user} onLogout={onLogout}>
+
+      {/* ====== BANNER DE ALERTAS — visible en todas las tabs ====== */}
+      {alertasVisibles.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 16px 0' }}>
+          {alertasVisibles.map((alerta, idx) => {
+            const c = ALERTA_COLORS[alerta.tipo] || ALERTA_COLORS.info;
+            const originalIdx = alertas.indexOf(alerta);
+            return (
+              <div key={idx} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                padding: '10px 14px', borderRadius: '10px',
+                background: c.bg, border: `1px solid ${c.border}`,
+              }}>
+                <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{c.icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: '13px', fontWeight: 600, color: c.text, margin: 0 }}>{alerta.titulo}</p>
+                  {alerta.detalle && (
+                    <p style={{ fontSize: '11.5px', color: 'var(--text-3)', marginTop: 2, lineHeight: 1.4 }}>{alerta.detalle}</p>
+                  )}
+                  {alerta.accion && (
+                    <p style={{ fontSize: '11px', color: 'var(--text-4)', marginTop: 3, fontStyle: 'italic' }}>{alerta.accion}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setAlertasDismissed(prev => new Set([...prev, originalIdx]))}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-4)', fontSize: 16, padding: '0 2px', flexShrink: 0, lineHeight: 1 }}
+                  title="Descartar"
+                >×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* ====== DASHBOARD ====== */}
       {activeTab === 'dashboard' && (
         loading ? <DashboardSkeleton /> : data ? <DashboardView data={data} user={user} /> : <DashboardEmpty onRetry={fetchDashboard} />

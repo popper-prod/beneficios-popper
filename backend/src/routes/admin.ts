@@ -2629,4 +2629,109 @@ router.get('/familiares', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ============================================
+// ALERTAS DEL SISTEMA
+// ============================================
+
+// GET /api/admin/alertas - Estado del sistema para el dashboard
+// Devuelve beneficios vencidos/por vencer, límites agotados y stats de hoy
+router.get('/alertas', async (req: AuthRequest, res: Response) => {
+  try {
+    const [
+      porVencer,
+      yaVencidos,
+      limiteAgotado,
+      statsHoy,
+    ] = await Promise.all([
+      // Beneficios activos que vencen en los próximos 7 días
+      query(`
+        SELECT id, nombre, fecha_fin,
+               EXTRACT(DAY FROM fecha_fin - NOW())::int AS dias_restantes
+        FROM beneficios
+        WHERE activo = TRUE AND fecha_fin IS NOT NULL
+          AND fecha_fin BETWEEN NOW() AND NOW() + INTERVAL '7 days'
+        ORDER BY fecha_fin ASC
+      `),
+      // Beneficios que ya vencieron pero siguen activos (inconsistencia de datos)
+      query(`
+        SELECT id, nombre, fecha_fin
+        FROM beneficios
+        WHERE activo = TRUE AND fecha_fin IS NOT NULL AND fecha_fin < NOW()
+        ORDER BY fecha_fin DESC
+        LIMIT 10
+      `),
+      // Beneficios con límite de uso total agotado
+      query(`
+        SELECT b.id, b.nombre, b.limite_total,
+               COUNT(v.id)::int AS usos_realizados
+        FROM beneficios b
+        JOIN verificaciones v ON v.beneficio_id = b.id AND v.estado = 'exitoso'
+        WHERE b.activo = TRUE AND b.limite_total IS NOT NULL
+        GROUP BY b.id, b.nombre, b.limite_total
+        HAVING COUNT(v.id) >= b.limite_total
+      `).catch(() => ({ rows: [] })),
+      // Stats del día
+      query(`
+        SELECT
+          COUNT(*) FILTER (WHERE fecha_verificacion >= CURRENT_DATE)::int AS canjes_hoy,
+          COUNT(*) FILTER (WHERE fecha_verificacion >= date_trunc('week', CURRENT_DATE))::int AS canjes_semana,
+          COUNT(DISTINCT beneficiario_id) FILTER (WHERE fecha_verificacion >= CURRENT_DATE)::int AS colaboradores_hoy
+        FROM verificaciones WHERE estado = 'exitoso'
+      `),
+    ]);
+
+    const alertas = [];
+
+    // Generar alertas priorizadas
+    if (yaVencidos.rows.length > 0) {
+      alertas.push({
+        tipo: 'error',
+        titulo: `${yaVencidos.rows.length} beneficio${yaVencidos.rows.length > 1 ? 's' : ''} vencido${yaVencidos.rows.length > 1 ? 's' : ''} y aún activo${yaVencidos.rows.length > 1 ? 's' : ''}`,
+        detalle: yaVencidos.rows.map((b: any) => b.nombre).join(', '),
+        items: yaVencidos.rows,
+        accion: 'Ir a Beneficios y desactivarlos manualmente',
+      });
+    }
+
+    if (porVencer.rows.length > 0) {
+      const hoy = porVencer.rows.filter((b: any) => b.dias_restantes <= 1);
+      const semana = porVencer.rows.filter((b: any) => b.dias_restantes > 1);
+      if (hoy.length > 0) {
+        alertas.push({
+          tipo: 'warning',
+          titulo: `${hoy.length} beneficio${hoy.length > 1 ? 's' : ''} vence${hoy.length > 1 ? 'n' : ''} hoy o mañana`,
+          detalle: hoy.map((b: any) => b.nombre).join(', '),
+          items: hoy,
+        });
+      }
+      if (semana.length > 0) {
+        alertas.push({
+          tipo: 'info',
+          titulo: `${semana.length} beneficio${semana.length > 1 ? 's' : ''} vence${semana.length > 1 ? 'n' : ''} en los próximos 7 días`,
+          detalle: semana.map((b: any) => `${b.nombre} (${b.dias_restantes}d)`).join(', '),
+          items: semana,
+        });
+      }
+    }
+
+    if (limiteAgotado.rows.length > 0) {
+      alertas.push({
+        tipo: 'warning',
+        titulo: `${limiteAgotado.rows.length} beneficio${limiteAgotado.rows.length > 1 ? 's' : ''} con límite de uso agotado`,
+        detalle: limiteAgotado.rows.map((b: any) => `${b.nombre} (${b.usos_realizados}/${b.limite_total})`).join(', '),
+        items: limiteAgotado.rows,
+      });
+    }
+
+    res.json({
+      alertas,
+      stats: statsHoy.rows[0] || {},
+      ok: yaVencidos.rows.length === 0 && porVencer.rows.length === 0,
+    });
+  } catch (error: any) {
+    console.error('Error obteniendo alertas:', error.message);
+    res.status(500).json({ error: 'Error obteniendo alertas', detalle: error.message });
+  }
+});
+
 export default router;

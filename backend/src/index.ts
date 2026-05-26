@@ -34,21 +34,51 @@ app.use(cors({
 app.use(express.json());
 
 app.get('/api/health', async (req: Request, res: Response) => {
-  let dbStatus = 'unknown';
+  const startTime = Date.now();
+  let dbOk = false;
+  let dbDetail = 'unknown';
+  let stats: any = {};
+
   try {
     const { query } = await import('./db');
-    const result = await query('SELECT NOW() as time');
-    dbStatus = 'connected - ' + result.rows[0].time;
+    const [timeRes, statsRes, expiringRes] = await Promise.all([
+      query('SELECT NOW() as time'),
+      query(`SELECT
+        (SELECT COUNT(*) FROM beneficiarios WHERE activo = TRUE) AS beneficiarios_activos,
+        (SELECT COUNT(*) FROM comercios WHERE activo = TRUE) AS comercios_activos,
+        (SELECT COUNT(*) FROM beneficios WHERE activo = TRUE) AS beneficios_activos,
+        (SELECT COUNT(*) FROM verificaciones WHERE fecha_verificacion >= CURRENT_DATE) AS canjes_hoy
+      `),
+      query(`SELECT COUNT(*) AS total FROM beneficios
+        WHERE activo = TRUE AND fecha_fin IS NOT NULL
+          AND fecha_fin BETWEEN NOW() AND NOW() + INTERVAL '7 days'`),
+    ]);
+
+    dbOk = true;
+    dbDetail = 'connected';
+    const s = statsRes.rows[0];
+    stats = {
+      beneficiarios_activos: parseInt(s.beneficiarios_activos),
+      comercios_activos: parseInt(s.comercios_activos),
+      beneficios_activos: parseInt(s.beneficios_activos),
+      canjes_hoy: parseInt(s.canjes_hoy),
+      beneficios_por_vencer: parseInt(expiringRes.rows[0].total),
+    };
   } catch (err: any) {
-    dbStatus = 'error - ' + (err.message || 'unknown');
+    dbDetail = 'error: ' + (err.message || 'unknown');
   }
 
-  res.json({
-    status: 'ok',
+  const status = dbOk ? 'ok' : 'degraded';
+  const httpStatus = dbOk ? 200 : 503;
+  const responseMs = Date.now() - startTime;
+
+  res.status(httpStatus).json({
+    status,
     timestamp: new Date(),
     environment: config.nodeEnv,
-    port: config.port,
-    database: dbStatus,
+    database: dbDetail,
+    response_ms: responseMs,
+    ...(dbOk ? stats : {}),
   });
 });
 

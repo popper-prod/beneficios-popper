@@ -1,0 +1,101 @@
+name: Monitor — Salud del sistema
+
+on:
+  schedule:
+    # Cada 15 minutos
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    # También se puede disparar manualmente desde GitHub
+
+jobs:
+  health-check:
+    name: Health check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping backend
+        id: ping
+        run: |
+          HTTP_STATUS=$(curl -s -o /tmp/health_response.json -w "%{http_code}" \
+            --max-time 15 \
+            https://beneficios-backend-jfpx.onrender.com/api/health)
+
+          echo "status=$HTTP_STATUS" >> $GITHUB_OUTPUT
+          echo "response=$(cat /tmp/health_response.json)" >> $GITHUB_OUTPUT
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::Backend DOWN — HTTP $HTTP_STATUS"
+            exit 1
+          fi
+
+          # Verificar que la DB esté conectada
+          DB_OK=$(cat /tmp/health_response.json | python3 -c "import sys,json; d=json.load(sys.stdin); print('ok' if 'connected' in str(d.get('database','')) else 'error')")
+          echo "db_status=$DB_OK" >> $GITHUB_OUTPUT
+
+          if [ "$DB_OK" != "ok" ]; then
+            echo "::error::Backend responde pero DB está caída"
+            exit 1
+          fi
+
+          echo "✅ Sistema OK — $(cat /tmp/health_response.json)"
+
+      - name: Crear issue si backend está caído
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Verificar si ya hay un issue abierto de downtime para no duplicar
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'downtime',
+            });
+
+            if (issues.data.length > 0) {
+              // Ya existe un issue abierto — agregar comentario
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: `⚠️ **Sigue caído** — ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}\n\nStatus: ${{ steps.ping.outputs.status }}\nRespuesta: \`${{ steps.ping.outputs.response }}\``,
+              });
+            } else {
+              // Abrir nuevo issue
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🚨 Backend BENEFICIOS caído',
+                labels: ['downtime', 'critical'],
+                body: `## Sistema caído\n\n**Detectado:** ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}\n\n**URL:** https://beneficios-backend-jfpx.onrender.com/api/health\n\n**HTTP Status:** ${{ steps.ping.outputs.status }}\n\n**Respuesta:** \`${{ steps.ping.outputs.response }}\`\n\n---\n_Este issue fue creado automáticamente por el workflow de monitoreo._\n_Se cerrará automáticamente cuando el sistema vuelva a responder._`,
+              });
+            }
+
+      - name: Cerrar issue de downtime si todo vuelve
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'downtime',
+            });
+
+            for (const issue of issues.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `✅ **Sistema recuperado** — ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}\n\nEl backend responde correctamente. Cerrando issue.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+            }
