@@ -1,7 +1,8 @@
 # BENEFICIOS QR — Contexto para Claude Code
 
-Sistema de gestión de beneficios para empleados de **Grupo Popper** (Tierra del Fuego, Argentina).
-Los empleados escanean un QR en el punto de venta, ingresan su DNI y canean beneficios.
+Producto de **Recluta** — plataforma de gestión de beneficios para empleados, deployada para clientes.
+El cliente activo en este repositorio es **Grupo Popper** (Tierra del Fuego, Argentina).
+Los empleados del cliente escanean un QR en el punto de venta, ingresan su DNI y canjean beneficios.
 
 ---
 
@@ -228,9 +229,13 @@ cd backend && npx tsc --noEmit # backend
 
 ## Contexto organizacional
 
-- **Empresa**: Grupo Popper, Ushuaia + Río Grande, Tierra del Fuego
-- **Beneficiarios**: colaboradores y sus familiares
+- **Producto**: desarrollado por **Recluta** para clientes corporativos
+- **Cliente activo**: Grupo Popper, Ushuaia + Río Grande, Tierra del Fuego
+- **Beneficiarios**: colaboradores del cliente y sus familiares
 - **Talento Popper**: categoría especial de empleados con beneficios adicionales (invitados, etc.)
-- **Puntos de venta**: comercios locales (farmacias, gimnasios, neumáticos, etc.)
-- **RRHH**: sistema Naaloo — fuente de verdad para empleados activos
+- **Puntos de venta**: comercios locales con los que el cliente tiene convenio (farmacias, gimnasios, etc.)
+- **RRHH del cliente**: sistema Naaloo — fuente de verdad para empleados activos
 - **Catálogo 2026**: hardcodeado en `admin.ts` como `CATALOGO_2026[]`, importable desde el panel
+
+> ⚠️ Aunque el código tiene referencias a "Popper" en varios lugares (rutas, strings, CATALOGO_2026),
+> la arquitectura es multi-tenant en potencia — cada cliente tendría su propio deploy con su propia DB.
