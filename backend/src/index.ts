@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import { runSyncNaaloo } from './services/syncService';
 import cors from 'cors';
 import { config } from './config';
 import authRoutes from './routes/auth';
@@ -99,6 +100,23 @@ app.use('/api/verificacion', verificacionRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Endpoint para Render Cron Job — protegido por CRON_SECRET
+app.get('/api/internal/sync', async (req: Request, res: Response) => {
+  const secret = req.query.secret || req.headers['x-cron-secret'];
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || secret !== cronSecret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const result = await runSyncNaaloo('Cron Render');
+    console.log(`🔄 Cron Render sync: ${result.resumen.altas} altas, ${result.resumen.bajas} bajas, ${result.resumen.actualizados} actualizados`);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Cron Render sync error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('❌ Error:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
@@ -129,6 +147,20 @@ app.listen(config.port, () => {
     }, INTERVAL);
 
     console.log(`🏓 Keep-alive activado: ping cada 14 min`);
+
+    // Auto-sync con Naaloo cada 2 horas
+    const SYNC_INTERVAL = 2 * 60 * 60 * 1000;
+    setInterval(async () => {
+      try {
+        const result = await runSyncNaaloo('Cron interno');
+        const { altas, bajas, actualizados } = result.resumen;
+        console.log(`🔄 Auto-sync Naaloo: ${altas} altas, ${bajas} bajas, ${actualizados} actualizados — ${new Date().toISOString()}`);
+      } catch (err: any) {
+        console.log(`⚠️ Auto-sync Naaloo falló: ${err.message} — ${new Date().toISOString()}`);
+      }
+    }, SYNC_INTERVAL);
+
+    console.log(`🔄 Auto-sync Naaloo activado: cada 2 horas`);
   }
 });
 
