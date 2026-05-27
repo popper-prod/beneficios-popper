@@ -157,21 +157,36 @@ export async function obtenerEmpleadoCompleto(naalooId: number): Promise<{ famil
 // Obtener TODOS los empleados (activos e inactivos) para sincronización
 export async function obtenerTodosEmpleados(): Promise<NaalooEmpleado[]> {
   try {
-    // Traer todo en una sola request con limit alto
-    const response = await fetch(`${NAALOO_API_URL}/personal/?page=1&limit=2000`, {
-      headers: {
-        'Authorization': `Bearer ${NAALOO_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const allEmpleados: NaalooEmpleado[] = [];
+    let page = 1;
+    const limit = 100;
+    let hasMore = true;
 
-    if (!response.ok) {
-      console.error(`Naaloo API error: ${response.status}`);
-      return [];
+    while (hasMore) {
+      const response = await fetch(`${NAALOO_API_URL}/personal/?page=${page}&limit=${limit}`, {
+        headers: {
+          'Authorization': `Bearer ${NAALOO_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`Naaloo API error: ${response.status}`);
+        break;
+      }
+
+      const data: NaalooResponse = await response.json();
+
+      if (!data.data || data.data.length === 0) {
+        hasMore = false;
+      } else {
+        allEmpleados.push(...data.data);
+        page++;
+        if (data.data.length < limit) hasMore = false;
+      }
     }
 
-    const data: NaalooResponse = await response.json();
-    return data.data || [];
+    return allEmpleados;
   } catch (error) {
     console.error('Error obteniendo todos los empleados de Naaloo:', error);
     return [];

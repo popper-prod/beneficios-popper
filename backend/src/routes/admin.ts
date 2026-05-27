@@ -177,7 +177,7 @@ router.get('/comercios', async (req: AuthRequest, res: Response) => {
 router.get('/beneficiarios', async (req: AuthRequest, res: Response) => {
   try {
     const page = Math.max(1, parseInt(req.query.page as string || '1'));
-    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string || '100')));
+    const limit = Math.min(5000, Math.max(1, parseInt(req.query.limit as string || '2000')));
     const offset = (page - 1) * limit;
     const q = (req.query.q as string || '').trim();
 
