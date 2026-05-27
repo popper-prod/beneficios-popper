@@ -100,21 +100,31 @@ app.use('/api/verificacion', verificacionRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Endpoint para Render Cron Job — protegido por CRON_SECRET
-app.get('/api/internal/sync', async (req: Request, res: Response) => {
+// Endpoint para cron jobs externos — protegido por CRON_SECRET
+// Fire-and-forget: responde 202 inmediato y corre el sync en background.
+// El resultado se loguea en Render logs.
+app.get('/api/internal/sync', (req: Request, res: Response) => {
   const secret = req.query.secret || req.headers['x-cron-secret'];
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || secret !== cronSecret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  try {
-    const result = await runSyncNaaloo('Cron Render');
-    console.log(`🔄 Cron Render sync: ${result.resumen.altas} altas, ${result.resumen.bajas} bajas, ${result.resumen.actualizados} actualizados`);
-    res.json(result);
-  } catch (error: any) {
-    console.error('Cron Render sync error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
+
+  const startedAt = new Date().toISOString();
+  res.status(202).json({ status: 'sync iniciado en background', startedAt });
+
+  console.log(`🔄 Sync iniciado (cron) — ${startedAt}`);
+  const t0 = Date.now();
+  runSyncNaaloo('Cron')
+    .then((result) => {
+      const ms = Date.now() - t0;
+      const r = result.resumen;
+      console.log(`✅ Sync OK (${ms}ms) — total:${r.totalNaaloo} altas:${r.altas} bajas:${r.bajas} reactivados:${r.reactivados} actualizados:${r.actualizados}`);
+    })
+    .catch((err: any) => {
+      const ms = Date.now() - t0;
+      console.error(`❌ Sync falló (${ms}ms): ${err.message}`);
+    });
 });
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
