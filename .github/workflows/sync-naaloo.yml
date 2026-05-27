@@ -13,10 +13,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Despertar backend
+      - name: Esperar que el backend esté listo
         run: |
-          curl -s --max-time 30 https://beneficios-backend-jfpx.onrender.com/api/health || true
-          sleep 5
+          for i in {1..12}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 https://beneficios-backend-jfpx.onrender.com/api/health)
+            if [ "$STATUS" = "200" ]; then
+              echo "Backend listo (intento $i)"
+              break
+            fi
+            echo "Intento $i: HTTP $STATUS — esperando 10s..."
+            sleep 10
+          done
 
       - name: Ejecutar sync
         id: sync
