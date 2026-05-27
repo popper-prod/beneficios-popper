@@ -176,9 +176,12 @@ export async function runSyncNaaloo(adminNombre: string = 'Cron'): Promise<SyncR
     bajaIds: [] as string[],
   };
 
-  // 3. Iterar páginas de Naaloo en streaming
-  const LIMIT = 500;
-  const MAX_PAGES = 30;
+  // 3. Iterar páginas de Naaloo en streaming, dedupeando por DNI.
+  // La API de Naaloo ignora el parámetro `page` y devuelve siempre el mismo
+  // conjunto, así que cortamos en cuanto una página no aporta DNIs nuevos.
+  const LIMIT = 2000;
+  const MAX_PAGES = 10;
+  const dnisVistos = new Set<string>();
   let totalNaaloo = 0;
   let page = 1;
 
@@ -192,9 +195,18 @@ export async function runSyncNaaloo(adminNombre: string = 'Cron'): Promise<SyncR
     }
     if (batch.length === 0) break;
 
-    totalNaaloo += batch.length;
-    await procesarBatch(batch, localMap, adminNombre, acumulado);
-    console.log(`Página ${page}: ${batch.length} empleados procesados (acumulado ${totalNaaloo})`);
+    // Filtrar duplicados (Naaloo devuelve los mismos en cada página)
+    const nuevos = batch.filter(e => e.dni && !dnisVistos.has(e.dni));
+    for (const e of nuevos) dnisVistos.add(e.dni);
+
+    if (nuevos.length === 0) {
+      console.log(`Página ${page}: 0 nuevos (corte por duplicados)`);
+      break;
+    }
+
+    totalNaaloo += nuevos.length;
+    await procesarBatch(nuevos, localMap, adminNombre, acumulado);
+    console.log(`Página ${page}: ${nuevos.length} nuevos procesados (acumulado ${totalNaaloo})`);
 
     if (batch.length < LIMIT) break;
     page++;
