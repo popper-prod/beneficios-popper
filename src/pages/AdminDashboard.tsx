@@ -205,7 +205,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
 
   const fetchComercios = async () => {
     try {
-      const res = await fetch(`${API_URL}/admin/comercios`, { headers });
+      const res = await fetch(`${API_URL}/admin/comercios?include_inactive=true`, { headers });
       if (res.ok) { const d = await res.json(); setComercios(d.comercios); }
     } catch (e) { console.error(e); }
   };
@@ -346,7 +346,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
       const res = await fetch(`${API_URL}/admin/${endpoint}/${id}`, { method: 'DELETE', headers });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        if (data?.modo === 'soft' && type === 'beneficio') {
+        if (data?.modo === 'soft' && (type === 'beneficio' || type === 'comercio')) {
           // Tiene canjes históricos: ofrecer borrado total con cascade
           const force = confirm(
             `"${nombre}" tiene ${data.verificaciones} canje(s) histórico(s) y por eso solo se desactivó.\n\n` +

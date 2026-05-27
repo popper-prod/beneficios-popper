@@ -437,19 +437,25 @@ router.put('/comercios/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// DELETE /api/admin/comercios/:id - Eliminar comercio (soft delete si tiene verificaciones)
+// DELETE /api/admin/comercios/:id - Eliminar comercio
+// Por default soft-delete cuando hay verificaciones históricas.
+// Con ?force=true hace cascade: borra también verificaciones y vínculos.
 router.delete('/comercios/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const force = req.query.force === 'true';
     const used = await query('SELECT COUNT(*)::int AS c FROM verificaciones WHERE comercio_id = $1', [id]);
     const usageCount = used.rows[0]?.c || 0;
 
-    if (usageCount === 0) {
-      // Hard delete posible
+    if (usageCount === 0 || force) {
+      // Hard delete (con cascade si hay verificaciones y se pidió force)
+      if (force && usageCount > 0) {
+        await query('DELETE FROM verificaciones WHERE comercio_id = $1', [id]);
+      }
       await query('DELETE FROM comercio_beneficios WHERE comercio_id = $1', [id]);
       const result = await query('DELETE FROM comercios WHERE id = $1 RETURNING id', [id]);
       if (result.rows.length === 0) return res.status(404).json({ error: 'Comercio no encontrado' });
-      return res.json({ eliminado: true, modo: 'hard' });
+      return res.json({ eliminado: true, modo: 'hard', verificaciones_eliminadas: force ? usageCount : 0 });
     }
 
     // Soft delete
