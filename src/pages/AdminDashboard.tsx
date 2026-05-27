@@ -196,7 +196,9 @@ export default function AdminDashboard({ token, user, onLogout }: {
 
   const fetchBeneficios = async () => {
     try {
-      const res = await fetch(`${API_URL}/admin/beneficios`, { headers });
+      // include_inactive=true para que el listado del panel muestre también beneficios inactivos
+      // (con badge "Inactivo") y permita reactivarlos desde el modal de edición.
+      const res = await fetch(`${API_URL}/admin/beneficios?include_inactive=true`, { headers });
       if (res.ok) { const d = await res.json(); setBeneficios(d.beneficios); }
     } catch (e) { console.error(e); }
   };
@@ -374,7 +376,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
     }
     // Asegurar que los beneficios estén cargados
     if (beneficios.length === 0) {
-      const res = await fetch(`${API_URL}/admin/beneficios`, { headers }).catch(() => null);
+      const res = await fetch(`${API_URL}/admin/beneficios?include_inactive=true`, { headers }).catch(() => null);
       if (res?.ok) { const d = await res.json(); setBeneficios(d.beneficios || []); }
     }
   };
