@@ -1063,7 +1063,19 @@ export default function AdminDashboard({ token, user, onLogout }: {
               {
                 key: 'colaborador', label: 'Colaborador', sortable: true,
                 accessor: (r: any) => `${r.beneficiario_nombre || ''} ${r.beneficiario_apellido || ''}`,
-                render: (r: any) => <span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{r.beneficiario_nombre} {r.beneficiario_apellido}</span>,
+                render: (r: any) => {
+                  const retiradoPor = r.retirado_por_dni && r.retirado_por_dni !== r.dni ? r.retirado_por_nombre : null;
+                  return (
+                    <div>
+                      <span style={{ color: 'var(--text-1)', fontWeight: 500 }}>{r.beneficiario_nombre} {r.beneficiario_apellido}</span>
+                      {retiradoPor && (
+                        <div style={{ fontSize: '11px', color: 'var(--text-2)', marginTop: 2 }}>
+                          Retirado por: <span style={{ color: 'var(--text-1)' }}>{retiradoPor}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                },
               },
               { key: 'dni', label: 'DNI', mono: true, sortable: true },
               {

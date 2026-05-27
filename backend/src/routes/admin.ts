@@ -103,6 +103,7 @@ router.get('/verificaciones', async (req: AuthRequest, res: Response) => {
       query(`SELECT COUNT(*) as total FROM verificaciones v ${where}`, params),
       query(`
         SELECT v.id, v.estado, v.codigo_referencia, v.fecha_verificacion, v.monto_original, v.monto_descuento, v.monto_final,
+               v.retirado_por_dni, v.retirado_por_nombre, v.invitados_count,
                b.nombre as beneficiario_nombre, b.apellido as beneficiario_apellido, b.dni, b.nivel,
                ben.nombre as beneficio_nombre, ben.tipo as beneficio_tipo,
                c.nombre as comercio_nombre
