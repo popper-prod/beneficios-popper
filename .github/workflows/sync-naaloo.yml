@@ -13,11 +13,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Despertar backend
+        run: |
+          curl -s --max-time 30 https://beneficios-backend-jfpx.onrender.com/api/health || true
+          sleep 5
+
       - name: Ejecutar sync
         id: sync
         run: |
           HTTP_STATUS=$(curl -s -o /tmp/sync_response.json -w "%{http_code}" \
-            --max-time 60 \
+            --max-time 120 \
             "https://beneficios-backend-jfpx.onrender.com/api/internal/sync?secret=${{ secrets.CRON_SECRET }}")
 
           echo "status=$HTTP_STATUS" >> $GITHUB_OUTPUT
