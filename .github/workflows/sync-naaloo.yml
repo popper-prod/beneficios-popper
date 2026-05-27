@@ -29,7 +29,7 @@ jobs:
         id: sync
         run: |
           HTTP_STATUS=$(curl -s -o /tmp/sync_response.json -w "%{http_code}" \
-            --max-time 120 \
+            --max-time 300 \
             "https://beneficios-backend-jfpx.onrender.com/api/internal/sync?secret=${{ secrets.CRON_SECRET }}")
 
           echo "status=$HTTP_STATUS" >> $GITHUB_OUTPUT

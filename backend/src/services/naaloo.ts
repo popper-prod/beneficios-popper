@@ -159,10 +159,11 @@ export async function obtenerTodosEmpleados(): Promise<NaalooEmpleado[]> {
   try {
     const allEmpleados: NaalooEmpleado[] = [];
     let page = 1;
-    const limit = 100;
-    let hasMore = true;
+    const limit = 500;
+    const MAX_PAGES = 20; // techo de seguridad: 20 × 500 = 10.000 empleados
+    let totalCount: number | null = null;
 
-    while (hasMore) {
+    while (page <= MAX_PAGES) {
       const response = await fetch(`${NAALOO_API_URL}/personal/?page=${page}&limit=${limit}`, {
         headers: {
           'Authorization': `Bearer ${NAALOO_TOKEN}`,
@@ -176,16 +177,23 @@ export async function obtenerTodosEmpleados(): Promise<NaalooEmpleado[]> {
       }
 
       const data: NaalooResponse = await response.json();
+      const batch = data.data || [];
 
-      if (!data.data || data.data.length === 0) {
-        hasMore = false;
-      } else {
-        allEmpleados.push(...data.data);
-        page++;
-        if (data.data.length < limit) hasMore = false;
-      }
+      if (batch.length === 0) break;
+
+      allEmpleados.push(...batch);
+
+      // Usar totalCount si la API lo devuelve
+      if (totalCount === null && data.totalCount) totalCount = data.totalCount;
+      if (totalCount !== null && allEmpleados.length >= totalCount) break;
+
+      // Si devolvió menos del límite, es la última página
+      if (batch.length < limit) break;
+
+      page++;
     }
 
+    console.log(`Naaloo: ${allEmpleados.length} empleados obtenidos en ${page} página(s)`);
     return allEmpleados;
   } catch (error) {
     console.error('Error obteniendo todos los empleados de Naaloo:', error);
