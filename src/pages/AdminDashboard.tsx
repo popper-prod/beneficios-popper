@@ -23,7 +23,7 @@ interface DashboardData {
   ultimasVerificaciones: any[];
 }
 
-type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones' | 'permisos' | 'talento' | 'familiares' | 'jerarquias' | 'reportes';
+type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'beneficios-internos' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones' | 'permisos' | 'talento' | 'familiares' | 'jerarquias' | 'reportes';
 
 // gold token reemplazado por var(--brand)
 
@@ -221,7 +221,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
 
   useEffect(() => {
     if (activeTab === 'verificaciones') fetchVerificaciones();
-    if (activeTab === 'beneficios') fetchBeneficios();
+    if (activeTab === 'beneficios' || activeTab === 'beneficios-internos') fetchBeneficios();
     if (activeTab === 'comercios' || activeTab === 'qrcodes') fetchComercios();
     if (activeTab === 'beneficiarios') fetchBeneficiarios();
     if (activeTab === 'autorizaciones') { fetchBeneficiarios(); fetchAuthLogs(); fetchAreasSectores(); }
@@ -1141,16 +1141,15 @@ export default function AdminDashboard({ token, user, onLogout }: {
         </PageSection>
       )}
 
-      {/* ====== BENEFICIOS ====== */}
-      {activeTab === 'beneficios' && (
+      {/* ====== BENEFICIOS EXTERNOS ====== */}
+      {activeTab === 'beneficios' && (() => {
+        const beneficiosExternos = beneficios.filter((b: any) => b.origen !== 'interno');
+        return (
         <PageSection
-          title="Beneficios"
-          description={`${beneficios.length} ${beneficios.length === 1 ? 'beneficio' : 'beneficios'} en el catálogo.`}
+          title="Beneficios externos"
+          description={`${beneficiosExternos.length} ${beneficiosExternos.length === 1 ? 'beneficio' : 'beneficios'} de comercios partner.`}
           action={
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <Button variant="ghost" size="md" onClick={handleSeedInternos} loading={seedingInternos}>
-                {seedingInternos ? 'Cargando…' : 'Cargar beneficios internos'}
-              </Button>
               <Button variant="outline" size="md" onClick={handleImportarCatalogo2026} loading={importingCatalog}>
                 {importingCatalog ? 'Importando…' : 'Importar catálogo 2026'}
               </Button>
@@ -1163,16 +1162,16 @@ export default function AdminDashboard({ token, user, onLogout }: {
               {importCatalogMsg}
             </InlineMessage>
           )}
-          {beneficios.length === 0 ? (
+          {beneficiosExternos.length === 0 ? (
             <EmptyView
               icon={<GiftIcon size={28} />}
-              title="No hay beneficios todavía"
-              description="Creá el primer beneficio para que tus colaboradores puedan canjearlo."
+              title="No hay beneficios externos todavía"
+              description="Creá el primer beneficio o importá el catálogo 2026."
               action={<Button variant="primary" leftIcon={<PlusIcon size={13} />} onClick={() => openCreate('beneficio')}>Crear primer beneficio</Button>}
             />
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-              {beneficios.map((b: any) => (
+              {beneficiosExternos.map((b: any) => (
                 <ItemCard key={b.id}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
                     <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-1)' }}>{b.nombre}</h3>
@@ -1190,6 +1189,11 @@ export default function AdminDashboard({ token, user, onLogout }: {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, fontSize: '12px' }}>
                     <Row label="Usos">{b.uso_actual || 0}</Row>
                     {b.horario_inicio && <Row label="Horario">{b.horario_inicio} – {b.horario_fin || '—'}</Row>}
+                    <Row label="Comercios">
+                      <span style={{ color: (b.comercios_count ?? 0) > 0 ? 'var(--text-1)' : 'var(--text-3)', fontWeight: 500 }}>
+                        {b.comercios_count ?? 0} {(b.comercios_count ?? 0) === 1 ? 'vinculado' : 'vinculados'}
+                      </span>
+                    </Row>
                   </div>
                   <CardFooterActions onEdit={() => openEdit('beneficio', b)} onDelete={() => handleDelete('beneficio', b.id, b.nombre)} />
                 </ItemCard>
@@ -1197,7 +1201,184 @@ export default function AdminDashboard({ token, user, onLogout }: {
             </div>
           )}
         </PageSection>
-      )}
+        );
+      })()}
+
+      {/* ====== BENEFICIOS INTERNOS ====== */}
+      {activeTab === 'beneficios-internos' && (() => {
+        const beneficiosInternos = beneficios.filter((b: any) => b.origen === 'interno');
+        const parseEscala = (e: any) => {
+          if (!e) return null;
+          if (typeof e === 'string') { try { return JSON.parse(e); } catch { return null; } }
+          return e;
+        };
+        const aplicaLabel = (a: string) => a === 'empleado' ? 'Solo titular'
+          : a === 'familiar' ? 'Solo familiares'
+          : a === 'ambos' ? 'Titular + familiares directos'
+          : a === 'talento' ? '★ Solo Talento Popper'
+          : a;
+        return (
+        <PageSection
+          title="Beneficios internos"
+          description={`${beneficiosInternos.length} ${beneficiosInternos.length === 1 ? 'beneficio' : 'beneficios'} de política interna de Popper.`}
+          action={
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <Button variant="ghost" size="md" onClick={handleSeedInternos} loading={seedingInternos}>
+                {seedingInternos ? 'Cargando…' : 'Cargar beneficios internos'}
+              </Button>
+              <Button variant="primary" size="md" leftIcon={<PlusIcon size={13} />} onClick={() => openCreate('beneficio')}>Nuevo beneficio</Button>
+            </div>
+          }
+        >
+          {beneficiosInternos.length === 0 ? (
+            <EmptyView
+              icon={<GiftIcon size={28} />}
+              title="No hay beneficios internos todavía"
+              description="Tocá 'Cargar beneficios internos' para crear el set estándar (Pase de Esquí, Indumentaria, Calzado, etc.)."
+              action={<Button variant="primary" onClick={handleSeedInternos} loading={seedingInternos}>Cargar beneficios internos</Button>}
+            />
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
+              {beneficiosInternos.map((b: any) => {
+                const escala = parseEscala(b.escala_descuentos);
+                const tiers = Array.isArray(escala?.tiers) ? escala.tiers : null;
+                const talentoOverride = escala?.talento_porcentaje;
+                const titularEscala = escala?.titular;
+                const familiarEscala = escala?.familiar;
+                return (
+                <ItemCard key={b.id}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <h3 style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-1)' }}>{b.nombre}</h3>
+                      <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                        {b.categoria && (
+                          <span style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-3)', padding: '1px 7px', borderRadius: '999px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', letterSpacing: '0.04em', textTransform: 'capitalize' }}>
+                            {String(b.categoria).replace('_', ' ')}
+                          </span>
+                        )}
+                        {b.modalidad && (
+                          <span style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-3)', padding: '1px 7px', borderRadius: '999px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', letterSpacing: '0.04em', textTransform: 'capitalize' }}>
+                            {b.modalidad}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Badge tone={b.activo ? 'success' : 'neutral'} size="sm" dot>{b.activo ? 'Activo' : 'Inactivo'}</Badge>
+                  </div>
+
+                  {b.descripcion && (
+                    <p style={{ fontSize: '12px', color: 'var(--text-3)', lineHeight: 1.5, marginBottom: 12 }}>{b.descripcion}</p>
+                  )}
+
+                  {/* Aplica a */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '12px', marginBottom: 12 }}>
+                    <Row label="Aplica a">{aplicaLabel(b.aplica_a || 'empleado')}</Row>
+                    {b.relaciones_familiar && (
+                      <Row label="Familiares">
+                        <span style={{ color: 'var(--text-2)', fontSize: '11.5px' }}>
+                          {String(b.relaciones_familiar).split(',').map((r: string) => {
+                            const map: Record<string, string> = { Parents: 'padres', Spouse: 'cónyuge', CivilUnion: 'concubino', Child: 'hijos', Sibling: 'hermanos' };
+                            return map[r.trim()] || r.trim();
+                          }).join(' · ')}
+                        </span>
+                      </Row>
+                    )}
+                  </div>
+
+                  {/* Box de % */}
+                  {(titularEscala || familiarEscala || tiers || talentoOverride != null || b.descuento) && (
+                    <div style={{ marginBottom: 12, padding: '10px 12px', background: 'var(--brand-subtle)', border: '1px solid var(--brand-border)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {titularEscala && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                          <span style={{ fontSize: '11.5px', color: 'var(--text-2)' }}>Titular</span>
+                          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
+                            {titularEscala.tipo === 'gratuito' ? 'GRATIS' : `${titularEscala.porcentaje}%`}
+                          </span>
+                        </div>
+                      )}
+                      {familiarEscala && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                          <span style={{ fontSize: '11.5px', color: 'var(--text-2)' }}>Familiar</span>
+                          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>
+                            {familiarEscala.tipo === 'gratuito' ? 'GRATIS' : `${familiarEscala.porcentaje}%`}
+                          </span>
+                        </div>
+                      )}
+                      {tiers && tiers.map((t: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                          <span style={{ fontSize: '11.5px', color: 'var(--text-2)' }}>
+                            {(t.antiguedad_min_meses ?? 0) === 0 ? '< 1 año'
+                              : (t.antiguedad_min_meses === 12) ? '≥ 1 año'
+                              : `≥ ${Math.floor((t.antiguedad_min_meses ?? 0) / 12)} años`}
+                          </span>
+                          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>{t.porcentaje}%</span>
+                        </div>
+                      ))}
+                      {talentoOverride != null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: '1px solid var(--brand-border)', paddingTop: 6 }}>
+                          <span style={{ fontSize: '11.5px', color: 'var(--text-2)' }}>★ Talento Popper</span>
+                          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>{talentoOverride}%</span>
+                        </div>
+                      )}
+                      {!titularEscala && !familiarEscala && !tiers && talentoOverride == null && b.descuento && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                          <span style={{ fontSize: '11.5px', color: 'var(--text-2)' }}>Descuento</span>
+                          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>{b.descuento}%</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Flags */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                    {b.usa_limite_jerarquia && (
+                      <span style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--brand)', background: 'var(--brand-muted)', border: '1px solid var(--brand-border)', padding: '2px 8px', borderRadius: '999px' }}>
+                        🔒 Cupo mensual jerarquía
+                      </span>
+                    )}
+                    {b.excluye_outlet && (
+                      <span style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--warning-text)', background: 'var(--warning-bg)', border: '1px solid var(--warning-border)', padding: '2px 8px', borderRadius: '999px' }}>
+                        🚫 Excluye outlet
+                      </span>
+                    )}
+                    {b.limite_total != null && (
+                      <span style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-2)', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', padding: '2px 8px', borderRadius: '999px' }}>
+                        Máx {b.limite_total} por persona
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Footer info */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '12px', marginBottom: 12 }}>
+                    {(b.fecha_inicio || b.fecha_fin) && (
+                      <Row label="Vigencia">
+                        {b.fecha_inicio ? new Date(b.fecha_inicio).toLocaleDateString('es-AR') : '—'} → {b.fecha_fin ? new Date(b.fecha_fin).toLocaleDateString('es-AR') : '—'}
+                      </Row>
+                    )}
+                    <Row label="Puntos de venta">
+                      <span style={{ color: (b.comercios_count ?? 0) > 0 ? 'var(--text-1)' : 'var(--text-3)', fontWeight: 500 }}>
+                        {b.comercios_count ?? 0} {(b.comercios_count ?? 0) === 1 ? 'comercio' : 'comercios'}
+                      </span>
+                    </Row>
+                    <Row label="Usos">{b.uso_actual || 0}</Row>
+                  </div>
+
+                  {b.restricciones && (
+                    <p style={{ fontSize: '11px', color: 'var(--text-3)', fontStyle: 'italic', lineHeight: 1.45, marginBottom: 12, padding: '6px 8px', background: 'var(--bg-surface)', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+                      ⚠ {b.restricciones}
+                    </p>
+                  )}
+
+                  <CardFooterActions onEdit={() => openEdit('beneficio', b)} onDelete={() => handleDelete('beneficio', b.id, b.nombre)} />
+                </ItemCard>
+              );
+              })}
+            </div>
+          )}
+        </PageSection>
+        );
+      })()}
 
       {/* ====== COMERCIOS ====== */}
       {activeTab === 'comercios' && (

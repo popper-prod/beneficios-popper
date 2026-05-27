@@ -136,10 +136,18 @@ router.get('/beneficios', async (req: AuthRequest, res: Response) => {
     const page = Math.max(1, parseInt(req.query.page as string || '1'));
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string || '100')));
     const offset = (page - 1) * limit;
-    const whereClause = includeInactive ? '' : 'WHERE activo = TRUE';
+    const whereClause = includeInactive ? '' : 'WHERE b.activo = TRUE';
     const [countRes, dataRes] = await Promise.all([
-      query(`SELECT COUNT(*) as total FROM beneficios ${whereClause}`),
-      query(`SELECT * FROM beneficios ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+      query(`SELECT COUNT(*) as total FROM beneficios b ${whereClause}`),
+      query(
+        `SELECT b.*,
+                (SELECT COUNT(*)::int FROM comercio_beneficios cb
+                  INNER JOIN comercios c ON c.id = cb.comercio_id
+                  WHERE cb.beneficio_id = b.id AND c.activo = TRUE) AS comercios_count
+         FROM beneficios b ${whereClause}
+         ORDER BY b.created_at DESC LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      ),
     ]);
     res.json({
       beneficios: dataRes.rows,

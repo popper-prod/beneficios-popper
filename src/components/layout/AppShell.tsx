@@ -18,6 +18,7 @@ import {
   Heart,
   Layers,
   BarChart3,
+  Award,
 } from 'lucide-react';
 
 // ============================================
@@ -30,6 +31,7 @@ export type NavId =
   | 'dashboard'
   | 'verificaciones'
   | 'beneficios'
+  | 'beneficios-internos'
   | 'comercios'
   | 'beneficiarios'
   | 'qrcodes'
@@ -52,7 +54,8 @@ const navItems: NavItem[] = [
   { id: 'verificaciones', label: 'Movimiento', icon: Activity, section: 'Analítica' },
   { id: 'reportes', label: 'Reportes', icon: BarChart3, section: 'Analítica' },
 
-  { id: 'beneficios', label: 'Beneficios', icon: Gift, section: 'Catálogo' },
+  { id: 'beneficios', label: 'Beneficios externos', icon: Gift, section: 'Catálogo' },
+  { id: 'beneficios-internos', label: 'Beneficios internos', icon: Award, section: 'Catálogo' },
   { id: 'comercios', label: 'Comercios', icon: Store, section: 'Catálogo' },
   { id: 'qrcodes', label: 'Códigos QR', icon: QrCode, section: 'Catálogo' },
   { id: 'jerarquias', label: 'Jerarquías', icon: Layers, section: 'Catálogo' },
