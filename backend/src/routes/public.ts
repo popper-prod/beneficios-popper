@@ -638,12 +638,13 @@ router.post('/canjear', canjearLimiter, async (req: Request, res: Response) => {
       }
     }
 
-    // 2) Beneficio: validar que esté activo Y asignado a este comercio
+    // 2) Beneficio: validar que esté activo, vinculado al comercio Y que el comercio esté activo
     const beneficioResult = await query(
       `SELECT b.id, b.nombre, b.limite_uso_diario, b.limite_uso_mensual, b.limite_total, b.categoria, b.usa_limite_jerarquia,
               b.fecha_inicio, b.fecha_fin, b.descuento, b.escala_descuentos, b.modalidad, b.aplica_a
        FROM beneficios b
        INNER JOIN comercio_beneficios cb ON cb.beneficio_id = b.id AND cb.comercio_id = $2
+       INNER JOIN comercios c ON c.id = cb.comercio_id AND c.activo = TRUE
        WHERE b.id = $1 AND b.activo = TRUE`,
       [beneficio_id, comercio_id]
     );

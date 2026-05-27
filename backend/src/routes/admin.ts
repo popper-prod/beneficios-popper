@@ -152,17 +152,25 @@ router.get('/beneficios', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /api/admin/comercios - Listar comercios (con paginación)
+// GET /api/admin/comercios - Listar comercios (con paginación + count de beneficios vinculados)
 router.get('/comercios', async (req: AuthRequest, res: Response) => {
   try {
     const includeInactive = req.query.include_inactive === 'true' || req.query.all === 'true';
     const page = Math.max(1, parseInt(req.query.page as string || '1'));
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string || '100')));
     const offset = (page - 1) * limit;
-    const whereClause = includeInactive ? '' : 'WHERE activo = TRUE';
+    const whereClause = includeInactive ? '' : 'WHERE c.activo = TRUE';
     const [countRes, dataRes] = await Promise.all([
-      query(`SELECT COUNT(*) as total FROM comercios ${whereClause}`),
-      query(`SELECT * FROM comercios ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+      query(`SELECT COUNT(*) as total FROM comercios c ${whereClause}`),
+      query(
+        `SELECT c.*,
+                (SELECT COUNT(*)::int FROM comercio_beneficios cb
+                  INNER JOIN beneficios b ON b.id = cb.beneficio_id
+                  WHERE cb.comercio_id = c.id AND b.activo = TRUE) AS beneficios_count
+         FROM comercios c ${whereClause}
+         ORDER BY c.created_at DESC LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      ),
     ]);
     res.json({
       comercios: dataRes.rows,
