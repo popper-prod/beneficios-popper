@@ -181,6 +181,10 @@ export async function obtenerTodosEmpleados(): Promise<NaalooEmpleado[]> {
 
       if (batch.length === 0) break;
 
+      // Strip de fotos base64 — pesan MB y crashean el proceso por OOM.
+      // El sync no inserta `image` en la DB, solo se usa en lookups individuales.
+      for (const e of batch) { e.image = ''; e.imageFr = ''; }
+
       allEmpleados.push(...batch);
 
       // Usar totalCount si la API lo devuelve
