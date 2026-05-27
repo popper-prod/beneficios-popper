@@ -1686,9 +1686,13 @@ router.post('/seed-beneficios-internos', async (req: AuthRequest, res: Response)
     const seeds: Seed[] = [
       {
         nombre: 'Pase de Esquí · Temporada',
-        descripcion: 'Acceso libre a pistas durante toda la temporada. Incluye familiares directos: padres, cónyuge/concubino e hijos.',
+        descripcion: 'Pase de temporada en boletería. Titular: gratis. Familiares directos (padres, cónyuge/concubino e hijos): 50% del valor de residente.',
         categoria: 'skipass', modalidad: 'acceso', aplica_a: 'ambos',
         relaciones_familiar: 'Parents,Spouse,CivilUnion,Child',
+        escala_descuentos: {
+          titular: { tipo: 'gratuito', porcentaje: 100 },
+          familiar: { tipo: 'descuento', porcentaje: 50 },
+        },
       },
       {
         nombre: 'Indumentaria Corporativa Popper',
@@ -2400,6 +2404,12 @@ router.post('/seed-boleterias-skipass', async (req: AuthRequest, res: Response) 
     }
 
     // Upsert beneficio Skipass · Temporada con limite_total=1
+    // Titular: gratis | Familiares directos (Parents/Spouse/CivilUnion/Child): 50% del valor de residente
+    const skipassDescripcion = 'Pase de temporada en boletería. Titular: gratis. Familiares directos (padres, cónyuge/concubino e hijos): 50% del valor de residente. Solo 1 por persona por temporada.';
+    const skipassEscala = JSON.stringify({
+      titular: { tipo: 'gratuito', porcentaje: 100 },
+      familiar: { tipo: 'descuento', porcentaje: 50 },
+    });
     let skipassId: string;
     const exSki = await query(`SELECT id FROM beneficios WHERE LOWER(nombre) LIKE '%pase de esquí%' OR LOWER(nombre) LIKE '%skipass%' LIMIT 1`);
     const hoy = new Date().toISOString().split('T')[0];
@@ -2409,20 +2419,20 @@ router.post('/seed-boleterias-skipass', async (req: AuthRequest, res: Response) 
       await query(`UPDATE beneficios SET
         activo=TRUE, origen='interno', categoria='skipass', modalidad='acceso', aplica_a='ambos',
         relaciones_familiar='Parents,Spouse,CivilUnion,Child', limite_total=1,
+        escala_descuentos=$1::jsonb,
         nombre='Pase de Esquí · Temporada',
-        descripcion='Retiro de pase de temporada en boletería. Incluye familiares directos (madre/padre, cónyuge, concubino/a, hijos). Solo 1 por persona por temporada.',
-        updated_at=NOW() WHERE id=$1`, [skipassId]);
+        descripcion=$2,
+        updated_at=NOW() WHERE id=$3`, [skipassEscala, skipassDescripcion, skipassId]);
     } else {
       const r = await query(`
         INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, fecha_inicio, fecha_fin,
           horario_inicio, horario_fin, activo, origen, categoria, aplica_a, modalidad,
-          relaciones_familiar, limite_total)
-        VALUES ('Pase de Esquí · Temporada',
-          'Retiro de pase de temporada en boletería. Incluye familiares directos (madre/padre, cónyuge, concubino/a, hijos). Solo 1 por persona por temporada.',
+          relaciones_familiar, limite_total, escala_descuentos)
+        VALUES ('Pase de Esquí · Temporada', $3,
           'acceso', 'bronce', $1, $2, '08:00', '20:00', TRUE,
           'interno', 'skipass', 'ambos', 'acceso',
-          'Parents,Spouse,CivilUnion,Child', 1) RETURNING id
-      `, [hoy, finAnio]);
+          'Parents,Spouse,CivilUnion,Child', 1, $4::jsonb) RETURNING id
+      `, [hoy, finAnio, skipassDescripcion, skipassEscala]);
       skipassId = r.rows[0].id;
     }
 
