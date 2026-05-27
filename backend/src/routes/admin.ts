@@ -326,22 +326,27 @@ router.put('/beneficios/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // DELETE /api/admin/beneficios/:id - Eliminar beneficio
+// Por default soft-delete cuando hay verificaciones históricas.
+// Con ?force=true hace cascade: borra también verificaciones y vínculos.
 router.delete('/beneficios/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    // ¿Hay verificaciones que referencian este beneficio?
+    const force = req.query.force === 'true';
     const used = await query('SELECT COUNT(*)::int AS c FROM verificaciones WHERE beneficio_id = $1', [id]);
     const usageCount = used.rows[0]?.c || 0;
 
-    if (usageCount === 0) {
-      // Hard delete posible
+    if (usageCount === 0 || force) {
+      // Hard delete (con cascade si hay verificaciones y se pidió force)
+      if (force && usageCount > 0) {
+        await query('DELETE FROM verificaciones WHERE beneficio_id = $1', [id]);
+      }
       await query('DELETE FROM comercio_beneficios WHERE beneficio_id = $1', [id]);
       const result = await query('DELETE FROM beneficios WHERE id = $1 RETURNING id', [id]);
       if (result.rows.length === 0) return res.status(404).json({ error: 'Beneficio no encontrado' });
-      return res.json({ eliminado: true, modo: 'hard' });
+      return res.json({ eliminado: true, modo: 'hard', verificaciones_eliminadas: force ? usageCount : 0 });
     }
 
-    // Soft delete (preserva el historial de verificaciones)
+    // Soft delete (preserva el historial)
     const result = await query(
       'UPDATE beneficios SET activo = FALSE, updated_at = NOW() WHERE id = $1 RETURNING id',
       [id]

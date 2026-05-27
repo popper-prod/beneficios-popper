@@ -346,8 +346,26 @@ export default function AdminDashboard({ token, user, onLogout }: {
       const res = await fetch(`${API_URL}/admin/${endpoint}/${id}`, { method: 'DELETE', headers });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        if (data?.modo === 'soft') {
-          alert(`"${nombre}" fue desactivado (tiene ${data.verificaciones} verificación(es) histórica(s) que se preservan). No se ve más en el listado.`);
+        if (data?.modo === 'soft' && type === 'beneficio') {
+          // Tiene canjes históricos: ofrecer borrado total con cascade
+          const force = confirm(
+            `"${nombre}" tiene ${data.verificaciones} canje(s) histórico(s) y por eso solo se desactivó.\n\n` +
+            `¿Querés ELIMINARLO PERMANENTEMENTE junto con esos ${data.verificaciones} canje(s) del historial?\n\n` +
+            `⚠️ Esta acción no se puede deshacer.`
+          );
+          if (force) {
+            const res2 = await fetch(`${API_URL}/admin/${endpoint}/${id}?force=true`, { method: 'DELETE', headers });
+            const data2 = await res2.json().catch(() => ({}));
+            if (res2.ok) {
+              alert(`"${nombre}" fue eliminado permanentemente (junto con ${data2.verificaciones_eliminadas || 0} canje(s) del historial).`);
+            } else {
+              alert(`No se pudo eliminar permanentemente: ${data2?.error || res2.statusText}`);
+            }
+          } else {
+            alert(`"${nombre}" quedó desactivado (sigue visible en el listado con badge "Inactivo").`);
+          }
+        } else if (data?.modo === 'soft') {
+          alert(`"${nombre}" fue desactivado (tiene ${data.verificaciones} verificación(es) histórica(s) que se preservan).`);
         }
         if (type === 'beneficio') fetchBeneficios();
         if (type === 'comercio') fetchComercios();
