@@ -92,10 +92,6 @@ describe('GET /api/public/beneficiario/:comercioId/:dni', () => {
       excluye_outlet: false, relaciones_familiar: null, usa_limite_jerarquia: false,
       max_invitados: 0, cubre_invitados: false,
     }]);
-    // consumo mensual
-    mockQuery([]);
-    // jerarquía
-    mockQuery([]);
     // foto Naaloo
     const { buscarEmpleadoPorDni } = require('../src/__mocks__/naaloo');
     buscarEmpleadoPorDni.mockResolvedValueOnce(null);
@@ -119,8 +115,6 @@ describe('GET /api/public/beneficiario/:comercioId/:dni', () => {
       excluye_outlet: false, relaciones_familiar: null, usa_limite_jerarquia: false,
       max_invitados: 0, cubre_invitados: false,
     }]);
-    mockQuery([]); // consumo
-    mockQuery([]); // jerarquía
     const { buscarEmpleadoPorDni } = require('../src/__mocks__/naaloo');
     buscarEmpleadoPorDni.mockResolvedValueOnce(null);
 
@@ -137,8 +131,6 @@ describe('GET /api/public/beneficiario/:comercioId/:dni', () => {
       descuento: 10, aplica_a: 'familiar', horario_inicio: null, horario_fin: null,
       escala_descuentos: null, usa_limite_jerarquia: false, max_invitados: 0, cubre_invitados: false,
     }]);
-    mockQuery([]); // consumo
-    mockQuery([]); // jerarquía
     const { buscarEmpleadoPorDni } = require('../src/__mocks__/naaloo');
     buscarEmpleadoPorDni.mockResolvedValueOnce(null);
 

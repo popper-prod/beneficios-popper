@@ -268,54 +268,18 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
       return true;
     });
 
-    // === Saldo mensual del titular por categoria (Phase 3A) ===
-    const consumoResult = await query(`
-      SELECT categoria_beneficio AS categoria, COALESCE(SUM(monto), 0)::float AS gastado
-      FROM verificaciones
-      WHERE beneficiario_id = $1
-        AND fecha_verificacion >= date_trunc('month', CURRENT_DATE)
-        AND estado = 'exitoso' AND monto IS NOT NULL
-      GROUP BY categoria_beneficio
-    `, [titular.id]).catch(() => ({ rows: [] }));
-    const consumoMap: Record<string, number> = {};
-    for (const r of consumoResult.rows) consumoMap[r.categoria] = r.gastado;
-
-    // Jerarquia del titular (para conocer su limite)
-    let jerarquia: any = null;
-    if (titular.id) {
-      const jRes = await query(`
-        SELECT j.id, j.nombre, j.limite_mensual::float, j.limite_mensual_talento::float
-        FROM jerarquias j JOIN beneficiarios b ON b.jerarquia_id = j.id
-        WHERE b.id = $1 LIMIT 1
-      `, [titular.id]).catch(() => ({ rows: [] }));
-      if (jRes.rows.length > 0) jerarquia = jRes.rows[0];
-    }
-    const limiteMensual = jerarquia
-      ? (esTalento ? jerarquia.limite_mensual_talento : jerarquia.limite_mensual) || 0
-      : 0;
-
-    // Anotar cada beneficio con el % aplicable + saldo restante si usa límite jerarquia
+    // Anotar cada beneficio con el % aplicable.
+    // NOTA: el cupo/límite de gasto de los beneficios internos lo controla Tango (ERP)
+    // + la autorización del gerente comercial. Este sistema es SOLO informativo:
+    // muestra el % y registra el canje, NO bloquea ni administra el presupuesto mensual.
     const beneficiosConDescuento = beneficiosFiltrados.map((b: any) => {
       const { porcentaje: descuentoCalculado, tipo: tipoDescuento } = calcularDescuentoAplicable(b, antiguedadMeses, esTalento, esFamiliar);
-      let saldoInfo: any = null;
-      if (b.usa_limite_jerarquia && jerarquia) {
-        const gastado = consumoMap[b.categoria] || 0;
-        const disponible = Math.max(0, limiteMensual - gastado);
-        saldoInfo = {
-          limite_mensual: limiteMensual,
-          gastado_mes: gastado,
-          disponible,
-          jerarquia: jerarquia.nombre,
-        };
-      } else if (b.usa_limite_jerarquia && !jerarquia) {
-        saldoInfo = { sin_jerarquia: true };
-      }
       return {
         ...b,
         descuento: descuentoCalculado != null ? descuentoCalculado : b.descuento,
         descuento_calculado: descuentoCalculado,
         tipo_descuento: tipoDescuento,
-        saldo: saldoInfo,
+        saldo: null,
       };
     });
 
@@ -727,37 +691,10 @@ router.post('/canjear', canjearLimiter, async (req: Request, res: Response) => {
       }
     }
 
-    // 4) PRESUPUESTO POR JERARQUIA (V3A)
-    if (beneficio.usa_limite_jerarquia && montoNum && !override_limite) {
-      // Obtener jerarquia del beneficiario
-      const jRes = await query(`
-        SELECT b.es_talento_popper, j.id AS jid, j.nombre AS jnombre,
-               j.limite_mensual::float AS lim, j.limite_mensual_talento::float AS lim_t
-        FROM beneficiarios b LEFT JOIN jerarquias j ON j.id = b.jerarquia_id
-        WHERE b.id = $1 LIMIT 1
-      `, [beneficiarioId]).catch(() => ({ rows: [] }));
-      const jr = jRes.rows[0] || {};
-      if (jr.jid) {
-        const limite = jr.es_talento_popper ? (jr.lim_t || 0) : (jr.lim || 0);
-        // Sumar gasto del mes en esta categoria
-        const gastoRes = await query(`
-          SELECT COALESCE(SUM(monto), 0)::float AS gastado
-          FROM verificaciones
-          WHERE beneficiario_id = $1 AND categoria_beneficio = $2
-            AND fecha_verificacion >= date_trunc('month', CURRENT_DATE)
-            AND estado = 'exitoso'
-        `, [beneficiarioId, beneficio.categoria]);
-        const gastado = gastoRes.rows[0]?.gastado || 0;
-        if (limite > 0 && (gastado + montoNum) > limite) {
-          return res.status(429).json({
-            error: `Excede el límite mensual de ${jr.jnombre} ($${limite.toLocaleString('es-AR')}). ` +
-                   `Ya gastaste $${gastado.toLocaleString('es-AR')}. Disponible: $${(limite - gastado).toLocaleString('es-AR')}.`,
-            saldo: { limite, gastado, disponible: limite - gastado, monto_solicitado: montoNum },
-            requiere_override: true,
-          });
-        }
-      }
-    }
+    // 4) PRESUPUESTO POR JERARQUIA — DESACTIVADO
+    // El control del cupo mensual de beneficios internos lo hace Tango (ERP) +
+    // la autorización del gerente comercial. Este sistema NO bloquea por monto;
+    // solo registra el canje (con su monto) para historial/reporting.
 
     // 5) Registrar verificacion (con monto + categoria denormalizada)
     const codigo = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;

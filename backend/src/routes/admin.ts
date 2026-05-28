@@ -2223,6 +2223,8 @@ router.put('/jerarquias/:id', async (req: AuthRequest, res: Response) => {
 
 router.delete('/jerarquias/:id', async (req: AuthRequest, res: Response) => {
   try {
+    // Desvincular beneficiarios antes de borrar para no dejar jerarquia_id huérfanos
+    await query(`UPDATE beneficiarios SET jerarquia_id = NULL WHERE jerarquia_id = $1`, [req.params.id]).catch(() => {});
     await query(`DELETE FROM jerarquias WHERE id = $1`, [req.params.id]);
     res.json({ exito: true });
   } catch (error: any) {
