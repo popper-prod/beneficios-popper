@@ -1747,23 +1747,52 @@ router.post('/seed-beneficios-internos', async (req: AuthRequest, res: Response)
       },
     ];
 
-    let creados = 0, actualizados = 0;
+    let creados = 0, actualizados = 0, duplicadosLimpiados = 0;
 
     for (const s of seeds) {
-      const existing = await query(`SELECT id FROM beneficios WHERE LOWER(nombre) = LOWER($1) AND activo = TRUE LIMIT 1`, [s.nombre]);
-      if (existing.rows.length > 0) {
+      // Buscar TODOS los matches por nombre (activos e inactivos), priorizando el que
+      // tiene historial de verificaciones para preservar los canjes ya hechos.
+      const matches = await query(
+        `SELECT b.id,
+                (SELECT COUNT(*) FROM verificaciones v WHERE v.beneficio_id = b.id) AS usos
+         FROM beneficios b
+         WHERE LOWER(b.nombre) = LOWER($1)
+         ORDER BY usos DESC, b.created_at DESC`,
+        [s.nombre]
+      );
+
+      if (matches.rows.length > 0) {
+        // El primero (más usos, después más reciente) es el que conservamos
+        const chosenId = matches.rows[0].id;
         await query(`
           UPDATE beneficios SET descripcion=$1, categoria=$2, modalidad=$3, aplica_a=$4,
             origen='interno', descuento=$5, escala_descuentos=$6, usa_limite_jerarquia=$7,
             relaciones_familiar=$8, excluye_outlet=$9, restricciones=$10,
-            nivel_minimo='bronce', tipo=$11, updated_at=NOW()
+            nivel_minimo='bronce', tipo=$11, activo=TRUE, updated_at=NOW()
           WHERE id=$12
         `, [s.descripcion, s.categoria, s.modalidad, s.aplica_a, s.descuento || null,
             s.escala_descuentos ? JSON.stringify(s.escala_descuentos) : null,
             !!s.usa_limite_jerarquia, s.relaciones_familiar || null,
             !!s.excluye_outlet, s.restricciones || null,
-            s.modalidad || 'descuento', existing.rows[0].id]);
+            s.modalidad || 'descuento', chosenId]);
         actualizados++;
+
+        // Limpiar duplicados (los otros matches) — solo los que no tienen historial.
+        // Si un duplicado tiene historial, lo dejamos como está para no perder datos.
+        const otrosIds = matches.rows.slice(1).map((r: any) => r.id);
+        const otrosSinUso = matches.rows.slice(1).filter((r: any) => parseInt(r.usos) === 0).map((r: any) => r.id);
+        if (otrosSinUso.length > 0) {
+          const placeholders = otrosSinUso.map((_: any, i: number) => `$${i + 1}`).join(',');
+          await query(`DELETE FROM comercio_beneficios WHERE beneficio_id IN (${placeholders})`, otrosSinUso);
+          const del = await query(`DELETE FROM beneficios WHERE id IN (${placeholders}) RETURNING id`, otrosSinUso);
+          duplicadosLimpiados += del.rows.length;
+        }
+        // Los duplicados con uso quedan, pero los desactivamos para que no aparezcan en el flujo
+        const duplicadosConUso = otrosIds.filter((id: string) => !otrosSinUso.includes(id));
+        if (duplicadosConUso.length > 0) {
+          const placeholders = duplicadosConUso.map((_: any, i: number) => `$${i + 1}`).join(',');
+          await query(`UPDATE beneficios SET activo=FALSE, updated_at=NOW() WHERE id IN (${placeholders})`, duplicadosConUso);
+        }
       } else {
         await query(`
           INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, descuento,
@@ -1782,7 +1811,7 @@ router.post('/seed-beneficios-internos', async (req: AuthRequest, res: Response)
       }
     }
 
-    res.json({ exito: true, creados, actualizados, total: seeds.length });
+    res.json({ exito: true, creados, actualizados, duplicadosLimpiados, total: seeds.length });
   } catch (error: any) {
     console.error('Error seed beneficios internos:', error.message);
     res.status(500).json({ error: 'Error creando beneficios internos', detalle: error.message });

@@ -700,7 +700,12 @@ export default function AdminDashboard({ token, user, onLogout }: {
       const res = await fetch(`${API_URL}/admin/seed-beneficios-internos`, { method: 'POST', headers });
       const data = await res.json();
       if (res.ok) {
-        alert(`✓ ${data.creados} beneficios internos creados, ${data.actualizados} actualizados.`);
+        const partes = [
+          `${data.creados} creados`,
+          `${data.actualizados} actualizados`,
+        ];
+        if (data.duplicadosLimpiados > 0) partes.push(`${data.duplicadosLimpiados} duplicados limpiados`);
+        alert(`✓ Beneficios internos sincronizados: ${partes.join(', ')}.`);
         fetchBeneficios();
       } else {
         alert(`Error: ${data.error || 'No se pudo crear'}`);
