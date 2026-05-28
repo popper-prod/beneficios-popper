@@ -676,23 +676,28 @@ router.post('/canjear', canjearLimiter, async (req: Request, res: Response) => {
     }
 
     // 3) Limite usos diario / mensual (V1)
+    // Se cuenta por DNI de la persona que canjea (titular o familiar específico),
+    // NO por beneficiario_id del titular. Así cada familiar tiene su propio límite.
+    // Fallback a beneficiario_id para registros históricos sin beneficiario_dni.
     if (beneficio.limite_uso_diario) {
       const usosHoy = await query(
         `SELECT COUNT(*) as total FROM verificaciones
-         WHERE beneficiario_id = $1 AND beneficio_id = $2 AND estado = 'exitoso'
-         AND fecha_verificacion >= CURRENT_DATE`,
-        [beneficiarioId, beneficio_id]
+         WHERE beneficio_id = $2 AND estado = 'exitoso'
+           AND (beneficiario_dni = $3 OR (beneficiario_dni IS NULL AND beneficiario_id = $1))
+           AND fecha_verificacion >= CURRENT_DATE`,
+        [beneficiarioId, beneficio_id, dni]
       );
       if (parseInt(usosHoy.rows[0].total) >= beneficio.limite_uso_diario) {
-        return res.status(429).json({ error: `Límite diario alcanzado (${beneficio.limite_uso_diario} por día)` });
+        return res.status(429).json({ error: `Ya canjeaste este beneficio hoy (límite ${beneficio.limite_uso_diario} por día)` });
       }
     }
     if (beneficio.limite_uso_mensual) {
       const usosMes = await query(
         `SELECT COUNT(*) as total FROM verificaciones
-         WHERE beneficiario_id = $1 AND beneficio_id = $2 AND estado = 'exitoso'
-         AND fecha_verificacion >= date_trunc('month', CURRENT_DATE)`,
-        [beneficiarioId, beneficio_id]
+         WHERE beneficio_id = $2 AND estado = 'exitoso'
+           AND (beneficiario_dni = $3 OR (beneficiario_dni IS NULL AND beneficiario_id = $1))
+           AND fecha_verificacion >= date_trunc('month', CURRENT_DATE)`,
+        [beneficiarioId, beneficio_id, dni]
       );
       if (parseInt(usosMes.rows[0].total) >= beneficio.limite_uso_mensual) {
         return res.status(429).json({ error: `Límite mensual alcanzado (${beneficio.limite_uso_mensual} por mes)` });

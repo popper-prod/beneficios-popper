@@ -1689,18 +1689,25 @@ router.post('/seed-beneficios-internos', async (req: AuthRequest, res: Response)
       aplica_a: string; descuento?: number; escala_descuentos?: any;
       usa_limite_jerarquia?: boolean; relaciones_familiar?: string;
       excluye_outlet?: boolean; restricciones?: string;
+      limite_uso_diario?: number | null; limite_total?: number | null;
+      // Si está presente, el matching contra la DB usa LIKE en vez de nombre exacto.
+      // Útil cuando renombramos un beneficio existente (ej. "Temporada" → "Diario").
+      matchNombreLike?: string;
     };
 
     const seeds: Seed[] = [
       {
-        nombre: 'Pase de Esquí · Temporada',
-        descripcion: 'Pase de temporada en boletería. Titular: gratis. Familiares directos (padres, cónyuge/concubino e hijos): 50% del valor de residente.',
+        nombre: 'Pase de Esquí · Diario',
+        descripcion: 'Pase diario en boletería. Titular: gratis. Familiares directos (padres, cónyuge/concubino e hijos): 50% del valor de residente. 1 pase por día por persona.',
         categoria: 'skipass', modalidad: 'acceso', aplica_a: 'ambos',
         relaciones_familiar: 'Parents,Spouse,CivilUnion,Child',
         escala_descuentos: {
           titular: { tipo: 'gratuito', porcentaje: 100 },
           familiar: { tipo: 'descuento', porcentaje: 50 },
         },
+        limite_uso_diario: 1,
+        limite_total: null,
+        matchNombreLike: '%pase de esquí%',
       },
       {
         nombre: 'Indumentaria Corporativa Popper',
@@ -1750,30 +1757,35 @@ router.post('/seed-beneficios-internos', async (req: AuthRequest, res: Response)
     let creados = 0, actualizados = 0, duplicadosLimpiados = 0;
 
     for (const s of seeds) {
-      // Buscar TODOS los matches por nombre (activos e inactivos), priorizando el que
-      // tiene historial de verificaciones para preservar los canjes ya hechos.
+      // Buscar TODOS los matches (activos e inactivos), priorizando el que tiene
+      // historial de verificaciones para preservar los canjes ya hechos.
+      // Si el seed define matchNombreLike, se busca por LIKE (permite renombrar).
+      const matchClause = s.matchNombreLike ? `LOWER(b.nombre) LIKE LOWER($1)` : `LOWER(b.nombre) = LOWER($1)`;
+      const matchParam = s.matchNombreLike || s.nombre;
       const matches = await query(
         `SELECT b.id,
                 (SELECT COUNT(*) FROM verificaciones v WHERE v.beneficio_id = b.id) AS usos
          FROM beneficios b
-         WHERE LOWER(b.nombre) = LOWER($1)
+         WHERE ${matchClause}
          ORDER BY usos DESC, b.created_at DESC`,
-        [s.nombre]
+        [matchParam]
       );
 
       if (matches.rows.length > 0) {
         // El primero (más usos, después más reciente) es el que conservamos
         const chosenId = matches.rows[0].id;
         await query(`
-          UPDATE beneficios SET descripcion=$1, categoria=$2, modalidad=$3, aplica_a=$4,
-            origen='interno', descuento=$5, escala_descuentos=$6, usa_limite_jerarquia=$7,
-            relaciones_familiar=$8, excluye_outlet=$9, restricciones=$10,
-            nivel_minimo='bronce', tipo=$11, activo=TRUE, updated_at=NOW()
-          WHERE id=$12
-        `, [s.descripcion, s.categoria, s.modalidad, s.aplica_a, s.descuento || null,
+          UPDATE beneficios SET nombre=$1, descripcion=$2, categoria=$3, modalidad=$4, aplica_a=$5,
+            origen='interno', descuento=$6, escala_descuentos=$7, usa_limite_jerarquia=$8,
+            relaciones_familiar=$9, excluye_outlet=$10, restricciones=$11,
+            limite_uso_diario=$12, limite_total=$13,
+            nivel_minimo='bronce', tipo=$14, activo=TRUE, updated_at=NOW()
+          WHERE id=$15
+        `, [s.nombre, s.descripcion, s.categoria, s.modalidad, s.aplica_a, s.descuento || null,
             s.escala_descuentos ? JSON.stringify(s.escala_descuentos) : null,
             !!s.usa_limite_jerarquia, s.relaciones_familiar || null,
             !!s.excluye_outlet, s.restricciones || null,
+            s.limite_uso_diario ?? null, s.limite_total ?? null,
             s.modalidad || 'descuento', chosenId]);
         actualizados++;
 
@@ -1798,15 +1810,17 @@ router.post('/seed-beneficios-internos', async (req: AuthRequest, res: Response)
           INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, descuento,
             fecha_inicio, fecha_fin, horario_inicio, horario_fin, activo,
             origen, categoria, aplica_a, modalidad, escala_descuentos,
-            restricciones, excluye_outlet, relaciones_familiar, usa_limite_jerarquia)
+            restricciones, excluye_outlet, relaciones_familiar, usa_limite_jerarquia,
+            limite_uso_diario, limite_total)
           VALUES ($1, $2, $3, 'bronce', $4, $5, $6, '00:00', '23:59', TRUE,
-                  'interno', $7, $8, $9, $10, $11, $12, $13, $14)
+                  'interno', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         `, [s.nombre, s.descripcion, s.modalidad || 'descuento', s.descuento || null,
             hoy, finAnio,
             s.categoria, s.aplica_a, s.modalidad,
             s.escala_descuentos ? JSON.stringify(s.escala_descuentos) : null,
             s.restricciones || null, !!s.excluye_outlet,
-            s.relaciones_familiar || null, !!s.usa_limite_jerarquia]);
+            s.relaciones_familiar || null, !!s.usa_limite_jerarquia,
+            s.limite_uso_diario ?? null, s.limite_total ?? null]);
         creados++;
       }
     }
@@ -2440,32 +2454,32 @@ router.post('/seed-boleterias-skipass', async (req: AuthRequest, res: Response) 
       }
     }
 
-    // Upsert beneficio Skipass · Temporada con limite_total=1
+    // Upsert beneficio Pase de Esquí · Diario (1 pase por día por persona)
     // Titular: gratis | Familiares directos (Parents/Spouse/CivilUnion/Child): 50% del valor de residente
-    const skipassDescripcion = 'Pase de temporada en boletería. Titular: gratis. Familiares directos (padres, cónyuge/concubino e hijos): 50% del valor de residente. Solo 1 por persona por temporada.';
+    const skipassDescripcion = 'Pase diario en boletería. Titular: gratis. Familiares directos (padres, cónyuge/concubino e hijos): 50% del valor de residente. 1 pase por día por persona.';
     const skipassEscala = JSON.stringify({
       titular: { tipo: 'gratuito', porcentaje: 100 },
       familiar: { tipo: 'descuento', porcentaje: 50 },
     });
     let skipassId: string;
-    const exSki = await query(`SELECT id FROM beneficios WHERE LOWER(nombre) LIKE '%pase de esquí%' OR LOWER(nombre) LIKE '%skipass%' LIMIT 1`);
+    const exSki = await query(`SELECT id FROM beneficios WHERE LOWER(nombre) LIKE '%pase de esquí%' OR LOWER(nombre) LIKE '%skipass%' ORDER BY (SELECT COUNT(*) FROM verificaciones v WHERE v.beneficio_id = beneficios.id) DESC LIMIT 1`);
     const hoy = new Date().toISOString().split('T')[0];
     const finAnio = `${new Date().getFullYear()}-12-31`;
     if (exSki.rows.length > 0) {
       skipassId = exSki.rows[0].id;
       await query(`UPDATE beneficios SET
         activo=TRUE, origen='interno', categoria='skipass', modalidad='acceso', aplica_a='ambos',
-        relaciones_familiar='Parents,Spouse,CivilUnion,Child', limite_total=1,
+        relaciones_familiar='Parents,Spouse,CivilUnion,Child', limite_uso_diario=1, limite_total=NULL,
         escala_descuentos=$1::jsonb,
-        nombre='Pase de Esquí · Temporada',
+        nombre='Pase de Esquí · Diario',
         descripcion=$2,
         updated_at=NOW() WHERE id=$3`, [skipassEscala, skipassDescripcion, skipassId]);
     } else {
       const r = await query(`
         INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, fecha_inicio, fecha_fin,
           horario_inicio, horario_fin, activo, origen, categoria, aplica_a, modalidad,
-          relaciones_familiar, limite_total, escala_descuentos)
-        VALUES ('Pase de Esquí · Temporada', $3,
+          relaciones_familiar, limite_uso_diario, escala_descuentos)
+        VALUES ('Pase de Esquí · Diario', $3,
           'acceso', 'bronce', $1, $2, '08:00', '20:00', TRUE,
           'interno', 'skipass', 'ambos', 'acceso',
           'Parents,Spouse,CivilUnion,Child', 1, $4::jsonb) RETURNING id
