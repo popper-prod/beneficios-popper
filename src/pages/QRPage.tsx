@@ -709,9 +709,12 @@ function ProfileStep({
   onReset: () => void;
 }) {
   const selectedBen = beneficios.find(b => b.id === selectedBenefit);
-  const necesitaMonto = !!selectedBen?.usa_limite_jerarquia;
-  const montoNum = parseFloat(monto || '0') || 0;
   const descuento = selectedBen?.descuento ? Number(selectedBen.descuento) : 0;
+  // Se pide el monto cuando hay un descuento porcentual parcial (entre 1% y 99%):
+  // ej. skipass familiar 50%, indumentaria 20/30%, descuentos externos. Para
+  // beneficios gratuitos (100%) o de acceso sin costo no hace falta monto.
+  const necesitaMonto = descuento > 0 && descuento < 100;
+  const montoNum = parseFloat(monto || '0') || 0;
   const ahorro = montoNum * (descuento / 100);
   const totalAPagar = montoNum - ahorro;
   const saldoDisponible = selectedBen?.saldo?.disponible ?? Infinity;
