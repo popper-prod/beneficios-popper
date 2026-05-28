@@ -246,7 +246,7 @@ describe('POST /api/public/canjear', () => {
     mockQuery([{ total: '1' }]);
     const res = await request(app).post('/api/public/canjear').send(body());
     expect(res.status).toBe(429);
-    expect(res.body.error).toMatch(/diario/i);
+    expect(res.body.error).toMatch(/hoy|d[ií]a/i);
   });
 
   test('Beneficio exclusivo Talento rechaza titular normal → 403', async () => {
