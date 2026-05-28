@@ -5,6 +5,7 @@ import ReportesView from '../views/ReportesView';
 import { DataTable } from '../components/ui/DataTable';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { BeneficioInternoModal } from './components/BeneficioInternoModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://beneficios-backend-jfpx.onrender.com/api';
 
@@ -92,6 +93,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
 
   // Modal state
   const [modal, setModal] = useState<{ type: 'beneficio' | 'comercio' | 'beneficiario'; mode: 'create' | 'edit'; item?: any } | null>(null);
+  const [modalInterno, setModalInterno] = useState<{ mode: 'create' | 'edit'; item?: any } | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [cleanupMsg, setCleanupMsg] = useState('');
@@ -376,6 +378,21 @@ export default function AdminDashboard({ token, user, onLogout }: {
     } catch (e: any) {
       alert(`Error de conexión al eliminar: ${e?.message || ''}`);
     }
+  };
+
+  // Guardar beneficio interno (desde el modal específico)
+  const handleSaveInterno = async (payload: any, id?: string) => {
+    const url = id ? `${API_URL}/admin/beneficios/${id}` : `${API_URL}/admin/beneficios`;
+    const res = await fetch(url, {
+      method: id ? 'PUT' : 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.detalle || err?.error || 'No se pudo guardar el beneficio');
+    }
+    fetchBeneficios();
   };
 
   // Gestión de beneficios por comercio
@@ -1231,7 +1248,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
               <Button variant="ghost" size="md" onClick={handleSeedInternos} loading={seedingInternos}>
                 {seedingInternos ? 'Cargando…' : 'Cargar beneficios internos'}
               </Button>
-              <Button variant="primary" size="md" leftIcon={<PlusIcon size={13} />} onClick={() => openCreate('beneficio')}>Nuevo beneficio</Button>
+              <Button variant="primary" size="md" leftIcon={<PlusIcon size={13} />} onClick={() => setModalInterno({ mode: 'create' })}>Nuevo beneficio</Button>
             </div>
           }
         >
@@ -1375,7 +1392,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
                     </p>
                   )}
 
-                  <CardFooterActions onEdit={() => openEdit('beneficio', b)} onDelete={() => handleDelete('beneficio', b.id, b.nombre)} />
+                  <CardFooterActions onEdit={() => setModalInterno({ mode: 'edit', item: b })} onDelete={() => handleDelete('beneficio', b.id, b.nombre)} />
                 </ItemCard>
               );
               })}
@@ -2418,6 +2435,15 @@ export default function AdminDashboard({ token, user, onLogout }: {
           {jerarquiaModal?.mode === 'create' ? 'Crear jerarquía' : 'Guardar cambios'}
         </Button>
       </Modal>
+
+      {/* Modal Beneficio Interno (form específico con UI rica) */}
+      <BeneficioInternoModal
+        open={!!modalInterno}
+        mode={modalInterno?.mode || 'create'}
+        initial={modalInterno?.item}
+        onClose={() => setModalInterno(null)}
+        onSave={handleSaveInterno}
+      />
 
       {/* Selección all hidden helper */}
       <span style={{ display: 'none' }} aria-hidden="true">{selectAll.toString().length}</span>
