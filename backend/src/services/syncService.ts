@@ -26,7 +26,18 @@ type BenRow = {
   nivel: string; departamento: string | null; sector: string | null;
   cargo: string | null; empresa: string;
   fecha_ingreso: string | null; naaloo_id: number;
+  foto: string | null;
 };
+
+// Lazy migration: asegurar columna `foto` en beneficiarios (idempotente)
+let fotoColumnEnsured = false;
+async function ensureFotoColumn() {
+  if (fotoColumnEnsured) return;
+  try {
+    await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS foto TEXT`);
+    fotoColumnEnsured = true;
+  } catch { /* silencioso */ }
+}
 
 async function fetchPaginaNaaloo(page: number, limit: number): Promise<any[]> {
   const response = await fetch(`${NAALOO_API_URL}/personal/?page=${page}&limit=${limit}`, {
@@ -38,8 +49,9 @@ async function fetchPaginaNaaloo(page: number, limit: number): Promise<any[]> {
   if (!response.ok) throw new Error(`Naaloo API error: ${response.status}`);
   const data: any = await response.json();
   const batch = data?.data || [];
-  // Strip fotos base64 inmediatamente para liberar memoria
-  for (const e of batch) { e.image = ''; e.imageFr = ''; }
+  // Strip foto "frontal" (imageFr) que es la grande — conservamos `image` (la chica)
+  // para guardarla en DB y mostrarla al cajero en el canje.
+  for (const e of batch) { e.imageFr = ''; }
   return batch;
 }
 
@@ -67,6 +79,7 @@ async function procesarBatch(
       email: ben.email || null, telefono: (ben.telefono || '').substring(0, 20) || null,
       nivel: ben.nivel, departamento: ben.departamento || null, sector: ben.sector || null,
       cargo: ben.cargo || null, empresa: ben.empresa, fecha_ingreso: fechaValida, naaloo_id: emp.id,
+      foto: ben.foto || null,
     };
     const local = localMap.get(ben.dni);
 
@@ -84,15 +97,15 @@ async function procesarBatch(
   // ALTAS
   if (toInsert.length > 0) {
     const valuePlaceholders = toInsert.map((_, i) => {
-      const base = i * 12;
-      return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11},TRUE,$${base+12},'naaloo',NOW())`;
+      const base = i * 13;
+      return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11},TRUE,$${base+12},'naaloo',NOW(),$${base+13})`;
     }).join(',');
-    const values = toInsert.flatMap(r => [r.dni, r.nombre, r.apellido, r.email, r.telefono, r.nivel, r.departamento, r.sector, r.cargo, r.empresa, r.fecha_ingreso, r.naaloo_id]);
+    const values = toInsert.flatMap(r => [r.dni, r.nombre, r.apellido, r.email, r.telefono, r.nivel, r.departamento, r.sector, r.cargo, r.empresa, r.fecha_ingreso, r.naaloo_id, r.foto]);
     const insertRes = await query(
-      `INSERT INTO beneficiarios (dni,nombre,apellido,email,telefono,nivel,departamento,sector,cargo,empresa,fecha_ingreso,activo,naaloo_id,origen,ultima_sync)
+      `INSERT INTO beneficiarios (dni,nombre,apellido,email,telefono,nivel,departamento,sector,cargo,empresa,fecha_ingreso,activo,naaloo_id,origen,ultima_sync,foto)
        VALUES ${valuePlaceholders}
        ON CONFLICT (dni) DO UPDATE SET nombre=EXCLUDED.nombre,apellido=EXCLUDED.apellido,departamento=EXCLUDED.departamento,
-         sector=EXCLUDED.sector,cargo=EXCLUDED.cargo,naaloo_id=EXCLUDED.naaloo_id,ultima_sync=NOW()
+         sector=EXCLUDED.sector,cargo=EXCLUDED.cargo,naaloo_id=EXCLUDED.naaloo_id,foto=COALESCE(EXCLUDED.foto, beneficiarios.foto),ultima_sync=NOW()
        RETURNING id, dni`,
       values
     );
@@ -107,8 +120,10 @@ async function procesarBatch(
   // REACTIVACIONES
   for (const r of toReactivate) {
     await query(
-      `UPDATE beneficiarios SET activo=TRUE,nombre=$1,apellido=$2,nivel=$3,departamento=$4,sector=$5,cargo=$6,naaloo_id=$7,motivo_baja=NULL,fecha_baja=NULL,ultima_sync=NOW(),updated_at=NOW() WHERE id=$8`,
-      [r.nombre, r.apellido, r.nivel, r.departamento, r.sector, r.cargo, r.naaloo_id, r.id]
+      `UPDATE beneficiarios SET activo=TRUE,nombre=$1,apellido=$2,nivel=$3,departamento=$4,sector=$5,cargo=$6,naaloo_id=$7,
+        foto=COALESCE($8, foto),
+        motivo_baja=NULL,fecha_baja=NULL,ultima_sync=NOW(),updated_at=NOW() WHERE id=$9`,
+      [r.nombre, r.apellido, r.nivel, r.departamento, r.sector, r.cargo, r.naaloo_id, r.foto, r.id]
     );
     acumulado.reactivaIds.push(r.id);
     const existing = localMap.get(r.dni);
@@ -138,21 +153,25 @@ async function procesarBatch(
     for (let i = 0; i < toUpdate.length; i += CHUNK) {
       const slice = toUpdate.slice(i, i + CHUNK);
       const placeholders = slice.map((_, j) => {
-        const base = j * 8;
-        return `($${base+1}::uuid,$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8})`;
+        const base = j * 9;
+        return `($${base+1}::uuid,$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9})`;
       }).join(',');
-      const values = slice.flatMap(r => [r.id, r.nombre, r.apellido, r.nivel, r.departamento, r.sector, r.cargo, r.naaloo_id]);
+      const values = slice.flatMap(r => [r.id, r.nombre, r.apellido, r.nivel, r.departamento, r.sector, r.cargo, r.naaloo_id, r.foto]);
       await query(
         `UPDATE beneficiarios b SET nombre=v.nombre,apellido=v.apellido,nivel=v.nivel,departamento=v.departamento,
-           sector=v.sector,cargo=v.cargo,naaloo_id=v.naaloo_id::int,ultima_sync=NOW(),updated_at=NOW()
-         FROM (VALUES ${placeholders}) AS v(id,nombre,apellido,nivel,departamento,sector,cargo,naaloo_id)
+           sector=v.sector,cargo=v.cargo,naaloo_id=v.naaloo_id::int,
+           foto=COALESCE(v.foto, b.foto),
+           ultima_sync=NOW(),updated_at=NOW()
+         FROM (VALUES ${placeholders}) AS v(id,nombre,apellido,nivel,departamento,sector,cargo,naaloo_id,foto)
          WHERE b.id = v.id::uuid`,
         values
       ).catch(async () => {
         for (const r of slice) {
           await query(
-            `UPDATE beneficiarios SET nombre=$1,apellido=$2,nivel=$3,departamento=$4,sector=$5,cargo=$6,naaloo_id=$7,ultima_sync=NOW(),updated_at=NOW() WHERE id=$8`,
-            [r.nombre, r.apellido, r.nivel, r.departamento, r.sector, r.cargo, r.naaloo_id, r.id]
+            `UPDATE beneficiarios SET nombre=$1,apellido=$2,nivel=$3,departamento=$4,sector=$5,cargo=$6,naaloo_id=$7,
+              foto=COALESCE($8, foto),
+              ultima_sync=NOW(),updated_at=NOW() WHERE id=$9`,
+            [r.nombre, r.apellido, r.nivel, r.departamento, r.sector, r.cargo, r.naaloo_id, r.foto, r.id]
           ).catch(() => {});
         }
       });
@@ -162,6 +181,9 @@ async function procesarBatch(
 }
 
 export async function runSyncNaaloo(adminNombre: string = 'Cron'): Promise<SyncResult> {
+  // 0. Asegurar columna `foto` (lazy migration idempotente)
+  await ensureFotoColumn();
+
   // 1. Cargar estado local en memoria
   const localResult = await query('SELECT id, dni, activo, naaloo_id FROM beneficiarios');
   const localMap = new Map<string, LocalRow>();

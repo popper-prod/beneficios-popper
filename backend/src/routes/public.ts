@@ -142,7 +142,9 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
     // 1) ¿Es titular (beneficiario directo)?
     const titularResult = await query(
       `SELECT id, dni, nombre, apellido, nivel, departamento, sector, fecha_ingreso,
-              activo, es_talento_popper
+              activo, es_talento_popper,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='beneficiarios' AND column_name='foto')
+                   THEN foto ELSE NULL END as foto
        FROM beneficiarios WHERE dni = $1`,
       [dni]
     );
@@ -317,12 +319,14 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
       };
     });
 
-    // Foto del titular si vino de Naaloo
-    let foto: string | null = null;
-    try {
-      const empleadoNaaloo = await buscarEmpleadoPorDni(titular.dni);
-      if (empleadoNaaloo?.image) foto = empleadoNaaloo.image;
-    } catch { /* silencioso */ }
+    // Foto del titular: primero DB local (rápido), Naaloo como fallback solo si no la tenemos.
+    let foto: string | null = titular.foto || null;
+    if (!foto) {
+      try {
+        const empleadoNaaloo = await buscarEmpleadoPorDni(titular.dni);
+        if (empleadoNaaloo?.image) foto = empleadoNaaloo.image;
+      } catch { /* silencioso */ }
+    }
 
     res.json({
       beneficiario: {

@@ -181,9 +181,9 @@ export async function obtenerTodosEmpleados(): Promise<NaalooEmpleado[]> {
 
       if (batch.length === 0) break;
 
-      // Strip de fotos base64 — pesan MB y crashean el proceso por OOM.
-      // El sync no inserta `image` en la DB, solo se usa en lookups individuales.
-      for (const e of batch) { e.image = ''; e.imageFr = ''; }
+      // Strip foto "frontal" (imageFr) que es la grande. Conservamos `image` (la chica)
+      // para que el sync la guarde en DB y el cajero la pueda mostrar.
+      for (const e of batch) { e.imageFr = ''; }
 
       allEmpleados.push(...batch);
 
