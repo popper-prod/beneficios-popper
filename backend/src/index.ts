@@ -133,6 +133,62 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 // Escuchar en todos los ambientes
+// Migración de arranque: crea el beneficio Transporte de Personal si no existe
+async function seedTransportePersonal() {
+  try {
+    const { query } = await import('./db');
+
+    // Asegurar columnas V2 (idempotente)
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS origen VARCHAR(20) DEFAULT 'externo'`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS categoria VARCHAR(50)`);
+    await query(`ALTER TABLE beneficios ADD COLUMN IF NOT EXISTS aplica_a VARCHAR(20) DEFAULT 'empleado'`);
+
+    // Solo crear si no existe todavía
+    const existe = await query(`SELECT id FROM beneficios WHERE nombre = 'Transporte de Personal' LIMIT 1`);
+    if (existe.rows.length > 0) {
+      console.log(`🚌 Transporte de Personal ya existe (id: ${existe.rows[0].id})`);
+      // Asegurar que esté vinculado a todos los comercios activos
+      const beneficioId = existe.rows[0].id;
+      await query(`
+        INSERT INTO comercio_beneficios (comercio_id, beneficio_id)
+        SELECT id, $1 FROM comercios WHERE activo = TRUE
+        ON CONFLICT DO NOTHING
+      `, [beneficioId]);
+      const { rows } = await query(`SELECT COUNT(*) as total FROM comercio_beneficios WHERE beneficio_id = $1`, [beneficioId]);
+      console.log(`🏪 Vinculado a ${rows[0].total} comercios`);
+      return;
+    }
+
+    // Crear el beneficio
+    const result = await query(`
+      INSERT INTO beneficios (
+        nombre, descripcion, tipo, nivel_minimo,
+        fecha_inicio, fecha_fin, activo,
+        origen, categoria, aplica_a
+      ) VALUES (
+        'Transporte de Personal',
+        'Beneficio de transporte para empleados',
+        'gratuito', 'bronce',
+        CURRENT_DATE, '2027-12-31', TRUE,
+        'interno', 'transporte', 'empleado'
+      ) RETURNING id
+    `);
+    const beneficioId = result.rows[0].id;
+
+    // Vincular a todos los comercios activos
+    await query(`
+      INSERT INTO comercio_beneficios (comercio_id, beneficio_id)
+      SELECT id, $1 FROM comercios WHERE activo = TRUE
+      ON CONFLICT DO NOTHING
+    `, [beneficioId]);
+
+    const { rows } = await query(`SELECT COUNT(*) as total FROM comercio_beneficios WHERE beneficio_id = $1`, [beneficioId]);
+    console.log(`✅ Transporte de Personal creado (id: ${beneficioId}), vinculado a ${rows[0].total} comercios`);
+  } catch (err: any) {
+    console.error(`⚠️ seedTransportePersonal falló: ${err.message}`);
+  }
+}
+
 app.listen(config.port, () => {
   console.log(`\n${'='.repeat(50)}`);
   console.log(`✅ Servidor BENEFICIOS POPPER iniciado`);
@@ -141,6 +197,9 @@ app.listen(config.port, () => {
   console.log(`🔗 http://localhost:${config.port}`);
   console.log(`🔗 http://localhost:${config.port}/api/health`);
   console.log(`${'='.repeat(50)}\n`);
+
+  // Migración: crear Transporte de Personal si no existe
+  seedTransportePersonal().catch(() => {});
 
   // Keep-alive: ping cada 14 minutos para evitar que Render duerma el servidor
   if (process.env.NODE_ENV === 'production') {
