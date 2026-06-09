@@ -5,6 +5,8 @@ import { obtenerTodosEmpleados, naalooToBeneficiario, obtenerEmpleadoCompleto, N
 import { runSyncNaaloo } from '../services/syncService';
 import * as XLSX from 'xlsx';
 import bcrypt from 'bcryptjs';
+import { randomInt } from 'crypto';
+import { ensureAdminPasswordColumns } from './auth';
 
 const router = Router();
 router.use(verifyToken);
@@ -1098,6 +1100,78 @@ router.post('/admins/revocar', async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Error revocando permiso', detalle: error.message });
   }
 });
+
+// POST /api/admin/admins/:id/reset-password - Generar/resetear la contraseña local de un admin
+// Solo super-admin. Devuelve una contraseña temporal UNA sola vez; el admin la cambia al ingresar.
+router.post('/admins/:id/reset-password', async (req: AuthRequest, res: Response) => {
+  try {
+    const beneficiarioId = req.params.id;
+
+    // Verificar que el que hace la accion sea super_admin (o admin.popper local)
+    const me = await query(
+      `SELECT b.rol_admin FROM beneficiarios b WHERE LOWER(b.email) = LOWER($1) LIMIT 1`,
+      [req.user?.username || '']
+    );
+    const meRol = me.rows[0]?.rol_admin;
+    const esSuperLocal = req.user?.rol === 'admin' && !req.user?.username?.includes('@');
+    if (meRol !== 'super_admin' && !esSuperLocal) {
+      return res.status(403).json({ error: 'Solo super-administradores pueden resetear contraseñas' });
+    }
+
+    await ensureAdminPasswordColumns();
+
+    const targetRes = await query(
+      `SELECT id, email, nombre, apellido, es_admin, activo FROM beneficiarios WHERE id = $1`,
+      [beneficiarioId]
+    );
+    if (targetRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Beneficiario no encontrado' });
+    }
+    const target = targetRes.rows[0];
+    if (!target.es_admin) {
+      return res.status(400).json({ error: 'El beneficiario no es administrador. Asignale el rol primero.' });
+    }
+    if (!target.email) {
+      return res.status(400).json({ error: 'El beneficiario no tiene email registrado.' });
+    }
+
+    // Contraseña temporal legible (sin caracteres ambiguos) para poder dictarla
+    const tempPassword = generarPasswordTemporal();
+    const hash = await bcrypt.hash(tempPassword, 12);
+
+    await query(
+      `UPDATE beneficiarios
+       SET password_hash = $1, must_change_password = TRUE, password_actualizada = NOW(), updated_at = NOW()
+       WHERE id = $2`,
+      [hash, beneficiarioId]
+    );
+
+    await query(
+      `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por)
+       VALUES ($1, 'reset_password', 'Contraseña local generada/reseteada', $2)`,
+      [beneficiarioId, req.user?.username || 'sistema']
+    ).catch(() => {});
+
+    res.json({
+      exito: true,
+      email: target.email,
+      nombre: `${target.nombre} ${target.apellido}`,
+      passwordTemporal: tempPassword,
+      mensaje: 'Contraseña temporal generada. Compartila de forma segura; se pedirá cambiarla en el primer ingreso.',
+    });
+  } catch (error: any) {
+    console.error('Error reset-password admin:', error.message);
+    res.status(500).json({ error: 'Error al resetear contraseña', detalle: error.message });
+  }
+});
+
+// Genera una contraseña temporal de 10 caracteres sin caracteres ambiguos (0/O, 1/l/I)
+function generarPasswordTemporal(): string {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  let out = '';
+  for (let i = 0; i < 10; i++) out += chars[randomInt(chars.length)];
+  return out;
+}
 
 // GET /api/admin/mi-perfil - Datos del admin logueado (incluye si es super_admin)
 router.get('/mi-perfil', async (req: AuthRequest, res: Response) => {

@@ -117,6 +117,8 @@ export default function AdminDashboard({ token, user, onLogout }: {
 
   // Permisos state
   const [admins, setAdmins] = useState<any[]>([]);
+  const [resetPwInfo, setResetPwInfo] = useState<{ nombre: string; email: string; password: string } | null>(null);
+  const [resetPwCopied, setResetPwCopied] = useState(false);
   const [miPerfil, setMiPerfil] = useState<any>(null);
   const [permisoSearch, setPermisoSearch] = useState('');
   const [permisoResultados, setPermisoResultados] = useState<any[]>([]);
@@ -928,6 +930,20 @@ export default function AdminDashboard({ token, user, onLogout }: {
       if (res.ok) {
         setPermisoMsg(data.mensaje);
         setPermisoSearch(''); setPermisoResultados([]);
+        fetchAdmins();
+      } else setPermisoMsg(data.error || 'Error');
+    } catch { setPermisoMsg('Error de conexion'); }
+  };
+
+  const handleResetPassword = async (beneficiarioId: string, nombre: string) => {
+    if (!confirm(`Generar una contraseña temporal para ${nombre}? La anterior dejará de funcionar.`)) return;
+    setPermisoMsg('');
+    try {
+      const res = await fetch(`${API_URL}/admin/admins/${beneficiarioId}/reset-password`, { method: 'POST', headers });
+      const data = await res.json();
+      if (res.ok) {
+        setResetPwCopied(false);
+        setResetPwInfo({ nombre: data.nombre, email: data.email, password: data.passwordTemporal });
         fetchAdmins();
       } else setPermisoMsg(data.error || 'Error');
     } catch { setPermisoMsg('Error de conexion'); }
@@ -1916,6 +1932,9 @@ export default function AdminDashboard({ token, user, onLogout }: {
                         {a.email} · {a.departamento || 'S/D'} · Desde {a.admin_desde ? new Date(a.admin_desde).toLocaleDateString('es-AR') : 'S/D'}
                       </p>
                     </div>
+                    {miPerfil?.esSuperAdmin && (
+                      <Button variant="ghost" size="sm" onClick={() => handleResetPassword(a.id, `${a.nombre} ${a.apellido}`)}>Resetear contraseña</Button>
+                    )}
                     {miPerfil?.esSuperAdmin && miPerfil?.email !== a.email && (
                       <Button variant="ghost" size="sm" onClick={() => handleRevocarAdmin(a.id, `${a.nombre} ${a.apellido}`)}>Revocar</Button>
                     )}
@@ -1924,6 +1943,41 @@ export default function AdminDashboard({ token, user, onLogout }: {
               </div>
             )}
           </Panel>
+
+          {/* Modal: contraseña temporal generada */}
+          {resetPwInfo && (
+            <div
+              onClick={() => setResetPwInfo(null)}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}
+            >
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 12, padding: 24, maxWidth: 420, width: '100%' }}
+              >
+                <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', marginBottom: 8 }}>Contraseña temporal generada</h3>
+                <p style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 16, lineHeight: 1.5 }}>
+                  Para <strong style={{ color: 'var(--text-1)' }}>{resetPwInfo.nombre}</strong> ({resetPwInfo.email}).
+                  Compartila de forma segura. Se le pedirá cambiarla en el primer ingreso.
+                </p>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}>
+                  <code style={{ flex: 1, background: 'var(--bg-canvas)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '12px 14px', fontSize: 18, letterSpacing: 1, color: 'var(--text-1)', fontFamily: 'monospace', textAlign: 'center' }}>
+                    {resetPwInfo.password}
+                  </code>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => { navigator.clipboard?.writeText(resetPwInfo.password); setResetPwCopied(true); }}
+                  >
+                    {resetPwCopied ? 'Copiado' : 'Copiar'}
+                  </Button>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 16 }}>
+                  ⚠️ Es la única vez que se muestra. Si la perdés, generá una nueva.
+                </p>
+                <Button variant="primary" size="sm" onClick={() => setResetPwInfo(null)} style={{ width: '100%' }}>Entendido</Button>
+              </div>
+            </div>
+          )}
         </PageSection>
       )}
 

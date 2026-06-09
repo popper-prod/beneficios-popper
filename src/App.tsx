@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import useAuth from './hooks/useAuth';
 import LoginScreen from './components/auth/LoginScreen';
+import ChangePasswordScreen from './components/auth/ChangePasswordScreen';
 import AdminDashboard from './pages/AdminDashboard';
 import QRPage from './pages/QRPage';
 
@@ -40,7 +41,7 @@ export default function App() {
 }
 
 function PrivateApp() {
-  const { isAuthenticated, user, token, loading, error, login, loginWithGoogle, logout } = useAuth();
+  const { isAuthenticated, user, token, loading, error, mustChangePassword, login, loginWithGoogle, cambiarPassword, logout } = useAuth();
 
   const handleLogin = async (username: string, password: string) => {
     const success = await login(username, password);
@@ -66,6 +67,10 @@ function PrivateApp() {
 
   if (!isAuthenticated || !token) {
     return <LoginScreen onLogin={handleLogin} onGoogleLogin={handleGoogleLogin} isLoading={loading} error={error} />;
+  }
+
+  if (mustChangePassword) {
+    return <ChangePasswordScreen onSubmit={cambiarPassword} onLogout={logout} />;
   }
 
   return <AdminDashboard token={token} user={user} onLogout={logout} />;

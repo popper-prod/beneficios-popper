@@ -19,6 +19,7 @@ export const useAuth = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   // Cargar sesión del localStorage al iniciar
   useEffect(() => {
@@ -35,6 +36,7 @@ export const useAuth = () => {
             token: parsed.token,
             expiresAt,
           });
+          setMustChangePassword(!!parsed.mustChangePassword);
         } else {
           localStorage.removeItem(AUTH_KEY);
         }
@@ -56,7 +58,8 @@ export const useAuth = () => {
       expiresAt,
     };
     setAuthState(newAuth);
-    localStorage.setItem(AUTH_KEY, JSON.stringify(newAuth));
+    setMustChangePassword(!!data.mustChangePassword);
+    localStorage.setItem(AUTH_KEY, JSON.stringify({ ...newAuth, mustChangePassword: !!data.mustChangePassword }));
   };
 
   // Función de login - conectar al backend (email + password)
@@ -118,6 +121,34 @@ export const useAuth = () => {
     }
   }, []);
 
+  // Cambiar la contraseña local del admin (cambio forzado tras reset o voluntario)
+  const cambiarPassword = useCallback(async (actual: string, nueva: string): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/auth/cambiar-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authState.token}`,
+        },
+        body: JSON.stringify({ actual, nueva }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'No se pudo cambiar la contraseña' };
+      }
+      setMustChangePassword(false);
+      const saved = localStorage.getItem(AUTH_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        parsed.mustChangePassword = false;
+        localStorage.setItem(AUTH_KEY, JSON.stringify(parsed));
+      }
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Error de conexión' };
+    }
+  }, [authState.token]);
+
   // Función de logout
   const logout = useCallback(() => {
     setAuthState({
@@ -128,6 +159,7 @@ export const useAuth = () => {
     });
     localStorage.removeItem(AUTH_KEY);
     setError(null);
+    setMustChangePassword(false);
   }, []);
 
   // Verificar si el usuario tiene un permiso específico
@@ -171,8 +203,10 @@ export const useAuth = () => {
     ...authState,
     loading,
     error,
+    mustChangePassword,
     login,
     loginWithGoogle,
+    cambiarPassword,
     logout,
     hasPermission,
     hasRole,

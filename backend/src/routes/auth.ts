@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { OAuth2Client } from 'google-auth-library';
 import { query } from '../db';
-import { generateToken, AuthRequest } from '../middleware/auth';
+import { generateToken, verifyToken, AuthRequest } from '../middleware/auth';
 import { validate } from '../middleware/validation';
 import { loginNaaloo } from '../services/naaloo';
 import { loginLimiter } from '../middleware/rateLimit';
@@ -26,11 +26,72 @@ const RegisterSchema = z.object({
   apellido: z.string().min(1, 'Apellido requerido'),
 });
 
+const CambiarPasswordSchema = z.object({
+  actual: z.string().min(1, 'Contraseña actual requerida'),
+  nueva: z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres'),
+});
+
+// Lazy migration: columnas para la contraseña local de admins (independiente de Naaloo).
+// Permite que un super-admin genere una contraseña propia del sistema para un admin
+// cuyo login por Naaloo no esté disponible.
+let adminPwColumnsReady = false;
+export async function ensureAdminPasswordColumns() {
+  if (adminPwColumnsReady) return;
+  await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)`);
+  await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE`);
+  await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS password_actualizada TIMESTAMP`);
+  adminPwColumnsReady = true;
+}
+
 // Login hibrido: intenta Naaloo (email+pass) primero, luego local (admin.popper fallback)
 router.post('/login', loginLimiter, validate(LoginSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { username, password } = req.body;
     const esEmail = username.includes('@');
+
+    // === FLUJO 0: CONTRASEÑA LOCAL DE ADMIN (independiente de Naaloo) ===
+    // Si el admin tiene una contraseña propia del sistema (generada por un
+    // super-admin), la validamos primero. Así puede entrar aunque el puente
+    // con Naaloo falle. Si no matchea, seguimos con Naaloo (puede usar su pass de Naaloo).
+    if (esEmail) {
+      await ensureAdminPasswordColumns();
+      const localRes = await query(
+        `SELECT id, dni, nombre, apellido, email, es_admin, rol_admin, password_hash, must_change_password
+         FROM beneficiarios
+         WHERE LOWER(email) = LOWER($1) AND activo = TRUE AND es_admin = TRUE AND password_hash IS NOT NULL
+         LIMIT 1`,
+        [username]
+      );
+      if (localRes.rows.length > 0) {
+        const benef = localRes.rows[0];
+        const validLocal = await bcrypt.compare(password, benef.password_hash);
+        if (validLocal) {
+          const rol = benef.rol_admin || 'admin';
+          const token = generateToken(benef.id, benef.email, rol);
+
+          await query(
+            `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por)
+             VALUES ($1, 'login_admin', $2, $3)`,
+            [benef.id, 'Login con contraseña local', benef.email]
+          ).catch(() => {});
+
+          return res.json({
+            token,
+            mustChangePassword: !!benef.must_change_password,
+            user: {
+              id: benef.id,
+              username: benef.email,
+              email: benef.email,
+              nombre: benef.nombre,
+              apellido: benef.apellido,
+              rol,
+              origen: 'local_admin',
+            },
+          });
+        }
+        // no matchea la local: continuamos con Naaloo por si usa su contraseña de Naaloo
+      }
+    }
 
     // === FLUJO 1: AUTH NAALOO (si parece email) ===
     if (esEmail) {
@@ -248,6 +309,54 @@ router.post('/register', validate(RegisterSchema), async (req: AuthRequest, res:
     });
   } catch (error) {
     console.error('Register error:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// ============================================
+// CAMBIAR CONTRASEÑA: el admin (logueado) setea su propia contraseña local.
+// Se usa en el cambio forzado tras un reset, y para cambios voluntarios.
+// ============================================
+router.post('/cambiar-password', verifyToken, validate(CambiarPasswordSchema), async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureAdminPasswordColumns();
+    const { actual, nueva } = req.body;
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'No autenticado' });
+    }
+
+    const result = await query(
+      `SELECT id, password_hash FROM beneficiarios
+       WHERE id = $1 AND es_admin = TRUE AND activo = TRUE LIMIT 1`,
+      [userId]
+    );
+    if (result.rows.length === 0 || !result.rows[0].password_hash) {
+      return res.status(400).json({ error: 'No hay una contraseña local para cambiar en esta cuenta.' });
+    }
+
+    const validActual = await bcrypt.compare(actual, result.rows[0].password_hash);
+    if (!validActual) {
+      return res.status(401).json({ error: 'La contraseña actual es incorrecta.' });
+    }
+
+    const nuevaHash = await bcrypt.hash(nueva, 12);
+    await query(
+      `UPDATE beneficiarios
+       SET password_hash = $1, must_change_password = FALSE, password_actualizada = NOW(), updated_at = NOW()
+       WHERE id = $2`,
+      [nuevaHash, userId]
+    );
+
+    await query(
+      `INSERT INTO autorizacion_logs (beneficiario_id, accion, motivo, autorizado_por)
+       VALUES ($1, 'cambio_password', 'Contraseña cambiada por el usuario', $2)`,
+      [userId, req.user?.username || 'usuario']
+    ).catch(() => {});
+
+    res.json({ exito: true, mensaje: 'Contraseña actualizada correctamente' });
+  } catch (error: any) {
+    console.error('Cambiar password error:', error?.message || error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
