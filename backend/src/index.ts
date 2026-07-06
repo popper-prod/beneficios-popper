@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { runSyncNaaloo } from './services/syncService';
+import { runSyncNaaloo, previewReconciliacionBajas } from './services/syncService';
 import cors from 'cors';
 import { config } from './config';
 import authRoutes from './routes/auth';
@@ -126,6 +126,22 @@ app.get('/api/internal/sync', (req: Request, res: Response) => {
       const ms = Date.now() - t0;
       console.error(`❌ Sync falló (${ms}ms): ${err.message}`);
     });
+});
+
+// DRY-RUN: previsualiza a quiénes daría de baja la reconciliación, SIN modificar nada.
+// Protegido por CRON_SECRET. Responde síncrono con el listado para revisión.
+app.get('/api/internal/sync/preview', async (req: Request, res: Response) => {
+  const secret = req.query.secret || req.headers['x-cron-secret'];
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || secret !== cronSecret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const preview = await previewReconciliacionBajas();
+    res.json(preview);
+  } catch (err: any) {
+    res.status(502).json({ error: 'Error generando preview', detalle: err.message });
+  }
 });
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {

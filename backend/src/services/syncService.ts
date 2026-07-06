@@ -333,3 +333,71 @@ export async function runSyncNaaloo(adminNombre: string = 'Cron'): Promise<SyncR
     detalles: acumulado.detalles,
   };
 }
+
+// Recolecta el set de DNIs activos del feed de Naaloo (roster completo; ignora paginación).
+async function recolectarDnisActivosNaaloo(): Promise<Set<string>> {
+  const dnisVistos = new Set<string>();
+  const LIMIT = 2000;
+  const MAX_PAGES = 10;
+  let page = 1;
+  while (page <= MAX_PAGES) {
+    let batch: any[];
+    try {
+      batch = await fetchPaginaNaaloo(page, LIMIT);
+    } catch {
+      break;
+    }
+    if (batch.length === 0) break;
+    const nuevos = batch.filter((e) => e.dni && !dnisVistos.has(e.dni));
+    for (const e of nuevos) dnisVistos.add(e.dni);
+    if (nuevos.length === 0 || batch.length < LIMIT) break;
+    page++;
+  }
+  return dnisVistos;
+}
+
+export interface ReconciliacionPreview {
+  totalNaalooActivos: number;
+  localActivos: number;
+  totalCandidatos: number;
+  reconciliacionOmitida: boolean;
+  candidatos: { dni: string; nombre: string; apellido: string; fecha_ingreso: string | null; ultima_sync: string | null }[];
+}
+
+// DRY-RUN: calcula a quiénes daría de baja la reconciliación SIN modificar nada.
+// Sirve para revisar el listado antes de ejecutar el sync real.
+export async function previewReconciliacionBajas(): Promise<ReconciliacionPreview> {
+  const dnisVistos = await recolectarDnisActivosNaaloo();
+  if (dnisVistos.size === 0) {
+    throw new Error('No se pudo conectar con Naaloo o no hay empleados');
+  }
+
+  // Mismos criterios que la reconciliación real: activos, origen Naaloo, NO admin.
+  const localRes = await query(
+    `SELECT id, dni, nombre, apellido, fecha_ingreso, ultima_sync
+       FROM beneficiarios
+      WHERE activo = TRUE
+        AND (origen = 'naaloo' OR naaloo_id IS NOT NULL)
+        AND (es_admin IS NULL OR es_admin = FALSE)`
+  );
+
+  const localActivos = localRes.rows.length;
+  const candidatos = localRes.rows.filter((r) => !dnisVistos.has(r.dni));
+
+  const minRatio = parseFloat(process.env.SYNC_FEED_MIN_RATIO || '0.5');
+  const reconciliacionOmitida = candidatos.length > 0 && dnisVistos.size < Math.floor(localActivos * minRatio);
+
+  return {
+    totalNaalooActivos: dnisVistos.size,
+    localActivos,
+    totalCandidatos: candidatos.length,
+    reconciliacionOmitida,
+    candidatos: candidatos.map((r) => ({
+      dni: r.dni,
+      nombre: r.nombre,
+      apellido: r.apellido,
+      fecha_ingreso: r.fecha_ingreso,
+      ultima_sync: r.ultima_sync,
+    })),
+  };
+}

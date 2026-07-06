@@ -9,7 +9,7 @@
 // El moduleNameMapper de jest.config redirige `../db` (usado por syncService) a este
 // mismo mock, así que importándolo directo pinchamos la instancia que usa el sync.
 import { query } from '../src/__mocks__/db';
-import { runSyncNaaloo } from '../src/services/syncService';
+import { runSyncNaaloo, previewReconciliacionBajas } from '../src/services/syncService';
 
 const mockQuery = query as jest.Mock;
 
@@ -137,5 +137,37 @@ describe('runSyncNaaloo — reconciliación de bajas', () => {
     const bajas = queriesMatching(/UPDATE beneficiarios SET activo=FALSE.*reconciliaci/i);
     // Si hubo baja, que jamás incluya al admin
     for (const call of bajas) expect(call[1]).not.toContain('id-admin');
+  });
+});
+
+describe('previewReconciliacionBajas — dry-run', () => {
+  function setupPreview(feed: any[], previewRows: any[]) {
+    mockQuery.mockImplementation((sql: string) => {
+      if (typeof sql === 'string' && sql.includes('nombre, apellido, fecha_ingreso, ultima_sync')) {
+        return Promise.resolve({ rows: previewRows });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    (global as any).fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ data: feed }) });
+  }
+
+  test('lista los candidatos ausentes del feed SIN ejecutar ninguna baja', async () => {
+    const feed = [empNaaloo('111'), empNaaloo('222')];
+    const previewRows = [
+      { id: 'id-111', dni: '111', nombre: 'Ana', apellido: 'Uno', fecha_ingreso: null, ultima_sync: null },
+      { id: 'id-222', dni: '222', nombre: 'Beto', apellido: 'Dos', fecha_ingreso: null, ultima_sync: null },
+      { id: 'id-333', dni: '333', nombre: 'Alfonsina', apellido: 'Pirovano', fecha_ingreso: null, ultima_sync: null },
+    ];
+    setupPreview(feed, previewRows);
+
+    const r = await previewReconciliacionBajas();
+
+    expect(r.totalNaalooActivos).toBe(2);
+    expect(r.localActivos).toBe(3);
+    expect(r.totalCandidatos).toBe(1);
+    expect(r.candidatos.map((c) => c.dni)).toEqual(['333']);
+    expect(r.reconciliacionOmitida).toBe(false);
+    // dry-run: no debe tocar la base
+    expect(queriesMatching(/UPDATE|DELETE|INSERT/i)).toHaveLength(0);
   });
 });
