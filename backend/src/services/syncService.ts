@@ -9,6 +9,8 @@ export interface SyncResumen {
   altas: number;
   reactivados: number;
   bajas: number;
+  bajasReconciliadas: number;
+  reconciliacionOmitida: boolean;
   actualizados: number;
   sinCambios: number;
 }
@@ -19,7 +21,7 @@ export interface SyncResult {
   detalles: { dni: string; nombre: string; accion: string }[];
 }
 
-type LocalRow = { id: string; activo: boolean; naaloo_id: number | null };
+type LocalRow = { id: string; dni: string; activo: boolean; naaloo_id: number | null; origen: string | null };
 type BenRow = {
   dni: string; nombre: string; apellido: string;
   email: string | null; telefono: string | null;
@@ -112,7 +114,7 @@ async function procesarBatch(
     for (const r of insertRes.rows) {
       acumulado.altaIds.push(r.id);
       // Actualizar localMap para que en próximas páginas no se duplique si aparece de nuevo
-      localMap.set(r.dni, { id: r.id, activo: true, naaloo_id: null });
+      localMap.set(r.dni, { id: r.id, dni: r.dni, activo: true, naaloo_id: null, origen: 'naaloo' });
     }
     acumulado.altas += toInsert.length;
   }
@@ -185,7 +187,7 @@ export async function runSyncNaaloo(adminNombre: string = 'Cron'): Promise<SyncR
   await ensureFotoColumn();
 
   // 1. Cargar estado local en memoria
-  const localResult = await query('SELECT id, dni, activo, naaloo_id FROM beneficiarios');
+  const localResult = await query('SELECT id, dni, activo, naaloo_id, origen FROM beneficiarios');
   const localMap = new Map<string, LocalRow>();
   for (const row of localResult.rows) localMap.set(row.dni, row);
 
@@ -238,6 +240,55 @@ export async function runSyncNaaloo(adminNombre: string = 'Cron'): Promise<SyncR
     throw new Error('No se pudo conectar con Naaloo o no hay empleados');
   }
 
+  // 3b. RECONCILIACIÓN DE BAJAS
+  // El endpoint /personal/ de Naaloo devuelve SOLO empleados activos y el roster
+  // completo (ignora la paginación). Por lo tanto, un beneficiario local activo de
+  // origen Naaloo cuyo DNI NO apareció en el feed = fue dado de baja en Naaloo.
+  // (La rama `!emp.activo` de procesarBatch nunca se dispara porque Naaloo jamás
+  // devuelve inactivos; esta reconciliación es la que realmente propaga las bajas.)
+  const candidatosBaja: string[] = [];
+  let localActivosNaaloo = 0;
+  for (const row of localMap.values()) {
+    const esNaaloo = row.origen === 'naaloo' || row.naaloo_id != null;
+    if (row.activo && esNaaloo) {
+      localActivosNaaloo++;
+      if (!dnisVistos.has(row.dni)) candidatosBaja.push(row.id);
+    }
+  }
+
+  let bajasReconciliadas = 0;
+  let reconciliacionOmitida = false;
+  if (candidatosBaja.length > 0) {
+    // Salvaguarda: un sync sano da de baja unos pocos por vez. Si el feed de Naaloo
+    // vino parcial (outage / respuesta truncada), una baja masiva sería un falso
+    // positivo, así que la omitimos y alertamos para revisión manual.
+    const umbral = Math.max(20, Math.ceil(localActivosNaaloo * 0.15));
+    if (candidatosBaja.length > umbral) {
+      reconciliacionOmitida = true;
+      console.error(
+        `⚠️ Reconciliación OMITIDA: ${candidatosBaja.length} bajas candidatas superan el umbral (${umbral}). ` +
+        `Posible respuesta parcial de Naaloo (activos en feed: ${dnisVistos.size}, locales activos: ${localActivosNaaloo}). Revisar manualmente.`
+      );
+    } else {
+      const CHUNK = 200;
+      for (let i = 0; i < candidatosBaja.length; i += CHUNK) {
+        const slice = candidatosBaja.slice(i, i + CHUNK);
+        const ph = slice.map((_, j) => `$${j + 1}`).join(',');
+        await query(
+          `UPDATE beneficiarios SET activo=FALSE,motivo_baja='Baja detectada por reconciliación (ausente en Naaloo)',fecha_baja=NOW(),autorizado_por='Sync Naaloo',ultima_sync=NOW(),updated_at=NOW()
+           WHERE id IN (${ph})`,
+          slice
+        );
+        await query(
+          `UPDATE familiares SET activo=FALSE,updated_at=NOW() WHERE beneficiario_id IN (${ph}) AND activo=TRUE`,
+          slice
+        ).catch(() => {});
+      }
+      bajasReconciliadas = candidatosBaja.length;
+      acumulado.bajaIds.push(...candidatosBaja);
+    }
+  }
+
   // 4. Logs en batch
   const logRows = [
     ...acumulado.altaIds.map(id => [id, 'sync_alta', 'Alta automatica desde Naaloo', adminNombre]),
@@ -266,6 +317,8 @@ export async function runSyncNaaloo(adminNombre: string = 'Cron'): Promise<SyncR
       altas: acumulado.altas,
       reactivados: acumulado.reactivados,
       bajas: acumulado.bajas,
+      bajasReconciliadas,
+      reconciliacionOmitida,
       actualizados: acumulado.actualizados,
       sinCambios: totalNaaloo - acumulado.altas - acumulado.reactivados - acumulado.bajas - acumulado.actualizados,
     },

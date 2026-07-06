@@ -119,7 +119,8 @@ app.get('/api/internal/sync', (req: Request, res: Response) => {
     .then((result) => {
       const ms = Date.now() - t0;
       const r = result.resumen;
-      console.log(`✅ Sync OK (${ms}ms) — total:${r.totalNaaloo} altas:${r.altas} bajas:${r.bajas} reactivados:${r.reactivados} actualizados:${r.actualizados}`);
+      const reconMsg = r.reconciliacionOmitida ? ' (reconciliación OMITIDA por salvaguarda)' : '';
+      console.log(`✅ Sync OK (${ms}ms) — total:${r.totalNaaloo} altas:${r.altas} bajas:${r.bajas} bajasRecon:${r.bajasReconciliadas} reactivados:${r.reactivados} actualizados:${r.actualizados}${reconMsg}`);
     })
     .catch((err: any) => {
       const ms = Date.now() - t0;
@@ -222,8 +223,8 @@ app.listen(config.port, () => {
     setInterval(async () => {
       try {
         const result = await runSyncNaaloo('Cron interno');
-        const { altas, bajas, actualizados } = result.resumen;
-        console.log(`🔄 Auto-sync Naaloo: ${altas} altas, ${bajas} bajas, ${actualizados} actualizados — ${new Date().toISOString()}`);
+        const { altas, bajas, bajasReconciliadas, actualizados } = result.resumen;
+        console.log(`🔄 Auto-sync Naaloo: ${altas} altas, ${bajas + bajasReconciliadas} bajas, ${actualizados} actualizados — ${new Date().toISOString()}`);
       } catch (err: any) {
         console.log(`⚠️ Auto-sync Naaloo falló: ${err.message} — ${new Date().toISOString()}`);
       }
