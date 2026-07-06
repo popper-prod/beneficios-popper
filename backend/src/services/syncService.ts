@@ -21,7 +21,7 @@ export interface SyncResult {
   detalles: { dni: string; nombre: string; accion: string }[];
 }
 
-type LocalRow = { id: string; dni: string; activo: boolean; naaloo_id: number | null; origen: string | null };
+type LocalRow = { id: string; dni: string; activo: boolean; naaloo_id: number | null; origen: string | null; es_admin: boolean | null };
 type BenRow = {
   dni: string; nombre: string; apellido: string;
   email: string | null; telefono: string | null;
@@ -114,7 +114,7 @@ async function procesarBatch(
     for (const r of insertRes.rows) {
       acumulado.altaIds.push(r.id);
       // Actualizar localMap para que en próximas páginas no se duplique si aparece de nuevo
-      localMap.set(r.dni, { id: r.id, dni: r.dni, activo: true, naaloo_id: null, origen: 'naaloo' });
+      localMap.set(r.dni, { id: r.id, dni: r.dni, activo: true, naaloo_id: null, origen: 'naaloo', es_admin: false });
     }
     acumulado.altas += toInsert.length;
   }
@@ -187,7 +187,7 @@ export async function runSyncNaaloo(adminNombre: string = 'Cron'): Promise<SyncR
   await ensureFotoColumn();
 
   // 1. Cargar estado local en memoria
-  const localResult = await query('SELECT id, dni, activo, naaloo_id, origen FROM beneficiarios');
+  const localResult = await query('SELECT id, dni, activo, naaloo_id, origen, es_admin FROM beneficiarios');
   const localMap = new Map<string, LocalRow>();
   for (const row of localResult.rows) localMap.set(row.dni, row);
 
@@ -246,11 +246,14 @@ export async function runSyncNaaloo(adminNombre: string = 'Cron'): Promise<SyncR
   // origen Naaloo cuyo DNI NO apareció en el feed = fue dado de baja en Naaloo.
   // (La rama `!emp.activo` de procesarBatch nunca se dispara porque Naaloo jamás
   // devuelve inactivos; esta reconciliación es la que realmente propaga las bajas.)
+  // Los admins quedan EXCLUÍDOS de la reconciliación: pueden ser super-admins externos
+  // (ej. staff de Recluta) que no figuran en el roster de empleados de Naaloo, y no
+  // queremos desactivarlos por ausencia. Sus permisos se gestionan aparte.
   const candidatosBaja: string[] = [];
   let localActivosNaaloo = 0;
   for (const row of localMap.values()) {
     const esNaaloo = row.origen === 'naaloo' || row.naaloo_id != null;
-    if (row.activo && esNaaloo) {
+    if (row.activo && esNaaloo && !row.es_admin) {
       localActivosNaaloo++;
       if (!dnisVistos.has(row.dni)) candidatosBaja.push(row.id);
     }
@@ -259,15 +262,20 @@ export async function runSyncNaaloo(adminNombre: string = 'Cron'): Promise<SyncR
   let bajasReconciliadas = 0;
   let reconciliacionOmitida = false;
   if (candidatosBaja.length > 0) {
-    // Salvaguarda: un sync sano da de baja unos pocos por vez. Si el feed de Naaloo
-    // vino parcial (outage / respuesta truncada), una baja masiva sería un falso
-    // positivo, así que la omitimos y alertamos para revisión manual.
-    const umbral = Math.max(20, Math.ceil(localActivosNaaloo * 0.15));
-    if (candidatosBaja.length > umbral) {
+    // Salvaguarda anti-outage basada en la COMPLETITUD del feed. El endpoint /personal/
+    // de Naaloo devuelve el roster completo de activos, así que su tamaño debería ser del
+    // mismo orden que los activos locales. Si volviera con muchos menos (outage / respuesta
+    // parcial), reconciliar por ausencia sería un falso positivo masivo: en ese caso
+    // omitimos y alertamos. Un backlog grande legítimo (feed completo pero muchas bajas
+    // acumuladas) SÍ se procesa. Ratio configurable vía SYNC_FEED_MIN_RATIO (default 0.5).
+    const minRatio = parseFloat(process.env.SYNC_FEED_MIN_RATIO || '0.5');
+    const feedMinimo = Math.floor(localActivosNaaloo * minRatio);
+    if (dnisVistos.size < feedMinimo) {
       reconciliacionOmitida = true;
       console.error(
-        `⚠️ Reconciliación OMITIDA: ${candidatosBaja.length} bajas candidatas superan el umbral (${umbral}). ` +
-        `Posible respuesta parcial de Naaloo (activos en feed: ${dnisVistos.size}, locales activos: ${localActivosNaaloo}). Revisar manualmente.`
+        `⚠️ Reconciliación OMITIDA: el feed de Naaloo trajo ${dnisVistos.size} activos, por debajo ` +
+        `del mínimo esperado (${feedMinimo} = ${minRatio}×${localActivosNaaloo} locales). Posible respuesta ` +
+        `parcial de Naaloo. ${candidatosBaja.length} bajas candidatas sin aplicar. Revisar manualmente.`
       );
     } else {
       const CHUNK = 200;

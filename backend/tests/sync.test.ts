@@ -37,7 +37,7 @@ function local(id: string, dni: string, extra: Record<string, any> = {}) {
 
 // Configura los mocks de query (localMap) y fetch (feed de Naaloo)
 function setup(feed: any[], localRows: any[]) {
-  const SELECT_LOCAL = 'SELECT id, dni, activo, naaloo_id, origen FROM beneficiarios';
+  const SELECT_LOCAL = 'SELECT id, dni, activo, naaloo_id, origen, es_admin FROM beneficiarios';
   mockQuery.mockImplementation((sql: string) => {
     if (typeof sql === 'string' && sql.includes(SELECT_LOCAL)) {
       return Promise.resolve({ rows: localRows });
@@ -94,9 +94,9 @@ describe('runSyncNaaloo — reconciliación de bajas', () => {
     expect(queriesMatching(/UPDATE beneficiarios SET activo=FALSE.*reconciliaci/i)).toHaveLength(0);
   });
 
-  test('SALVAGUARDA: omite la reconciliación si las bajas candidatas superan el umbral (feed parcial)', async () => {
-    // Feed trae solo 1 activo, pero localmente hay 30 activos → 29 candidatos a baja.
-    // umbral = max(20, ceil(30*0.15)=5) = 20. 29 > 20 → se omite y NO se da de baja a nadie.
+  test('SALVAGUARDA: omite la reconciliación si el feed vino sospechosamente incompleto', async () => {
+    // Feed trae solo 1 activo, pero localmente hay 30 activos → el feed está muy por
+    // debajo del mínimo esperado (0.5×30 = 15). 1 < 15 → posible outage → se omite.
     const feed = [empNaaloo('1')];
     const localRows = Array.from({ length: 30 }, (_, i) => local(`id-${i}`, String(i)));
     // aseguremos que el dni '1' del feed exista localmente para que sea un match real
@@ -108,5 +108,34 @@ describe('runSyncNaaloo — reconciliación de bajas', () => {
     expect(result.resumen.reconciliacionOmitida).toBe(true);
     expect(result.resumen.bajasReconciliadas).toBe(0);
     expect(queriesMatching(/UPDATE beneficiarios SET activo=FALSE.*reconciliaci/i)).toHaveLength(0);
+  });
+
+  test('procesa un backlog grande legítimo cuando el feed está completo', async () => {
+    // Feed completo con 60 activos; localmente hay 100 activos → 40 bajas acumuladas.
+    // 60 >= 0.5×100 = 50 → el feed es plausible → se reconcilian las 40.
+    const feed = Array.from({ length: 60 }, (_, i) => empNaaloo(String(i)));
+    const localRows = Array.from({ length: 100 }, (_, i) => local(`id-${i}`, String(i)));
+    setup(feed, localRows);
+
+    const result = await runSyncNaaloo('Test');
+
+    expect(result.resumen.reconciliacionOmitida).toBe(false);
+    expect(result.resumen.bajasReconciliadas).toBe(40);
+  });
+
+  test('NUNCA da de baja a un admin, aunque no esté en el feed de Naaloo', async () => {
+    const feed = [empNaaloo('111')];
+    const localRows = [
+      local('id-111', '111'),
+      local('id-admin', '28348057', { es_admin: true }), // super-admin ausente del feed
+    ];
+    setup(feed, localRows);
+
+    const result = await runSyncNaaloo('Test');
+
+    expect(result.resumen.bajasReconciliadas).toBe(0);
+    const bajas = queriesMatching(/UPDATE beneficiarios SET activo=FALSE.*reconciliaci/i);
+    // Si hubo baja, que jamás incluya al admin
+    for (const call of bajas) expect(call[1]).not.toContain('id-admin');
   });
 });
