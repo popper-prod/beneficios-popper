@@ -144,6 +144,22 @@ app.get('/api/internal/sync/preview', async (req: Request, res: Response) => {
   }
 });
 
+// SÍNCRONO: corre el sync y DEVUELVE el resultado o el error real (con stack).
+// Protegido por CRON_SECRET. Sirve para ejecutar/diagnosticar viendo la respuesta.
+app.get('/api/internal/sync/run', async (req: Request, res: Response) => {
+  const secret = req.query.secret || req.headers['x-cron-secret'];
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || secret !== cronSecret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const result = await runSyncNaaloo('Manual');
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || String(err), stack: err?.stack });
+  }
+});
+
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('❌ Error:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
