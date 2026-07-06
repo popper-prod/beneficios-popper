@@ -9,6 +9,20 @@ const router = Router();
 // Rate limiting global para todos los endpoints públicos
 router.use(publicLimiter);
 
+// Migración lazy idempotente: `verificaciones.beneficiario_dni` era VARCHAR(8), que
+// desborda con DNIs de extranjeros/CUIT (>8 chars) y hace fallar el INSERT del canje
+// ("value too long for type character varying(8)"). Lo ensanchamos a VARCHAR(20).
+let verifDniEnsured = false;
+async function ensureVerifDniWidth() {
+  if (verifDniEnsured) return;
+  try {
+    await query(`ALTER TABLE verificaciones ALTER COLUMN beneficiario_dni TYPE VARCHAR(20)`);
+    verifDniEnsured = true;
+  } catch (e: any) {
+    console.error(`ensureVerifDniWidth: no se pudo ensanchar beneficiario_dni — ${e.message}`);
+  }
+}
+
 // GET /api/public/comercio/:qrCode - Info del comercio por QR code
 router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
   try {
@@ -460,6 +474,7 @@ router.post('/verificar-pin', async (req: Request, res: Response) => {
 // V3E: si override_limite=true, requiere pin_responsable del comercio
 router.post('/canjear', canjearLimiter, async (req: Request, res: Response) => {
   try {
+    await ensureVerifDniWidth();
     const { dni, beneficio_id, comercio_id, monto, override_limite, pin_responsable, retirado_por_dni, invitados_count } = req.body;
     const montoNum = monto != null ? parseFloat(String(monto)) : null;
 

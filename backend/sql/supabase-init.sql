@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
 -- Tabla de Beneficiarios
 CREATE TABLE IF NOT EXISTS beneficiarios (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  dni VARCHAR(8) UNIQUE NOT NULL,
+  dni VARCHAR(20) UNIQUE NOT NULL,
   nombre VARCHAR(100) NOT NULL,
   apellido VARCHAR(100) NOT NULL,
   email VARCHAR(100),
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS comercios (
 CREATE TABLE IF NOT EXISTS verificaciones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   beneficiario_id UUID NOT NULL REFERENCES beneficiarios(id),
-  beneficiario_dni VARCHAR(8),
+  beneficiario_dni VARCHAR(20),
   beneficiario_nombre VARCHAR(100),
   beneficio_id UUID NOT NULL REFERENCES beneficios(id),
   beneficio_nombre VARCHAR(100),

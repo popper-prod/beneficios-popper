@@ -46,6 +46,13 @@ async function ensureFotoColumn() {
   } catch (e: any) {
     console.error(`ensureFotoColumn: no se pudo ensanchar dni — ${e.message}`);
   }
+  // Mismo problema en verificaciones.beneficiario_dni (rompería el INSERT del canje de
+  // un empleado extranjero). Lo ensanchamos proactivamente acá también. Idempotente.
+  try {
+    await query(`ALTER TABLE verificaciones ALTER COLUMN beneficiario_dni TYPE VARCHAR(20)`);
+  } catch (e: any) {
+    console.error(`ensureFotoColumn: no se pudo ensanchar verificaciones.beneficiario_dni — ${e.message}`);
+  }
   schemaEnsured = true;
 }
 
