@@ -31,14 +31,22 @@ type BenRow = {
   foto: string | null;
 };
 
-// Lazy migration: asegurar columna `foto` en beneficiarios (idempotente)
-let fotoColumnEnsured = false;
+// Lazy migration idempotente: columna `foto` + ensanche de `dni`.
+let schemaEnsured = false;
 async function ensureFotoColumn() {
-  if (fotoColumnEnsured) return;
+  if (schemaEnsured) return;
   try {
     await query(`ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS foto TEXT`);
-    fotoColumnEnsured = true;
   } catch { /* silencioso */ }
+  // `dni` era VARCHAR(8): Naaloo incluye extranjeros/CUIT con identificadores de
+  // más de 8 caracteres, cuyo INSERT ("value too long for type character varying(8)")
+  // abortaba TODO el sync. Lo ensanchamos a VARCHAR(20). Idempotente.
+  try {
+    await query(`ALTER TABLE beneficiarios ALTER COLUMN dni TYPE VARCHAR(20)`);
+  } catch (e: any) {
+    console.error(`ensureFotoColumn: no se pudo ensanchar dni — ${e.message}`);
+  }
+  schemaEnsured = true;
 }
 
 async function fetchPaginaNaaloo(page: number, limit: number): Promise<any[]> {
