@@ -8,6 +8,21 @@ import { MapPin, Clock, ChevronRight, Check, AlertCircle, ArrowLeft, RotateCw, C
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://beneficios-backend-jfpx.onrender.com/api';
 
+// Hook responsive: true en pantallas de escritorio (≥ 768px). En celular queda false.
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 768px)').matches : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener('change', handler);
+    setIsDesktop(mq.matches);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isDesktop;
+}
+
 interface Comercio {
   id: string;
   nombre: string;
@@ -89,6 +104,7 @@ type Step = 'loading' | 'identify' | 'profile' | 'confirm' | 'success' | 'error'
 const CARD_GRADIENT = 'linear-gradient(160deg, #0d1f35 0%, #162944 45%, #1a3352 55%, #0d1f35 100%)';
 
 export default function QRPage({ qrCode }: { qrCode: string }) {
+  const isDesktop = useIsDesktop();
   const [step, setStep] = useState<Step>('loading');
   const [comercio, setComercio] = useState<Comercio | null>(null);
   const [beneficiario, setBeneficiario] = useState<Beneficiario | null>(null);
@@ -333,7 +349,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
           padding: '24px 16px',
         }}
       >
-        <div style={{ width: '100%', maxWidth: 480, animation: 'fadeInUp 280ms var(--ease-out)' }}>
+        <div style={{ width: '100%', maxWidth: step === 'profile' && isDesktop ? 940 : 480, animation: 'fadeInUp 280ms var(--ease-out)', transition: 'max-width 200ms var(--ease-out)' }}>
           {step === 'loading' && <LoadingState />}
           {step === 'error' && <ErrorState message={errorMsg} />}
 
@@ -708,6 +724,7 @@ function ProfileStep({
   onCanjear: () => void;
   onReset: () => void;
 }) {
+  const isDesktop = useIsDesktop();
   const selectedBen = beneficios.find(b => b.id === selectedBenefit);
   const descuento = selectedBen?.descuento ? Number(selectedBen.descuento) : 0;
   // Se pide el monto cuando hay un descuento porcentual parcial (entre 1% y 99%):
@@ -721,12 +738,20 @@ function ProfileStep({
   const montoExcedeSaldo = necesitaMonto && montoNum > 0 && saldoDisponible !== Infinity && montoNum > saldoDisponible;
 
   return (
-    <div>
+    <div
+      style={{
+        display: isDesktop ? 'grid' : 'block',
+        gridTemplateColumns: isDesktop ? '340px minmax(0, 1fr)' : undefined,
+        gap: isDesktop ? 28 : undefined,
+        alignItems: 'start',
+      }}
+    >
       {/* ===== Membership Card ===== */}
       <div
         style={{
           position: 'relative',
-          padding: '20px',
+          padding: isDesktop ? '24px' : '20px',
+          ...(isDesktop ? { position: 'sticky', top: 24 } : null),
           background: CARD_GRADIENT,
           borderRadius: '16px',
           marginBottom: 24,
@@ -745,7 +770,7 @@ function ProfileStep({
           }}
         />
 
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ position: 'relative', display: 'flex', flexDirection: isDesktop ? 'column' : 'row', alignItems: isDesktop ? 'flex-start' : 'center', gap: isDesktop ? 18 : 16 }}>
           {/* Foto */}
           <div
             style={{
@@ -758,30 +783,32 @@ function ProfileStep({
                 src={beneficiario.foto}
                 alt={`${beneficiario.nombre} ${beneficiario.apellido}`}
                 style={{
-                  width: 72,
-                  height: 72,
+                  width: isDesktop ? 132 : 72,
+                  height: isDesktop ? 132 : 72,
                   borderRadius: '50%',
                   objectFit: 'cover',
-                  border: '3px solid rgba(255,255,255,0.25)',
+                  border: isDesktop ? '4px solid rgba(255,255,255,0.28)' : '3px solid rgba(255,255,255,0.25)',
                   background: 'rgba(0,0,0,0.2)',
+                  boxShadow: isDesktop ? '0 6px 20px rgba(0,0,0,0.35)' : 'none',
                 }}
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
             ) : (
               <div
                 style={{
-                  width: 72,
-                  height: 72,
+                  width: isDesktop ? 132 : 72,
+                  height: isDesktop ? 132 : 72,
                   borderRadius: '50%',
                   background: 'rgba(255,255,255,0.15)',
-                  border: '3px solid rgba(255,255,255,0.25)',
+                  border: isDesktop ? '4px solid rgba(255,255,255,0.28)' : '3px solid rgba(255,255,255,0.25)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '24px',
+                  fontSize: isDesktop ? '42px' : '24px',
                   fontWeight: 600,
                   color: 'rgba(255,255,255,0.9)',
                   letterSpacing: '-0.02em',
+                  boxShadow: isDesktop ? '0 6px 20px rgba(0,0,0,0.35)' : 'none',
                 }}
               >
                 {beneficiario.nombre[0]}{beneficiario.apellido[0]}
@@ -930,6 +957,8 @@ function ProfileStep({
         </div>
       </div>
 
+      {/* ===== Columna derecha (desktop) — beneficios + acciones ===== */}
+      <div style={{ minWidth: 0 }}>
       {/* ===== Beneficios ===== */}
       <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h3 style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-1)' }}>
@@ -1307,6 +1336,7 @@ function ProfileStep({
             'Canjear beneficio'
           )}
         </button>
+      </div>
       </div>
     </div>
   );
