@@ -71,6 +71,21 @@ function relacionLabel(relacion: string): string {
   }
 }
 
+// Combina departamento y sector sin repetir el mismo valor (ej. "RRHH · RRHH" → "RRHH")
+function formatArea(departamento?: string | null, sector?: string | null): string {
+  const vistos = new Set<string>();
+  return [departamento, sector]
+    .map(p => (p || '').trim())
+    .filter(p => {
+      if (!p) return false;
+      const k = p.toLowerCase();
+      if (vistos.has(k)) return false;
+      vistos.add(k);
+      return true;
+    })
+    .join(' · ');
+}
+
 interface Beneficio {
   id: string;
   nombre: string;
@@ -881,8 +896,10 @@ function ProfileStep({
             </h2>
             {familiarInfo && (() => {
               const titFoto = familiarInfo.titular.foto ?? beneficiario.foto;
-              const titDepto = familiarInfo.titular.departamento ?? beneficiario.departamento;
-              const titSector = familiarInfo.titular.sector ?? beneficiario.sector;
+              const titArea = formatArea(
+                familiarInfo.titular.departamento ?? beneficiario.departamento,
+                familiarInfo.titular.sector ?? beneficiario.sector,
+              );
               return (
               <div style={{
                 marginTop: 10,
@@ -930,12 +947,12 @@ function ProfileStep({
                   }}>
                     {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
                   </p>
-                  {titDepto && (
+                  {titArea && (
                     <p style={{
                       fontSize: '11.5px', fontWeight: 500, color: 'rgba(255,255,255,0.8)',
                       lineHeight: 1.2, marginTop: 2, textShadow: '0 1px 2px rgba(0,0,0,0.35)',
                     }}>
-                      {titDepto}{titSector ? ` · ${titSector}` : ''}
+                      {titArea}
                     </p>
                   )}
                 </div>
@@ -1639,8 +1656,10 @@ function ConfirmStep({
         </p>
         {familiarInfo && (() => {
           const titFoto = familiarInfo.titular.foto ?? beneficiario.foto;
-          const titDepto = familiarInfo.titular.departamento ?? beneficiario.departamento;
-          const titSector = familiarInfo.titular.sector ?? beneficiario.sector;
+          const titArea = formatArea(
+            familiarInfo.titular.departamento ?? beneficiario.departamento,
+            familiarInfo.titular.sector ?? beneficiario.sector,
+          );
           return (
           <div style={{
             marginTop: 12, padding: '10px 12px', maxWidth: 340,
@@ -1680,9 +1699,9 @@ function ConfirmStep({
                 {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
-                {titDepto && (
+                {titArea && (
                   <span style={{ fontSize: '11.5px', color: 'var(--text-2)' }}>
-                    {titDepto}{titSector ? ` · ${titSector}` : ''}
+                    {titArea}
                   </span>
                 )}
                 {familiarInfo.edad != null && (
