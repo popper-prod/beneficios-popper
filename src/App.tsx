@@ -4,6 +4,7 @@ import LoginScreen from './components/auth/LoginScreen';
 import ChangePasswordScreen from './components/auth/ChangePasswordScreen';
 import AdminDashboard from './pages/AdminDashboard';
 import QRPage from './pages/QRPage';
+import TVPage from './pages/TVPage';
 
 // Simple hash router
 function useHashRoute() {
@@ -34,6 +35,12 @@ export default function App() {
   const qrMatch = hash.match(/^#\/qr\/(.+)$/);
   if (qrMatch) {
     return <QRPage qrCode={decodeURIComponent(qrMatch[1])} />;
+  }
+
+  // Modo vitrina (plasmas): #/tv/CODIGO_QR (comercio) o #/tv (cartelera general oficinas)
+  const tvMatch = hash.match(/^#\/tv(?:\/(.+))?$/);
+  if (tvMatch) {
+    return <TVPage qrCode={tvMatch[1] ? decodeURIComponent(tvMatch[1]) : null} />;
   }
 
   // Ruta privada: login + admin

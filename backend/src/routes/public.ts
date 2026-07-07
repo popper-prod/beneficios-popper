@@ -49,6 +49,122 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
   }
 });
 
+// ============================================
+// MODO VITRINA (TV) — para plasmas en comercios y oficinas.
+// Solo catálogo público: nombres de beneficios, descuentos y comercios.
+// NUNCA datos personales de beneficiarios.
+// ============================================
+
+// % máximo alcanzable de un beneficio (para mostrar "Hasta X%" en cartelera).
+// Recorre la escala de descuentos si existe; si no, usa el % base.
+function descuentoMaximo(b: any): number | null {
+  let max = b.descuento != null ? Number(b.descuento) : null;
+  const esc = b.escala_descuentos;
+  if (esc && typeof esc === 'object') {
+    const candidatos: number[] = [];
+    for (const key of ['tiers', 'titular', 'familiar']) {
+      const arr = (esc as any)[key];
+      if (Array.isArray(arr)) {
+        for (const t of arr) if (t?.porcentaje != null) candidatos.push(Number(t.porcentaje));
+      }
+    }
+    if ((esc as any).talento_porcentaje != null) candidatos.push(Number((esc as any).talento_porcentaje));
+    for (const c of candidatos) {
+      if (!isNaN(c) && (max == null || c > max)) max = c;
+    }
+  }
+  return max != null && !isNaN(max) ? max : null;
+}
+
+const TV_BENEFICIO_FIELDS = `b.id, b.nombre, b.descripcion, b.tipo, b.descuento, b.valor_fijo,
+       b.categoria, b.origen, b.aplica_a, b.escala_descuentos,
+       b.horario_inicio, b.horario_fin, b.restricciones, b.excluye_outlet`;
+
+function tvBeneficioView(b: any) {
+  return {
+    id: b.id,
+    nombre: b.nombre,
+    descripcion: b.descripcion,
+    tipo: b.tipo,
+    descuento: b.descuento != null ? Number(b.descuento) : null,
+    descuento_max: descuentoMaximo(b),
+    valor_fijo: b.valor_fijo != null ? Number(b.valor_fijo) : null,
+    categoria: b.categoria,
+    origen: b.origen,
+    aplica_a: b.aplica_a,
+    horario_inicio: b.horario_inicio,
+    horario_fin: b.horario_fin,
+    restricciones: b.restricciones,
+    excluye_outlet: b.excluye_outlet,
+  };
+}
+
+// GET /api/public/tv/:qrCode — vitrina de un comercio: sus beneficios vigentes.
+// No filtra por horario del día: el plasma anuncia el beneficio aunque todavía no abra.
+router.get('/tv/:qrCode', async (req: Request, res: Response) => {
+  try {
+    const { qrCode } = req.params;
+    const comercioRes = await query(
+      `SELECT c.id, c.nombre, c.direccion, c.ciudad,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='comercios' AND column_name='logo')
+                THEN (SELECT logo FROM comercios WHERE qr_code = $1 AND activo = TRUE LIMIT 1)
+                ELSE NULL END as logo
+       FROM comercios c WHERE c.qr_code = $1 AND c.activo = TRUE`,
+      [qrCode]
+    );
+    if (comercioRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Comercio no encontrado' });
+    }
+    const comercio = comercioRes.rows[0];
+
+    const beneficiosRes = await query(
+      `SELECT ${TV_BENEFICIO_FIELDS}
+       FROM beneficios b
+       INNER JOIN comercio_beneficios cb ON cb.beneficio_id = b.id
+       WHERE cb.comercio_id = $1 AND b.activo = TRUE
+         AND (b.fecha_inicio IS NULL OR b.fecha_inicio <= NOW())
+         AND (b.fecha_fin   IS NULL OR b.fecha_fin   >= NOW())
+       ORDER BY b.nombre`,
+      [comercio.id]
+    );
+
+    res.json({
+      comercio: { id: comercio.id, nombre: comercio.nombre, direccion: comercio.direccion, ciudad: comercio.ciudad, logo: comercio.logo },
+      qr_code: qrCode,
+      beneficios: beneficiosRes.rows.map(tvBeneficioView),
+    });
+  } catch (error) {
+    console.error('Error en vitrina TV comercio:', error);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
+// GET /api/public/tv — cartelera general (oficinas): todos los beneficios vigentes
+// con los comercios donde canjearlos.
+router.get('/tv', async (_req: Request, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT ${TV_BENEFICIO_FIELDS},
+              COALESCE(json_agg(DISTINCT c.nombre) FILTER (WHERE c.id IS NOT NULL), '[]') as comercios
+       FROM beneficios b
+       LEFT JOIN comercio_beneficios cb ON cb.beneficio_id = b.id
+       LEFT JOIN comercios c ON c.id = cb.comercio_id AND c.activo = TRUE
+       WHERE b.activo = TRUE
+         AND (b.fecha_inicio IS NULL OR b.fecha_inicio <= NOW())
+         AND (b.fecha_fin   IS NULL OR b.fecha_fin   >= NOW())
+       GROUP BY b.id
+       ORDER BY b.categoria NULLS LAST, b.nombre`
+    );
+
+    res.json({
+      beneficios: result.rows.map((b: any) => ({ ...tvBeneficioView(b), comercios: b.comercios || [] })),
+    });
+  } catch (error) {
+    console.error('Error en cartelera TV general:', error);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
 // V3H: lista de adultos autorizados a retirar para un menor.
 // Incluye al titular y a todos los familiares activos del titular que sean adultos
 // (edad >= 18 o sin fecha_nacimiento — asumimos adulto por default).

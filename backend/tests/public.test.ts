@@ -293,3 +293,56 @@ describe('GET /api/public/historial/:dni', () => {
     expect(res.body.historial[0].tipo_descuento).toBe('descuento');
   });
 });
+
+// ─────────────────────────────────────────────
+// MODO VITRINA (TV) — GET /tv/:qrCode y GET /tv
+// ─────────────────────────────────────────────
+describe('GET /api/public/tv/:qrCode (vitrina comercio)', () => {
+
+  test('Comercio inexistente → 404', async () => {
+    mockQuery([]); // comercio not found
+    const res = await request(app).get('/api/public/tv/QR-NOEXISTE');
+    expect(res.status).toBe(404);
+  });
+
+  test('Comercio válido → catálogo sin datos personales', async () => {
+    mockQuery([{ id: COMERCIO_ID, nombre: 'Farmacia Test', direccion: 'Av. Test 1', ciudad: 'Ushuaia', logo: null }]);
+    mockQuery([{
+      id: BENEFICIO_ID, nombre: 'Descuento Salud', descripcion: 'En medicamentos',
+      tipo: 'descuento', descuento: 20, valor_fijo: null,
+      categoria: 'salud', origen: 'externo', aplica_a: 'ambos',
+      escala_descuentos: { tiers: [{ antiguedad_min_meses: 0, porcentaje: 20 }, { antiguedad_min_meses: 36, porcentaje: 35 }] },
+      horario_inicio: null, horario_fin: null, restricciones: null, excluye_outlet: false,
+    }]);
+
+    const res = await request(app).get('/api/public/tv/QR-FARMACIA');
+    expect(res.status).toBe(200);
+    expect(res.body.comercio.nombre).toBe('Farmacia Test');
+    expect(res.body.qr_code).toBe('QR-FARMACIA');
+    expect(res.body.beneficios).toHaveLength(1);
+    // descuento_max sale de la escala (35 > 20 base)
+    expect(res.body.beneficios[0].descuento_max).toBe(35);
+    // nunca datos personales
+    expect(JSON.stringify(res.body)).not.toMatch(/dni|beneficiario|legajo/i);
+  });
+});
+
+describe('GET /api/public/tv (cartelera general)', () => {
+
+  test('Devuelve beneficios vigentes con sus comercios', async () => {
+    mockQuery([{
+      id: BENEFICIO_ID, nombre: 'Pase de Esquí', descripcion: 'Temporada completa',
+      tipo: 'gratuito', descuento: null, valor_fijo: null,
+      categoria: 'skipass', origen: 'interno', aplica_a: 'empleado',
+      escala_descuentos: null, horario_inicio: null, horario_fin: null,
+      restricciones: null, excluye_outlet: false,
+      comercios: ['Boletería Cerro Castor'],
+    }]);
+
+    const res = await request(app).get('/api/public/tv');
+    expect(res.status).toBe(200);
+    expect(res.body.beneficios).toHaveLength(1);
+    expect(res.body.beneficios[0].comercios).toEqual(['Boletería Cerro Castor']);
+    expect(res.body.beneficios[0].tipo).toBe('gratuito');
+  });
+});
