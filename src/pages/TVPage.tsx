@@ -206,7 +206,15 @@ export default function TVPage({ qrCode }: { qrCode: string | null }) {
         const data = await res.json();
         if (cancelado) return;
         setComercio(data.comercio || null);
-        setBeneficios(data.beneficios || []);
+        // Dedup defensivo por nombre|descuento|valor_fijo (mismo criterio que QRPage)
+        const seen = new Set<string>();
+        const unicos = (data.beneficios || []).filter((b: TVBeneficio) => {
+          const key = `${(b.nombre || '').toLowerCase().trim()}|${b.descuento ?? ''}|${b.valor_fijo ?? ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setBeneficios(unicos);
         setUltimaActualizacion(new Date());
         setEstado('ok');
       } catch {
@@ -219,7 +227,7 @@ export default function TVPage({ qrCode }: { qrCode: string | null }) {
     return () => { cancelado = true; clearInterval(t); };
   }, [qrCode, esComercio]);
 
-  const porPagina = esComercio ? 4 : 5;
+  const porPagina = 4;
   const { visibles, pagina, totalPaginas } = usePaginado(beneficios, porPagina);
 
   const horaStr = ahora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
