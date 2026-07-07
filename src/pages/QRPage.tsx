@@ -42,6 +42,7 @@ interface Beneficiario {
   foto: string | null;
   nivel: string;
   departamento: string;
+  sector?: string;
   cargo?: string;
   legajo?: string;
   empresa: string;
@@ -55,8 +56,19 @@ interface FamiliarInfo {
   edad?: number | null;
   es_menor?: boolean;
   fecha_nacimiento?: string;
-  titular: { dni: string; nombre: string; apellido: string };
+  titular: { dni: string; nombre: string; apellido: string; foto?: string | null; departamento?: string | null; sector?: string | null };
   adultos_autorizados?: Array<{ dni: string; nombre: string; apellido?: string; relacion: string; esTitular?: boolean }>;
+}
+
+// Etiqueta legible del vínculo familiar (Naaloo usa códigos en inglés)
+function relacionLabel(relacion: string): string {
+  switch (relacion) {
+    case 'Parents': return 'Madre/Padre';
+    case 'Spouse': return 'Cónyuge';
+    case 'CivilUnion': return 'Concubino/a';
+    case 'Child': return 'Hijo/a';
+    default: return 'Familiar';
+  }
 }
 
 interface Beneficio {
@@ -778,7 +790,7 @@ function ProfileStep({
               flexShrink: 0,
             }}
           >
-            {beneficiario.foto ? (
+            {!familiarInfo && beneficiario.foto ? (
               <img
                 src={beneficiario.foto}
                 alt={`${beneficiario.nombre} ${beneficiario.apellido}`}
@@ -850,45 +862,86 @@ function ProfileStep({
                   letterSpacing: '0.08em', textTransform: 'uppercase',
                   textShadow: '0 1px 2px rgba(0,0,0,0.4)',
                 }}>
-                  {familiarInfo.relacion === 'Parents' ? 'Madre/Padre' :
-                   familiarInfo.relacion === 'Spouse' ? 'Cónyuge' :
-                   familiarInfo.relacion === 'CivilUnion' ? 'Concubino/a' :
-                   familiarInfo.relacion === 'Child' ? 'Hijo/a' : 'Familiar'}
+                  {relacionLabel(familiarInfo.relacion)}
                 </span>
               )}
             </div>
-            {familiarInfo && (
-              <p style={{
-                fontSize: '11.5px', color: 'rgba(255,255,255,0.85)', fontWeight: 500, marginBottom: 6,
-                textShadow: '0 1px 2px rgba(0,0,0,0.35)',
-              }}>
-                Titular: {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
-              </p>
-            )}
             <h2
               style={{
-                fontSize: '20px',
+                fontSize: isDesktop ? '26px' : '22px',
                 fontWeight: 700,
                 color: 'white',
                 letterSpacing: '-0.015em',
-                lineHeight: 1.2,
-                marginBottom: 2,
+                lineHeight: 1.15,
+                margin: 0,
                 textShadow: '0 1px 3px rgba(0,0,0,0.45)',
               }}
             >
-              {beneficiario.nombre}
+              {beneficiario.nombre} {beneficiario.apellido}
             </h2>
-            <p
-              style={{
-                fontSize: '15px',
-                fontWeight: 600,
-                color: 'rgba(255,255,255,0.95)',
-                lineHeight: 1.2,
-                textShadow: '0 1px 2px rgba(0,0,0,0.35)',
-              }}
-            >
-              {beneficiario.apellido}
-            </p>
+            {familiarInfo && (() => {
+              const titFoto = familiarInfo.titular.foto ?? beneficiario.foto;
+              const titDepto = familiarInfo.titular.departamento ?? beneficiario.departamento;
+              const titSector = familiarInfo.titular.sector ?? beneficiario.sector;
+              return (
+              <div style={{
+                marginTop: 10,
+                padding: '10px 12px',
+                borderRadius: 12,
+                background: 'rgba(0,0,0,0.30)',
+                border: '1px solid rgba(255,255,255,0.22)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 11,
+              }}>
+                {titFoto ? (
+                  <img
+                    src={titFoto}
+                    alt={`${familiarInfo.titular.nombre} ${familiarInfo.titular.apellido}`}
+                    style={{
+                      width: 48, height: 48, borderRadius: '50%', objectFit: 'cover',
+                      flexShrink: 0, border: '2px solid rgba(255,255,255,0.3)',
+                      background: 'rgba(0,0,0,0.2)',
+                    }}
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <div style={{
+                    width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
+                    background: 'rgba(255,255,255,0.15)', border: '2px solid rgba(255,255,255,0.3)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '17px', fontWeight: 600, color: 'rgba(255,255,255,0.9)',
+                  }}>
+                    {familiarInfo.titular.nombre[0]}{familiarInfo.titular.apellido[0]}
+                  </div>
+                )}
+                <div style={{ minWidth: 0 }}>
+                  <p style={{
+                    fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.1em',
+                    textTransform: 'uppercase', color: 'rgba(255,255,255,0.72)',
+                    marginBottom: 2, textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                  }}>
+                    Titular · Colaborador Grupo Popper
+                  </p>
+                  <p style={{
+                    fontSize: isDesktop ? '16px' : '14.5px', fontWeight: 700,
+                    color: '#fff', lineHeight: 1.2,
+                    textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                  }}>
+                    {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
+                  </p>
+                  {titDepto && (
+                    <p style={{
+                      fontSize: '11.5px', fontWeight: 500, color: 'rgba(255,255,255,0.8)',
+                      lineHeight: 1.2, marginTop: 2, textShadow: '0 1px 2px rgba(0,0,0,0.35)',
+                    }}>
+                      {titDepto}{titSector ? ` · ${titSector}` : ''}
+                    </p>
+                  )}
+                </div>
+              </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -915,16 +968,20 @@ function ProfileStep({
               fontWeight: 600,
               textShadow: '0 1px 2px rgba(0,0,0,0.4)',
             }}>
-              {beneficiario.cargo ? 'Cargo' : 'Departamento'}
+              {familiarInfo ? 'DNI del familiar' : beneficiario.cargo ? 'Cargo' : 'Departamento'}
             </p>
             <p style={{
               fontSize: '12.5px',
               color: 'white',
               fontWeight: 600,
               lineHeight: 1.3,
+              fontFamily: familiarInfo ? 'var(--font-geist-mono)' : undefined,
+              fontVariantNumeric: familiarInfo ? 'tabular-nums' : undefined,
               textShadow: '0 1px 2px rgba(0,0,0,0.35)',
             }}>
-              {beneficiario.cargo || beneficiario.departamento || '—'}
+              {familiarInfo
+                ? beneficiario.dni
+                : (beneficiario.cargo || beneficiario.departamento || '—')}
             </p>
           </div>
           {beneficiario.legajo && (
@@ -1580,31 +1637,69 @@ function ConfirmStep({
           </span>
           {beneficiario.es_talento_popper && <span style={{ marginLeft: 8, color: 'var(--brand)' }}>★ Talento</span>}
         </p>
-        {familiarInfo && (
-          <div style={{ marginTop: 10, padding: '6px 10px', background: 'var(--bg-canvas)', borderRadius: '6px', display: 'inline-block' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-3)' }}>Vínculo: </span>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-1)' }}>
-              {familiarInfo.relacion === 'Parents' ? 'Madre/Padre' :
-               familiarInfo.relacion === 'Spouse' ? 'Cónyuge' :
-               familiarInfo.relacion === 'CivilUnion' ? 'Concubino/a' :
-               familiarInfo.relacion === 'Child' ? 'Hijo/a' : 'Familiar'}
-            </span>
-            <span style={{ fontSize: '11px', color: 'var(--text-3)' }}> de </span>
-            <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-2)' }}>
-              {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
-            </span>
-            {familiarInfo.edad != null && (
-              <span style={{
-                marginLeft: 8, padding: '1px 7px', borderRadius: '999px',
-                background: esMenor ? 'var(--danger-bg)' : 'var(--success-bg)',
-                color: esMenor ? 'var(--danger-text)' : 'var(--success-text)',
-                fontSize: '10.5px', fontWeight: 700,
+        {familiarInfo && (() => {
+          const titFoto = familiarInfo.titular.foto ?? beneficiario.foto;
+          const titDepto = familiarInfo.titular.departamento ?? beneficiario.departamento;
+          const titSector = familiarInfo.titular.sector ?? beneficiario.sector;
+          return (
+          <div style={{
+            marginTop: 12, padding: '10px 12px', maxWidth: 340,
+            marginLeft: 'auto', marginRight: 'auto',
+            background: 'var(--bg-canvas)', borderRadius: '10px',
+            border: '1px solid var(--border-subtle)',
+            display: 'flex', alignItems: 'center', gap: 11, textAlign: 'left',
+          }}>
+            {titFoto ? (
+              <img
+                src={titFoto}
+                alt={`${familiarInfo.titular.nombre} ${familiarInfo.titular.apellido}`}
+                style={{
+                  width: 46, height: 46, borderRadius: '50%', objectFit: 'cover',
+                  flexShrink: 0, border: '2px solid var(--brand)',
+                }}
+                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            ) : (
+              <div style={{
+                width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
+                background: 'var(--brand-muted)', border: '2px solid var(--brand)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--brand)', fontWeight: 700, fontSize: '16px',
               }}>
-                {familiarInfo.edad} años {esMenor ? '· menor' : '· adulto'}
-              </span>
+                {familiarInfo.titular.nombre[0]}{familiarInfo.titular.apellido[0]}
+              </div>
             )}
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{
+                fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.08em',
+                textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 2,
+              }}>
+                {relacionLabel(familiarInfo.relacion)} · Titular colaborador
+              </p>
+              <p style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-1)', lineHeight: 1.2 }}>
+                {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                {titDepto && (
+                  <span style={{ fontSize: '11.5px', color: 'var(--text-2)' }}>
+                    {titDepto}{titSector ? ` · ${titSector}` : ''}
+                  </span>
+                )}
+                {familiarInfo.edad != null && (
+                  <span style={{
+                    padding: '1px 7px', borderRadius: '999px',
+                    background: esMenor ? 'var(--danger-bg)' : 'var(--success-bg)',
+                    color: esMenor ? 'var(--danger-text)' : 'var(--success-text)',
+                    fontSize: '10.5px', fontWeight: 700,
+                  }}>
+                    {familiarInfo.edad} años {esMenor ? '· menor' : '· adulto'}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Breakdown del canje */}

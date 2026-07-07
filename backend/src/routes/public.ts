@@ -442,7 +442,12 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
         edad: familiar.edad,
         es_menor: familiar.es_menor,
         fecha_nacimiento: familiar.fecha_nacimiento,
-        titular: { dni: titular.dni, nombre: titular.nombre, apellido: titular.apellido },
+        titular: {
+          dni: titular.dni, nombre: titular.nombre, apellido: titular.apellido,
+          foto: foto || null,
+          departamento: titular.departamento ?? null,
+          sector: titular.sector ?? null,
+        },
         adultos_autorizados: esFamiliar && familiar.es_menor ? await getAdultosAutorizados(titular.id, familiar.dni) : undefined,
       } : null,
       beneficios: beneficiosConDescuento,
