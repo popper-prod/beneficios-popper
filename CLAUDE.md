@@ -107,7 +107,12 @@ POST /api/public/canjear                        → Registrar canje
 GET  /api/public/historial/:dni                 → Últimos 50 canjes
 POST /api/public/verificar-pin                  → Validar PIN del responsable
 GET  /api/public/verify-pass/:dni/:beneficioId  → Verificar acceso puntual
+GET  /api/public/tv/:qrCode                     → Vitrina TV comercio (catálogo, sin datos personales)
+GET  /api/public/tv                             → Cartelera TV general (oficinas)
 ```
+
+**Modo vitrina (plasmas):** frontend `#/tv/{QR_CODE}` (comercio: QR gigante + carrusel)
+y `#/tv` (cartelera general). Auto-refresh 5 min, rotación 9s, sin interacción.
 
 **Rate limits:** 20 req/min en `/canjear`, 60 en `/beneficiario`, 120 global.
 
