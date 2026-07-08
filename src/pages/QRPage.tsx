@@ -151,15 +151,22 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [showHistorial, setShowHistorial] = useState(false);
   const [logoOk, setLogoOk] = useState(true);
 
-  // Terminal: activar el blindaje de kiosco (definido en index.html) solo mientras
-  // se muestra la pantalla de cajero. No afecta el panel admin ni otras vistas.
+  // Modo terminal (PC/kiosco) vs QR en el teléfono de la persona.
+  // El lanzador de la PC abre la URL con ?terminal=1 → activa kiosco, pantalla
+  // encendida y auto-reset. En el teléfono propio nada de eso aplica (no le
+  // borra el código de éxito ni le bloquea el toque).
+  const isTerminal = new URLSearchParams(window.location.search).has('terminal');
+
+  // Terminal: activar el blindaje de kiosco (definido en index.html) solo en modo
+  // terminal. No afecta el panel admin, otras vistas, ni el QR en teléfono propio.
   useEffect(() => {
+    if (!isTerminal) return;
     document.body.classList.add('kiosk');
     return () => document.body.classList.remove('kiosk');
-  }, []);
+  }, [isTerminal]);
 
-  // Terminal: mantener la pantalla encendida durante toda la jornada.
-  useWakeLock();
+  // Terminal: mantener la pantalla encendida durante toda la jornada (solo PC).
+  useWakeLock(isTerminal);
 
   // Terminal: "despertar" el backend de Render apenas abre la terminal, para que
   // la primera lectura de DNI no espere el cold-start (~30-50s).
@@ -335,11 +342,12 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
     setStep('identify');
   };
 
-  // Terminal: volver solo a la pantalla inicial entre clientes.
+  // Terminal: volver solo a la pantalla inicial entre clientes (SOLO en modo terminal;
+  // en el teléfono propio no se resetea, así la persona no pierde su código de éxito).
   // Tras un canje exitoso, a los 25s. En perfil/confirmación, tras 90s de inactividad
   // (evita dejar el DNI/foto de una persona en pantalla). La pantalla de DNI no expira.
   const idleMs = step === 'success' ? 25_000 : 90_000;
-  const idleEnabled = step === 'profile' || step === 'confirm' || step === 'success';
+  const idleEnabled = isTerminal && (step === 'profile' || step === 'confirm' || step === 'success');
   useIdleTimeout(handleReset, idleMs, idleEnabled);
 
   const selectedBenefitData = beneficios.find(b => b.id === selectedBenefit);

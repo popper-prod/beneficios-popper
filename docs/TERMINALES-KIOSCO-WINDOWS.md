@@ -7,6 +7,13 @@ La app ya trae de fábrica: pantalla siempre encendida, auto-reset entre cliente
 bloqueo de menú contextual/zoom, y reconexión automática. Esta guía cubre el
 **equipo** (la PC Windows).
 
+> **Dos modos, una misma app.** El sistema se usa de dos formas:
+> 1. **Terminal en PC** (esta guía): abre con `?terminal=1` en la URL → activa
+>    kiosco + pantalla encendida + auto-reset entre clientes.
+> 2. **QR en el teléfono de la persona**: escanea el QR simple (sin `?terminal=1`)
+>    y le pasa el teléfono al boletero. Ahí **no** hay auto-reset, así no se le
+>    borra el código. El `.bat` ya incluye `?terminal=1`; no lo saques.
+
 ---
 
 ## Opción A — Modo kiosco con el `.bat` (recomendado)
@@ -42,7 +49,7 @@ La más simple y robusta para una PC dedicada.
 
 Si preferís un ícono de app en vez de kiosco total:
 
-1. Abrí `https://beneficios.recluta.com.ar/#/qr/CODIGO-DEL-COMERCIO` en Edge o Chrome.
+1. Abrí `https://beneficios.recluta.com.ar/?terminal=1#/qr/CODIGO-DEL-COMERCIO` en Edge o Chrome.
 2. En la barra de direcciones, ícono **Instalar** (o menú ⋯ → *Aplicaciones → Instalar
    este sitio como aplicación*).
 3. Queda un ícono "Grupo Popper · Beneficios" en el Escritorio; abre en su propia

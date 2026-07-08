@@ -11,7 +11,9 @@ REM   3) Doble clic para abrir. Para salir del kiosco: Alt+F4.
 REM ============================================================
 
 set "QR_COMERCIO=PEGAR-CODIGO-QR-DEL-COMERCIO"
-set "URL=https://beneficios.recluta.com.ar/#/qr/%QR_COMERCIO%"
+REM ?terminal=1 activa modo terminal (kiosco + auto-reset + pantalla encendida).
+REM No lo saques: distingue esta PC del QR que escanea la gente en su telefono.
+set "URL=https://beneficios.recluta.com.ar/?terminal=1#/qr/%QR_COMERCIO%"
 
 set "EDGE=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
 set "CHROME=%ProgramFiles%\Google\Chrome\Application\chrome.exe"

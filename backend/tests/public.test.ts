@@ -37,6 +37,7 @@ function mockTitular(overrides = {}) {
     id: 'tit-001', dni: DNI, nombre: 'Juan', apellido: 'Pérez',
     nivel: 'junior', departamento: 'Ventas', sector: null,
     fecha_ingreso: '2022-01-01', activo: true, es_talento_popper: false,
+    foto: 'https://naaloo.test/juan.jpg',
     ...overrides,
   }]);
 }
@@ -77,6 +78,19 @@ describe('GET /api/public/beneficiario/:comercioId/:dni', () => {
     const res = await request(app).get(`/api/public/beneficiario/${COMERCIO_ID}/${DNI}`);
     expect(res.status).toBe(403);
     expect(res.body.error).toMatch(/inactivo/i);
+  });
+
+  test('Colaborador sin foto → 403 (no se puede cotejar identidad)', async () => {
+    mockComercio();
+    mockTitular({ foto: null });
+    mockBeneficioActivo(); // la query de beneficios corre antes del guard de foto
+    // Naaloo tampoco tiene foto
+    const { buscarEmpleadoPorDni } = require('../src/__mocks__/naaloo');
+    buscarEmpleadoPorDni.mockResolvedValueOnce(null);
+
+    const res = await request(app).get(`/api/public/beneficiario/${COMERCIO_ID}/${DNI}`);
+    expect(res.status).toBe(403);
+    expect(res.body.codigo).toBe('SIN_FOTO');
   });
 
   test('Titular válido → 200 con beneficios', async () => {

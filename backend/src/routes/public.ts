@@ -422,6 +422,16 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
       } catch { /* silencioso */ }
     }
 
+    // Regla de negocio: el colaborador (titular) se coteja por foto en la boletería.
+    // Sin foto no se puede verificar identidad → no accede al beneficio.
+    // Los familiares se cotejan por DNI/datos personales, así que esta regla no los bloquea.
+    if (!esFamiliar && !foto) {
+      return res.status(403).json({
+        error: 'No figura tu foto en el sistema. Acercate a RRHH para cargarla y poder retirar el pase.',
+        codigo: 'SIN_FOTO',
+      });
+    }
+
     res.json({
       beneficiario: {
         dni: esFamiliar ? familiar.dni : titular.dni,

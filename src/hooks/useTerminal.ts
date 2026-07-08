@@ -2,8 +2,10 @@ import { useEffect, useRef } from 'react';
 
 // Mantiene la pantalla de la terminal siempre encendida mientras la app está visible.
 // Se re-solicita al volver de segundo plano (el lock se libera al minimizar/apagar).
-export function useWakeLock() {
+// `enabled` permite activarlo solo en modo terminal (PC), no en el teléfono propio.
+export function useWakeLock(enabled: boolean = true) {
   useEffect(() => {
+    if (!enabled) return;
     let sentinel: WakeLockSentinel | null = null;
     let cancelled = false;
 
@@ -29,7 +31,7 @@ export function useWakeLock() {
       document.removeEventListener('visibilitychange', onVisibility);
       try { sentinel?.release(); } catch { /* noop */ }
     };
-  }, []);
+  }, [enabled]);
 }
 
 // Ejecuta `onIdle` tras `ms` sin actividad (toque/click/tecla). Se reinicia con
