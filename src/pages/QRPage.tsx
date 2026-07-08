@@ -656,46 +656,44 @@ function IdentifyStep({
 
   return (
     <div>
-      {/* Commerce card sutil */}
-      <div
-        style={{
-          padding: '14px 16px',
-          background: 'var(--bg-elevated)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: '10px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          marginBottom: 32,
-        }}
-      >
+      {/* Cabecera de bienvenida — el comercio como protagonista */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 30 }}>
         <div
           style={{
-            width: 48,
-            height: 48,
-            borderRadius: '10px',
-            background: comercio.logo ? 'var(--bg-canvas)' : 'var(--brand-muted)',
+            width: comercio.logo ? 92 : 56,
+            height: comercio.logo ? 92 : 56,
+            borderRadius: comercio.logo ? '50%' : '14px',
+            background: comercio.logo ? '#fff' : 'var(--brand-muted)',
             border: `1px solid ${comercio.logo ? 'var(--border-subtle)' : 'var(--brand-border)'}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'var(--brand)',
-            flexShrink: 0,
             overflow: 'hidden',
+            flexShrink: 0,
+            color: 'var(--brand)',
+            boxShadow: comercio.logo ? '0 6px 20px rgba(0,0,0,0.30)' : 'none',
+            marginBottom: 14,
           }}
         >
           {comercio.logo ? (
-            <img src={comercio.logo} alt={comercio.nombre} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+            <img
+              src={comercio.logo}
+              alt={comercio.nombre}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 9, boxSizing: 'border-box' }}
+            />
           ) : (
-            <MapPin size={20} />
+            <MapPin size={24} />
           )}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-1)' }}>{comercio.nombre}</p>
-          <p style={{ fontSize: '11.5px', color: 'var(--text-3)', marginTop: 2 }}>
-            {comercio.direccion}, {comercio.ciudad}
-          </p>
-        </div>
+        <p style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 5 }}>
+          Bienvenido a
+        </p>
+        <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-1)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+          {comercio.nombre}
+        </h2>
+        <p style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: 5 }}>
+          {comercio.direccion}{comercio.ciudad ? `, ${comercio.ciudad}` : ''}
+        </p>
       </div>
 
       <h1
