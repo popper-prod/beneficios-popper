@@ -1,12 +1,11 @@
+/* Geist Variable font via Google Fonts — debe ir antes que cualquier otra regla */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 /* ============================================
    GRUPO POPPER — CSS globals v2
    Filosofía: Linear/Vercel. Funcional, denso, sin decoración.
    ============================================ */
-
-/* Geist Variable font via Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap');
 
 :root {
   /* ===== Background scale (depth) ===== */

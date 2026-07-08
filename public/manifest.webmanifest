@@ -1,0 +1,15 @@
+{
+  "name": "Grupo Popper · Beneficios",
+  "short_name": "Beneficios",
+  "description": "Terminal de beneficios para colaboradores — Grupo Popper",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08090A",
+  "theme_color": "#08090A",
+  "lang": "es-AR",
+  "icons": [
+    { "src": "/logo-cerro-castor.png", "sizes": "1371x1046", "type": "image/png", "purpose": "any" }
+  ]
+}

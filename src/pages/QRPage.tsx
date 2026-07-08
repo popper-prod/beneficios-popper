@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MapPin, Clock, ChevronRight, Check, AlertCircle, ArrowLeft, RotateCw, Copy } from 'lucide-react';
+import { useWakeLock, useIdleTimeout } from '../hooks/useTerminal';
 
 // ============================================
 // QRPage — Apple Wallet / Mercado Pago aesthetic
@@ -148,6 +149,26 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [successData, setSuccessData] = useState<any>(null);
   const [historial, setHistorial] = useState<HistorialItem[]>([]);
   const [showHistorial, setShowHistorial] = useState(false);
+  const [logoOk, setLogoOk] = useState(true);
+
+  // Terminal: activar el blindaje de kiosco (definido en index.html) solo mientras
+  // se muestra la pantalla de cajero. No afecta el panel admin ni otras vistas.
+  useEffect(() => {
+    document.body.classList.add('kiosk');
+    return () => document.body.classList.remove('kiosk');
+  }, []);
+
+  // Terminal: mantener la pantalla encendida durante toda la jornada.
+  useWakeLock();
+
+  // Terminal: "despertar" el backend de Render apenas abre la terminal, para que
+  // la primera lectura de DNI no espere el cold-start (~30-50s).
+  useEffect(() => {
+    const warmup = () => { fetch(`${API_URL}/health`).catch(() => { /* silencioso */ }); };
+    warmup();
+    const id = window.setInterval(warmup, 10 * 60 * 1000); // re-ping cada 10 min
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     // Reset al cambiar de QR
@@ -159,23 +180,42 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
     setDni('');
     setSelectedBenefit('');
 
-    const fetchComercio = async () => {
+    let cancelled = false;
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+    // Reintenta ante 5xx / errores de red (Render puede tardar en despertar).
+    // Un 404 es un QR inválido de verdad → error inmediato.
+    const fetchComercio = async (attempt = 0): Promise<void> => {
+      const MAX_RETRIES = 4;
       try {
         const res = await fetch(`${API_URL}/public/comercio/${qrCode}`);
+        if (cancelled) return;
+        if (res.status >= 500 && attempt < MAX_RETRIES) {
+          await sleep(2500);
+          return fetchComercio(attempt + 1);
+        }
         if (!res.ok) {
           setStep('error');
           setErrorMsg('No pudimos identificar este comercio. Verificá el código QR.');
           return;
         }
         const data = await res.json();
+        if (cancelled) return;
         setComercio(data.comercio);
         setStep('identify');
       } catch {
+        if (cancelled) return;
+        if (attempt < MAX_RETRIES) {
+          await sleep(2500);
+          return fetchComercio(attempt + 1);
+        }
         setStep('error');
-        setErrorMsg('Error de conexión. Intentá nuevamente en unos instantes.');
+        setErrorMsg('No pudimos conectar con el servidor. Verificá la red y reintentá.');
       }
     };
     fetchComercio();
+
+    return () => { cancelled = true; };
   }, [qrCode]);
 
   const handleSearch = async () => {
@@ -295,6 +335,13 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
     setStep('identify');
   };
 
+  // Terminal: volver solo a la pantalla inicial entre clientes.
+  // Tras un canje exitoso, a los 25s. En perfil/confirmación, tras 90s de inactividad
+  // (evita dejar el DNI/foto de una persona en pantalla). La pantalla de DNI no expira.
+  const idleMs = step === 'success' ? 25_000 : 90_000;
+  const idleEnabled = step === 'profile' || step === 'confirm' || step === 'success';
+  useIdleTimeout(handleReset, idleMs, idleEnabled);
+
   const selectedBenefitData = beneficios.find(b => b.id === selectedBenefit);
 
   return (
@@ -321,23 +368,45 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: '7px',
-              background: 'var(--brand)',
-              color: 'var(--brand-fg)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: '12px',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            GP
-          </div>
+          {logoOk ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: 32,
+                padding: '0 9px',
+                background: '#fff',
+                borderRadius: '8px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
+              }}
+            >
+              <img
+                src="/logo-popper.png"
+                alt="Grupo Popper"
+                onError={() => setLogoOk(false)}
+                style={{ height: 20, width: 'auto', maxWidth: 120, objectFit: 'contain', display: 'block' }}
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: '7px',
+                background: 'var(--brand)',
+                color: 'var(--brand-fg)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 700,
+                fontSize: '12px',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              GP
+            </div>
+          )}
           <div>
             <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-1)', lineHeight: 1.2 }}>
               Grupo Popper

@@ -9,28 +9,64 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Grupo Popper" />
     <meta name="color-scheme" content="dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/logo-cerro-castor.png" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2308090a'/><text x='50' y='62' font-family='-apple-system,BlinkMacSystemFont,sans-serif' font-size='38' font-weight='700' fill='%23d4a017' text-anchor='middle' letter-spacing='-2'>GP</text></svg>">
-    <title>Grupo Popper</title>
+    <link rel="apple-touch-icon" href="/logo-cerro-castor.png" />
+    <title>Grupo Popper · Beneficios</title>
     <style>
       html, body {
         margin: 0;
         padding: 0;
         background: #08090A;
         -webkit-font-smoothing: antialiased;
+        /* Blindaje de terminal: sin rebote de scroll ni pull-to-refresh */
+        overscroll-behavior: none;
+      }
+      /* Blindaje de terminal (SOLO en modo kiosco / pantalla de cajero, marcado con
+         la clase .kiosk en <body>). No afecta el panel admin ni otras vistas.
+         Sin selección de texto, sin resaltado de tap, sin menú de long-press.
+         Los campos de entrada (DNI, PIN) sí permiten selección. */
+      body.kiosk * {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+      }
+      body.kiosk {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        user-select: none;
+      }
+      body.kiosk input, body.kiosk textarea, body.kiosk [contenteditable] {
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        user-select: text;
       }
       #loading {
         position: fixed;
         inset: 0;
         background: #08090A;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
+        gap: 22px;
         z-index: 9999;
         transition: opacity 280ms cubic-bezier(0.16, 1, 0.3, 1);
       }
       #loading.hidden {
         opacity: 0;
         pointer-events: none;
+      }
+      #splash-logo {
+        max-width: 148px;
+        max-height: 96px;
+        object-fit: contain;
+        animation: splash-in 500ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes splash-in {
+        from { opacity: 0; transform: translateY(8px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
       }
       .loading-dot {
         width: 8px;
@@ -46,9 +82,20 @@
     </style>
   </head>
   <body>
-    <div id="loading"><div class="loading-dot"></div></div>
+    <div id="loading">
+      <img id="splash-logo" src="/logo-cerro-castor.png" alt="Grupo Popper · Cerro Castor" onerror="this.style.display='none'" />
+      <div class="loading-dot"></div>
+    </div>
     <div id="root"></div>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      /* Blindaje de terminal: bloquear menú contextual (long-press) y gestos de zoom.
+         Solo actúa en modo kiosco (body.kiosk), que activa la pantalla de cajero. */
+      var inKiosk = function () { return document.body.classList.contains('kiosk'); };
+      document.addEventListener('contextmenu', function (e) { if (inKiosk()) e.preventDefault(); });
+      document.addEventListener('gesturestart', function (e) { if (inKiosk()) e.preventDefault(); });
+      document.addEventListener('dblclick', function (e) { if (inKiosk()) e.preventDefault(); }, { passive: false });
+    </script>
   </body>
 </html>
