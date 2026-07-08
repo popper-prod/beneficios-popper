@@ -421,15 +421,63 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '4px 10px',
+              gap: 8,
+              padding: comercio.logo ? '4px 12px 4px 4px' : '5px 12px',
               background: 'var(--bg-elevated)',
               border: '1px solid var(--border-subtle)',
-              borderRadius: '6px',
+              borderRadius: '999px',
+              minWidth: 0,
             }}
           >
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)' }} />
-            <span style={{ fontSize: '11.5px', color: 'var(--text-2)', fontWeight: 500 }}>
+            {comercio.logo ? (
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <div
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: '50%',
+                    background: '#fff',
+                    border: '1px solid var(--border-subtle)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <img
+                    src={comercio.logo}
+                    alt={comercio.nombre}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 2, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div
+                  title="En línea"
+                  style={{
+                    position: 'absolute',
+                    right: -1,
+                    bottom: -1,
+                    width: 9,
+                    height: 9,
+                    borderRadius: '50%',
+                    background: 'var(--success)',
+                    border: '2px solid var(--bg-elevated)',
+                  }}
+                />
+              </div>
+            ) : (
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
+            )}
+            <span
+              style={{
+                fontSize: '11.5px',
+                color: 'var(--text-2)',
+                fontWeight: 500,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 200,
+              }}
+            >
               {comercio.nombre}
             </span>
           </div>
