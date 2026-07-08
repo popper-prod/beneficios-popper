@@ -32,7 +32,9 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+// Límite ampliado: los logos de comercios se guardan como data URI base64
+// (una imagen mediana supera fácil los 100KB del default de Express).
+app.use(express.json({ limit: '5mb' }));
 
 app.get('/api/health', async (req: Request, res: Response) => {
   const startTime = Date.now();
