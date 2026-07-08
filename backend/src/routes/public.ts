@@ -23,10 +23,31 @@ async function ensureVerifDniWidth() {
   }
 }
 
+// Carga puntual (idempotente) del logo de la boletería Cerro Castor, apuntando al
+// asset ya hosteado en el frontend. SOLO actúa si el comercio todavía no tiene logo,
+// así nunca pisa un logo cargado manualmente. Reversible desde el panel admin
+// (Comercios → editar → "Logo del comercio").
+let comercioLogosSeeded = false;
+async function ensureComercioLogosSeed() {
+  if (comercioLogosSeeded) return;
+  try {
+    await query(`ALTER TABLE comercios ADD COLUMN IF NOT EXISTS logo TEXT`);
+    await query(
+      `UPDATE comercios SET logo = $1
+       WHERE qr_code = $2 AND (logo IS NULL OR logo = '')`,
+      ['https://beneficios.recluta.com.ar/logo-cerro-castor.png', 'POPPER-BOLETERIA-CERRO']
+    );
+    comercioLogosSeeded = true;
+  } catch (e: any) {
+    console.error(`ensureComercioLogosSeed: ${e.message}`);
+  }
+}
+
 // GET /api/public/comercio/:qrCode - Info del comercio por QR code
 router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
   try {
     const { qrCode } = req.params;
+    await ensureComercioLogosSeed();
 
     // COALESCE para que devuelva null si la columna logo aun no existe (migracion lazy)
     const result = await query(
