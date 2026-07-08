@@ -3068,8 +3068,24 @@ function LogoUploader({ value, onChange }: { value: string; onChange: (v: string
               </button>
             )}
           </div>
+          <input
+            type="url"
+            placeholder="…o pegá la URL de una imagen"
+            value={value.startsWith('data:') ? '' : value}
+            onChange={e => { setError(''); onChange(e.target.value.trim()); }}
+            style={{
+              width: '100%',
+              padding: '7px 10px',
+              background: 'var(--bg-canvas)',
+              border: '1px solid var(--border-default)',
+              borderRadius: '6px',
+              color: 'var(--text-1)',
+              fontSize: '12px',
+              boxSizing: 'border-box',
+            }}
+          />
           <p style={{ fontSize: '11px', color: error ? 'var(--danger-text)' : 'var(--text-3)' }}>
-            {error || 'PNG, JPG, WEBP o SVG. Máx 600 KB.'}
+            {error || 'Subí un archivo (máx 600 KB) o pegá la URL de una imagen. PNG, JPG, WEBP o SVG.'}
           </p>
         </div>
       </div>
