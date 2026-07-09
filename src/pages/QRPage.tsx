@@ -150,6 +150,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [historial, setHistorial] = useState<HistorialItem[]>([]);
   const [showHistorial, setShowHistorial] = useState(false);
   const [logoOk, setLogoOk] = useState(true);
+  const [skipProfile, setSkipProfile] = useState(false); // true si se auto-saltó "elegir beneficio"
 
   // Modo terminal (PC/kiosco) vs QR en el teléfono de la persona.
   // El lanzador de la PC abre la URL con ?terminal=1 → activa kiosco, pantalla
@@ -251,7 +252,19 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
         return true;
       });
       setBeneficios(uniqueBeneficios);
-      setStep('profile');
+
+      // Auto-salto del paso "elegir beneficio": si hay UNO SOLO y no requiere datos
+      // extra (monto por jerarquía o invitados de Talento), va directo a confirmar.
+      // El paso de confirmación (verificación por foto del cajero) se mantiene.
+      const unico = uniqueBeneficios.length === 1 ? uniqueBeneficios[0] : null;
+      if (unico && !unico.usa_limite_jerarquia && !(unico.max_invitados && unico.max_invitados > 0)) {
+        setSelectedBenefit(unico.id);
+        setSkipProfile(true);
+        setStep('confirm');
+      } else {
+        setSkipProfile(false);
+        setStep('profile');
+      }
 
       try {
         const hRes = await fetch(`${API_URL}/public/historial/${dni}`);
@@ -550,7 +563,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
               overrideRequired={overrideRequired}
               onConfirmar={(retiradoPorDni?: string) => handleCanjearConfirmado(false, undefined, retiradoPorDni)}
               onConfirmarConPin={(pin, retiradoPorDni?: string) => handleCanjearConfirmado(true, pin, retiradoPorDni)}
-              onCancelar={() => { setStep('profile'); setErrorMsg(''); setOverrideRequired(false); }}
+              onCancelar={() => { setStep(skipProfile ? 'identify' : 'profile'); setErrorMsg(''); setOverrideRequired(false); }}
             />
           )}
 
