@@ -161,6 +161,7 @@ async function ensureSkipassNormalizado() {
 // colaborador y sus familiares directos alquilan equipos/ropa con 50% de descuento.
 // Idempotente: crea el comercio y el beneficio solo si no existen, y los linkea.
 let rentalCiudadEnsured = false;
+let rentalCiudadDebug = 'sin correr';
 async function ensureRentalCiudad() {
   if (rentalCiudadEnsured) return;
   try {
@@ -211,8 +212,10 @@ async function ensureRentalCiudad() {
     await query(`INSERT INTO comercio_beneficios (comercio_id, beneficio_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [comercioId, benId]);
 
     rentalCiudadEnsured = true;
+    rentalCiudadDebug = `OK comercio=${comercioId} beneficio=${benId}`;
     console.log(`✓ Rental Ciudad configurado (comercio=${comercioId}, beneficio=${benId})`);
   } catch (e: any) {
+    rentalCiudadDebug = `ERROR: ${e.message}`;
     console.error(`ensureRentalCiudad: ${e.message}`);
   }
 }
@@ -224,6 +227,8 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
     await ensureComercioLogosSeed();
     await ensureSkipassNormalizado();
     await ensureRentalCiudad();
+
+    if (req.query.debug === 'rental') return res.json({ rentalCiudadDebug, rentalCiudadEnsured });
 
     // COALESCE para que devuelva null si la columna logo aun no existe (migracion lazy)
     const result = await query(
