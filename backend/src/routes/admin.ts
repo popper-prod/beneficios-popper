@@ -2497,7 +2497,7 @@ router.post('/seed-boleterias-skipass', async (req: AuthRequest, res: Response) 
     await ensureBeneficiosV2();
 
     const boleterias = [
-      { qr: 'POPPER-BOLETERIA-CIUDAD', nombre: 'Boletería Ciudad', direccion: 'Av. San Martín 1234', ciudad: 'Ushuaia' },
+      { qr: 'POPPER-BOLETERIA-CIUDAD', nombre: 'Boletería Ciudad', direccion: 'San Martín 1134', ciudad: 'Ushuaia' },
       { qr: 'POPPER-BOLETERIA-CERRO', nombre: 'Boletería Cerro Castor', direccion: 'Base Cerro Castor RN 3', ciudad: 'Ushuaia' },
     ];
 
