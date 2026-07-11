@@ -196,13 +196,14 @@ async function ensureRentalCiudad() {
       await query(
         `UPDATE beneficios SET activo=TRUE, origen='interno', categoria='alquiler', modalidad='descuento', tipo='descuento',
            aplica_a='ambos', descuento=50, relaciones_familiar='Parents,Spouse,CivilUnion,Child',
+           fecha_inicio='2020-01-01', fecha_fin='2099-12-31', horario_inicio='00:00', horario_fin='23:59',
            nombre='Alquiler de equipos y ropa', descripcion=$2, updated_at=NOW() WHERE id=$1`,
         [benId, descAlq]
       );
     } else {
       const r = await query(
-        `INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, activo, origen, categoria, aplica_a, modalidad, relaciones_familiar, descuento)
-         VALUES ('Alquiler de equipos y ropa', $1, 'descuento', 'bronce', TRUE, 'interno', 'alquiler', 'ambos', 'descuento', 'Parents,Spouse,CivilUnion,Child', 50) RETURNING id`,
+        `INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, activo, origen, categoria, aplica_a, modalidad, relaciones_familiar, descuento, fecha_inicio, fecha_fin, horario_inicio, horario_fin)
+         VALUES ('Alquiler de equipos y ropa', $1, 'descuento', 'bronce', TRUE, 'interno', 'alquiler', 'ambos', 'descuento', 'Parents,Spouse,CivilUnion,Child', 50, '2020-01-01', '2099-12-31', '00:00', '23:59') RETURNING id`,
         [descAlq]
       );
       benId = r.rows[0].id;
