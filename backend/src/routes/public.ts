@@ -23,6 +23,42 @@ async function ensureVerifDniWidth() {
   }
 }
 
+// Ledger de "consultas" del boletero en la terminal (boletería). Cada vez que el
+// boletero consulta un DNI con beneficio válido se crea un registro 'pendiente';
+// al confirmar el canje pasa a 'confirmada'. Así el consumo queda registrado
+// AUNQUE el boletero no cierre el canje: los 'pendiente' que quedan son la brecha
+// de control. Tabla APARTE de `verificaciones` para no afectar los límites de uso.
+// Dedup por (comercio_id, dni, fecha): como el skipass es 1/día, nunca duplica.
+let pendientesEnsured = false;
+export async function ensureCanjesPendientes() {
+  if (pendientesEnsured) return;
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS canjes_pendientes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        comercio_id UUID NOT NULL,
+        beneficio_id UUID,
+        beneficiario_id UUID,
+        dni VARCHAR(20) NOT NULL,
+        nombre VARCHAR(200),
+        tipo VARCHAR(20),
+        relacion VARCHAR(30),
+        fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+        estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        verificacion_id UUID,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (comercio_id, dni, fecha)
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_pendientes_comercio_fecha ON canjes_pendientes(comercio_id, fecha)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_pendientes_estado ON canjes_pendientes(estado)`);
+    pendientesEnsured = true;
+  } catch (e: any) {
+    console.error(`ensureCanjesPendientes: ${e.message}`);
+  }
+}
+
 // Carga puntual (idempotente) del logo de la boletería Cerro Castor, apuntando al
 // asset ya hosteado en el frontend. SOLO actúa si el comercio todavía no tiene logo,
 // así nunca pisa un logo cargado manualmente. Reversible desde el panel admin
@@ -451,6 +487,29 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
         error: 'No figura tu foto en el sistema. Acercate a RRHH para cargarla y poder retirar el pase.',
         codigo: 'SIN_FOTO',
       });
+    }
+
+    // Registro "pendiente" para control de consumo en la boletería (SOLO terminal).
+    // Deja rastro de la consulta aunque el boletero no llegue a cerrar el canje.
+    // Best-effort: nunca debe romper ni demorar la consulta del boletero.
+    if (req.query.terminal && beneficiosConDescuento.length > 0) {
+      const dniPortador = esFamiliar ? familiar.dni : titular.dni;
+      const nombrePortador = esFamiliar
+        ? (familiar.nombre_completo || '').trim()
+        : `${titular.nombre || ''} ${titular.apellido || ''}`.trim();
+      const beneficioUnico = beneficiosConDescuento.length === 1 ? beneficiosConDescuento[0].id : null;
+      try {
+        await ensureCanjesPendientes();
+        await query(
+          `INSERT INTO canjes_pendientes (comercio_id, beneficio_id, beneficiario_id, dni, nombre, tipo, relacion, fecha, estado)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_DATE, 'pendiente')
+           ON CONFLICT (comercio_id, dni, fecha) DO NOTHING`,
+          [comercioId, beneficioUnico, titular.id || null, dniPortador, nombrePortador,
+           esFamiliar ? 'familiar' : 'titular', esFamiliar ? (familiar.relacion || null) : null]
+        );
+      } catch (e: any) {
+        console.error(`Registro pendiente falló (no crítico): ${e.message}`);
+      }
     }
 
     res.json({
@@ -909,6 +968,20 @@ router.post('/canjear', canjearLimiter, async (req: Request, res: Response) => {
     });
 
     await query('UPDATE beneficios SET uso_actual = uso_actual + 1 WHERE id = $1', [beneficio_id]);
+
+    // Cerrar el "pendiente" de hoy (si el boletero venía de una consulta en terminal):
+    // pasa a 'confirmada' y se linkea a la verificación. Best-effort: no afecta el canje.
+    try {
+      await ensureCanjesPendientes();
+      await query(
+        `UPDATE canjes_pendientes
+         SET estado='confirmada', verificacion_id=$1, updated_at=NOW()
+         WHERE comercio_id=$2 AND dni=$3 AND fecha=CURRENT_DATE AND estado <> 'confirmada'`,
+        [verificacion.rows[0].id, comercio_id, dni]
+      );
+    } catch (e: any) {
+      console.error(`Cierre de pendiente falló (no crítico): ${e.message}`);
+    }
 
     res.json({
       exito: true,

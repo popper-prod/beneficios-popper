@@ -19,6 +19,7 @@ import {
   Layers,
   BarChart3,
   Award,
+  TicketCheck,
 } from 'lucide-react';
 
 // ============================================
@@ -40,7 +41,8 @@ export type NavId =
   | 'talento'
   | 'familiares'
   | 'jerarquias'
-  | 'reportes';
+  | 'reportes'
+  | 'control-boleteria';
 
 interface NavItem {
   id: NavId;
@@ -53,6 +55,7 @@ const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard, section: 'Analítica' },
   { id: 'verificaciones', label: 'Movimiento', icon: Activity, section: 'Analítica' },
   { id: 'reportes', label: 'Reportes', icon: BarChart3, section: 'Analítica' },
+  { id: 'control-boleteria', label: 'Control boletería', icon: TicketCheck, section: 'Analítica' },
 
   { id: 'beneficios', label: 'Beneficios externos', icon: Gift, section: 'Catálogo' },
   { id: 'beneficios-internos', label: 'Beneficios internos', icon: Award, section: 'Catálogo' },

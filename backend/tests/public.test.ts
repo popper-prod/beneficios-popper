@@ -152,6 +152,40 @@ describe('GET /api/public/beneficiario/:comercioId/:dni', () => {
     expect(res.status).toBe(200);
     expect(res.body.beneficios).toHaveLength(0); // filtrado correctamente
   });
+
+  // Control de consumo: la consulta del boletero en terminal deja un 'pendiente'
+  function mockBeneficioParaConsulta() {
+    mockQuery([{
+      id: BENEFICIO_ID, nombre: 'Skipass', descripcion: null,
+      tipo: 'gratuito', descuento: null, valor_fijo: null,
+      horario_inicio: null, horario_fin: null, nivel_minimo: null,
+      origen: 'interno', categoria: 'skipass', aplica_a: 'empleado',
+      modalidad: 'acceso', escala_descuentos: null, restricciones: null,
+      excluye_outlet: false, relaciones_familiar: null, usa_limite_jerarquia: false,
+      max_invitados: 0, cubre_invitados: false,
+    }]);
+  }
+
+  test('En terminal (?terminal=1) → registra consulta pendiente', async () => {
+    mockComercio();
+    mockTitular();
+    mockBeneficioParaConsulta();
+    const res = await request(app).get(`/api/public/beneficiario/${COMERCIO_ID}/${DNI}?terminal=1`);
+    expect(res.status).toBe(200);
+    const insert = query.mock.calls.find((c: any[]) => /INSERT INTO canjes_pendientes/.test(c[0]));
+    expect(insert).toBeDefined();
+    expect(insert![1]).toEqual(expect.arrayContaining([COMERCIO_ID, DNI, 'titular']));
+  });
+
+  test('Sin terminal (teléfono propio) → NO registra pendiente', async () => {
+    mockComercio();
+    mockTitular();
+    mockBeneficioParaConsulta();
+    const res = await request(app).get(`/api/public/beneficiario/${COMERCIO_ID}/${DNI}`);
+    expect(res.status).toBe(200);
+    const insert = query.mock.calls.find((c: any[]) => /INSERT INTO canjes_pendientes/.test(c[0]));
+    expect(insert).toBeUndefined();
+  });
 });
 
 // ─────────────────────────────────────────────
@@ -264,6 +298,23 @@ describe('POST /api/public/canjear', () => {
     const res = await request(app).post('/api/public/canjear').send(body());
     expect(res.status).toBe(403);
     expect(res.body.error).toMatch(/Talento/i);
+  });
+
+  test('Canje exitoso cierra el pendiente del día (estado confirmada)', async () => {
+    mockQuery([{ id: 'tit-001', activo: true, nombre: 'Juan', apellido: 'Pérez', motivo_baja: null }]);
+    mockQuery([]); // no es menor
+    mockBeneficioActivo();
+    mockQuery([{ fecha_ingreso: '2022-01-01', es_talento_popper: false }]); // datos titular
+    mockQuery([{ id: 'ver-001', estado: 'exitoso', codigo_referencia: 'QR-X', fecha_verificacion: new Date().toISOString(), monto: 1000 }]); // INSERT verificacion
+    mockQuery([]); // UPDATE uso_actual
+    // ensureCanjesPendientes + UPDATE canjes_pendientes → sin mock (no leen rows)
+
+    const res = await request(app).post('/api/public/canjear').send(body());
+    expect(res.status).toBe(200);
+    const update = query.mock.calls.find((c: any[]) => /UPDATE canjes_pendientes/.test(c[0]));
+    expect(update).toBeDefined();
+    expect(update![0]).toMatch(/estado='confirmada'/);
+    expect(update![1]).toEqual(expect.arrayContaining(['ver-001', COMERCIO_ID, DNI]));
   });
 });
 

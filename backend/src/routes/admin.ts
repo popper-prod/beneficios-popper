@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query } from '../db';
 import { verifyToken, AuthRequest } from '../middleware/auth';
 import { runSyncNaaloo, runSyncFamiliares } from '../services/syncService';
+import { ensureCanjesPendientes } from './public';
 import * as XLSX from 'xlsx';
 import bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
@@ -1534,6 +1535,61 @@ router.post('/familiares/sync-naaloo', async (req: AuthRequest, res: Response) =
   } catch (error: any) {
     console.error('Error sync familiares:', error.message);
     res.status(500).json({ error: 'Error sincronizando familiares', detalle: error.message });
+  }
+});
+
+// ============================================
+// CONTROL DE CONSUMO EN BOLETERÍA — registro total
+// Cada consulta del boletero en terminal deja un 'pendiente'; el canje lo pasa a
+// 'confirmada'. Los que quedan en 'pendiente' = consultó pero no cerró el canje
+// (la brecha de control). Filtros: ?comercio_id=&desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+// (sin rango → hoy).
+// ============================================
+router.get('/pendientes', async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureCanjesPendientes();
+    const comercioId = req.query.comercio_id as string | undefined;
+    const desde = req.query.desde as string | undefined;
+    const hasta = req.query.hasta as string | undefined;
+
+    const cond: string[] = [];
+    const params: any[] = [];
+    if (comercioId) { params.push(comercioId); cond.push(`cp.comercio_id = $${params.length}`); }
+    if (desde) { params.push(desde); cond.push(`cp.fecha >= $${params.length}`); }
+    if (hasta) { params.push(hasta); cond.push(`cp.fecha <= $${params.length}`); }
+    if (!desde && !hasta) cond.push(`cp.fecha = CURRENT_DATE`);
+    const where = cond.length ? `WHERE ${cond.join(' AND ')}` : '';
+
+    // Resumen por comercio: consultas / confirmadas / sin cerrar
+    const resumen = await query(
+      `SELECT cp.comercio_id, c.nombre AS comercio,
+              COUNT(*)::int AS consultas,
+              COUNT(*) FILTER (WHERE cp.estado='confirmada')::int AS confirmadas,
+              COUNT(*) FILTER (WHERE cp.estado='pendiente')::int AS sin_cerrar
+       FROM canjes_pendientes cp
+       LEFT JOIN comercios c ON c.id = cp.comercio_id
+       ${where}
+       GROUP BY cp.comercio_id, c.nombre
+       ORDER BY sin_cerrar DESC, consultas DESC`,
+      params
+    );
+
+    // Listado de los sin cerrar (la brecha, para seguimiento)
+    const sinCerrar = await query(
+      `SELECT cp.id, cp.comercio_id, c.nombre AS comercio, cp.dni, cp.nombre, cp.tipo,
+              cp.relacion, cp.fecha, cp.created_at
+       FROM canjes_pendientes cp
+       LEFT JOIN comercios c ON c.id = cp.comercio_id
+       ${where ? where + ' AND' : 'WHERE'} cp.estado='pendiente'
+       ORDER BY cp.created_at DESC
+       LIMIT 500`,
+      params
+    );
+
+    res.json({ resumen: resumen.rows, sin_cerrar: sinCerrar.rows });
+  } catch (error: any) {
+    console.error('Error pendientes:', error.message);
+    res.status(500).json({ error: 'Error cargando pendientes', detalle: error.message });
   }
 });
 

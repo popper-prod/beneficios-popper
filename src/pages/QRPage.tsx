@@ -232,7 +232,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
     setErrorMsg('');
 
     try {
-      const res = await fetch(`${API_URL}/public/beneficiario/${comercio.id}/${dni}`);
+      const res = await fetch(`${API_URL}/public/beneficiario/${comercio.id}/${dni}${isTerminal ? '?terminal=1' : ''}`);
       const data = await res.json();
 
       if (!res.ok) {

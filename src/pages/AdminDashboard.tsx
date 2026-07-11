@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AppShell } from '../components/layout/AppShell';
 import DashboardView, { Panel } from '../views/DashboardView';
 import ReportesView from '../views/ReportesView';
+import ControlBoleteriaView from '../views/ControlBoleteriaView';
 import { DataTable } from '../components/ui/DataTable';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -24,7 +25,7 @@ interface DashboardData {
   ultimasVerificaciones: any[];
 }
 
-type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'beneficios-internos' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones' | 'permisos' | 'talento' | 'familiares' | 'jerarquias' | 'reportes';
+type Tab = 'dashboard' | 'verificaciones' | 'beneficios' | 'beneficios-internos' | 'comercios' | 'beneficiarios' | 'qrcodes' | 'autorizaciones' | 'permisos' | 'talento' | 'familiares' | 'jerarquias' | 'reportes' | 'control-boleteria';
 
 // gold token reemplazado por var(--brand)
 
@@ -1105,6 +1106,8 @@ export default function AdminDashboard({ token, user, onLogout }: {
 
       {/* ====== REPORTES ====== */}
       {activeTab === 'reportes' && <ReportesView token={token} />}
+
+      {activeTab === 'control-boleteria' && <ControlBoleteriaView token={token} />}
 
       {/* ====== MOVIMIENTO ====== */}
       {activeTab === 'verificaciones' && (
