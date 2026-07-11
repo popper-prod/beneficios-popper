@@ -151,6 +151,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [showHistorial, setShowHistorial] = useState(false);
   const [logoOk, setLogoOk] = useState(true);
   const [skipProfile, setSkipProfile] = useState(false); // true si se auto-saltó "elegir beneficio"
+  const [idleWarning, setIdleWarning] = useState(false);  // aviso "canje sin registrar" en terminal
 
   // Modo terminal (PC/kiosco) vs QR en el teléfono de la persona.
   // El lanzador de la PC abre la URL con ?terminal=1 → activa kiosco, pantalla
@@ -352,16 +353,30 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
     setSuccessData(null);
     setHistorial([]);
     setShowHistorial(false);
+    setIdleWarning(false);
     setStep('identify');
   };
 
   // Terminal: volver solo a la pantalla inicial entre clientes (SOLO en modo terminal;
   // en el teléfono propio no se resetea, así la persona no pierde su código de éxito).
-  // Tras un canje exitoso, a los 25s. En perfil/confirmación, tras 90s de inactividad
-  // (evita dejar el DNI/foto de una persona en pantalla). La pantalla de DNI no expira.
+  // Tras un canje exitoso, a los 25s (ya está registrado → reset directo). En
+  // perfil/confirmación, tras 90s de inactividad NO se borra en silencio (eso comía
+  // canjes mientras el boletero emitía el pase en su sistema): se muestra un aviso
+  // "canje sin registrar" que además tapa los datos personales. El overlay se cierra
+  // solo si el boletero no responde en 4 min (higiene entre clientes).
   const idleMs = step === 'success' ? 25_000 : 90_000;
   const idleEnabled = isTerminal && (step === 'profile' || step === 'confirm' || step === 'success');
-  useIdleTimeout(handleReset, idleMs, idleEnabled);
+  useIdleTimeout(() => {
+    if (step === 'success') handleReset();
+    else setIdleWarning(true);
+  }, idleMs, idleEnabled);
+
+  // Red de seguridad: si el aviso queda sin respuesta, resetea a los 4 min.
+  useEffect(() => {
+    if (!idleWarning) return;
+    const t = window.setTimeout(() => handleReset(), 4 * 60_000);
+    return () => window.clearTimeout(t);
+  }, [idleWarning]);
 
   const selectedBenefitData = beneficios.find(b => b.id === selectedBenefit);
 
@@ -374,6 +389,49 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
         flexDirection: 'column',
       }}
     >
+      {/* Aviso "canje sin registrar" (terminal): tapa los datos y evita perder el canje */}
+      {idleWarning && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 100,
+            background: 'var(--bg-canvas)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 24, padding: 24, textAlign: 'center',
+          }}
+        >
+          <div style={{ fontSize: 52 }}>⚠️</div>
+          <div>
+            <h2 style={{ fontSize: '23px', fontWeight: 700, color: 'var(--text-1)', marginBottom: 10, letterSpacing: '-0.01em' }}>
+              ¿Seguís con este pase?
+            </h2>
+            <p style={{ fontSize: '14px', color: 'var(--text-3)', maxWidth: 380, lineHeight: 1.5, margin: '0 auto' }}>
+              Este canje <strong style={{ color: 'var(--warning-text)' }}>todavía no está registrado</strong>.
+              Si ya emitiste el pase, seguí para confirmarlo y que quede cargado.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button
+              onClick={() => setIdleWarning(false)}
+              style={{
+                height: 52, padding: '0 28px', background: 'var(--success)', color: '#fff',
+                border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Seguir con este pase
+            </button>
+            <button
+              onClick={handleReset}
+              style={{
+                height: 52, padding: '0 24px', background: 'transparent', color: 'var(--text-2)',
+                border: '1px solid var(--border-default)', borderRadius: '10px', fontSize: '15px', fontWeight: 500, cursor: 'pointer',
+              }}
+            >
+              Empezar de nuevo
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sticky header con brand */}
       <header
         style={{
@@ -548,6 +606,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
               errorMsg={errorMsg}
               onCanjear={handleIrConfirmar}
               onReset={handleReset}
+              isTerminal={isTerminal}
             />
           )}
 
@@ -869,6 +928,7 @@ function ProfileStep({
   errorMsg,
   onCanjear,
   onReset,
+  isTerminal,
 }: {
   beneficiario: Beneficiario;
   familiarInfo: FamiliarInfo | null;
@@ -886,6 +946,7 @@ function ProfileStep({
   errorMsg: string;
   onCanjear: () => void;
   onReset: () => void;
+  isTerminal: boolean;
 }) {
   const isDesktop = useIsDesktop();
   const selectedBen = beneficios.find(b => b.id === selectedBenefit);
@@ -901,15 +962,35 @@ function ProfileStep({
   const montoExcedeSaldo = necesitaMonto && montoNum > 0 && saldoDisponible !== Infinity && montoNum > saldoDisponible;
 
   return (
-    <div
-      style={{
-        display: isDesktop ? 'grid' : 'block',
-        gridTemplateColumns: isDesktop ? '340px minmax(0, 1fr)' : undefined,
-        gap: isDesktop ? 28 : undefined,
-        alignItems: 'start',
-      }}
-    >
-      {/* ===== Membership Card ===== */}
+    <>
+      {/* Recordatorio al boletero (solo terminal): el pase no queda registrado
+          hasta ver la pantalla verde de confirmación. */}
+      {isTerminal && (
+        <div
+          style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+            padding: '12px 14px', marginBottom: 16,
+            background: 'var(--warning-bg)', border: '1px solid var(--warning-border)',
+            borderRadius: '10px',
+          }}
+        >
+          <span style={{ fontSize: 17, lineHeight: 1.2 }}>⚠️</span>
+          <p style={{ fontSize: '12.5px', color: 'var(--warning-text)', lineHeight: 1.45, margin: 0 }}>
+            El pase queda registrado <strong>solo cuando ves la pantalla verde de confirmación</strong>.
+            Después de emitir el pase, tocá <strong>Canjear</strong> y confirmá.
+          </p>
+        </div>
+      )}
+
+      <div
+        style={{
+          display: isDesktop ? 'grid' : 'block',
+          gridTemplateColumns: isDesktop ? '340px minmax(0, 1fr)' : undefined,
+          gap: isDesktop ? 28 : undefined,
+          alignItems: 'start',
+        }}
+      >
+        {/* ===== Membership Card ===== */}
       <div
         style={{
           position: 'relative',
@@ -1548,7 +1629,8 @@ function ProfileStep({
         </button>
       </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
