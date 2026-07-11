@@ -157,12 +157,73 @@ async function ensureSkipassNormalizado() {
   }
 }
 
+// Alta automática de "Rental Ciudad": punto operado (modo boletería) donde el
+// colaborador y sus familiares directos alquilan equipos/ropa con 50% de descuento.
+// Idempotente: crea el comercio y el beneficio solo si no existen, y los linkea.
+let rentalCiudadEnsured = false;
+async function ensureRentalCiudad() {
+  if (rentalCiudadEnsured) return;
+  try {
+    const LOGO = 'https://beneficios.recluta.com.ar/logo-cerro-castor.png';
+    const QR = 'POPPER-RENTAL-CIUDAD';
+
+    // 1) Comercio (modo boletería + logo). No pisa ediciones a mano del panel.
+    let comercioId: string;
+    const exC = await query(`SELECT id FROM comercios WHERE qr_code=$1`, [QR]);
+    if (exC.rows.length > 0) {
+      comercioId = exC.rows[0].id;
+      await query(
+        `UPDATE comercios SET activo=TRUE, modo_terminal=COALESCE(modo_terminal, TRUE),
+           logo=COALESCE(NULLIF(logo,''), $2), updated_at=NOW() WHERE id=$1`,
+        [comercioId, LOGO]
+      );
+    } else {
+      const r = await query(
+        `INSERT INTO comercios (nombre, direccion, ciudad, provincia, qr_code, horario_apertura, horario_cierre, activo, responsable, modo_terminal, logo)
+         VALUES ('Rental Ciudad', 'San Martín y 9 de Julio', 'Ushuaia', 'Tierra del Fuego', $1, '08:00', '20:00', TRUE, 'Punto de retiro interno', TRUE, $2) RETURNING id`,
+        [QR, LOGO]
+      );
+      comercioId = r.rows[0].id;
+    }
+
+    // 2) Beneficio 50% en alquiler de equipos y ropa (titular + familiares directos, sin límite).
+    const descAlq = 'Descuento del 50% en alquiler de equipos y ropa de esquí. Aplica al titular y a familiares directos (padres, cónyuge/concubino, hijos).';
+    let benId: string;
+    const exB = await query(`SELECT id FROM beneficios WHERE categoria='alquiler' OR LOWER(nombre) LIKE '%alquiler de equipos%' LIMIT 1`);
+    if (exB.rows.length > 0) {
+      benId = exB.rows[0].id;
+      await query(
+        `UPDATE beneficios SET activo=TRUE, origen='interno', categoria='alquiler', modalidad='descuento', tipo='descuento',
+           aplica_a='ambos', descuento=50, relaciones_familiar='Parents,Spouse,CivilUnion,Child',
+           nombre='Alquiler de equipos y ropa', descripcion=$2, updated_at=NOW() WHERE id=$1`,
+        [benId, descAlq]
+      );
+    } else {
+      const r = await query(
+        `INSERT INTO beneficios (nombre, descripcion, tipo, nivel_minimo, activo, origen, categoria, aplica_a, modalidad, relaciones_familiar, descuento)
+         VALUES ('Alquiler de equipos y ropa', $1, 'descuento', 'bronce', TRUE, 'interno', 'alquiler', 'ambos', 'descuento', 'Parents,Spouse,CivilUnion,Child', 50) RETURNING id`,
+        [descAlq]
+      );
+      benId = r.rows[0].id;
+    }
+
+    // 3) Linkear beneficio ↔ comercio.
+    await query(`INSERT INTO comercio_beneficios (comercio_id, beneficio_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [comercioId, benId]);
+
+    rentalCiudadEnsured = true;
+    console.log(`✓ Rental Ciudad configurado (comercio=${comercioId}, beneficio=${benId})`);
+  } catch (e: any) {
+    console.error(`ensureRentalCiudad: ${e.message}`);
+  }
+}
+
 // GET /api/public/comercio/:qrCode - Info del comercio por QR code
 router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
   try {
     const { qrCode } = req.params;
     await ensureComercioLogosSeed();
     await ensureSkipassNormalizado();
+    await ensureRentalCiudad();
 
     // COALESCE para que devuelva null si la columna logo aun no existe (migracion lazy)
     const result = await query(
