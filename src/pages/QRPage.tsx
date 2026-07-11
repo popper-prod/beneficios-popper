@@ -627,6 +627,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
               processing={processing}
               errorMsg={errorMsg}
               overrideRequired={overrideRequired}
+              isTerminal={isTerminal}
               onConfirmar={(retiradoPorDni?: string) => handleCanjearConfirmado(false, undefined, retiradoPorDni)}
               onConfirmarConPin={(pin, retiradoPorDni?: string) => handleCanjearConfirmado(true, pin, retiradoPorDni)}
               onCancelar={() => { setStep(skipProfile ? 'identify' : 'profile'); setErrorMsg(''); setOverrideRequired(false); }}
@@ -1790,7 +1791,7 @@ function BenefitOption({
 // y confirma el canje con un click. Si excede el límite, pide PIN del responsable.
 // ============================================
 function ConfirmStep({
-  beneficiario, familiarInfo, beneficio, monto, invitadosCount, processing, errorMsg, overrideRequired,
+  beneficiario, familiarInfo, beneficio, monto, invitadosCount, processing, errorMsg, overrideRequired, isTerminal,
   onConfirmar, onConfirmarConPin, onCancelar,
 }: {
   beneficiario: Beneficiario;
@@ -1801,6 +1802,7 @@ function ConfirmStep({
   processing: boolean;
   errorMsg: string;
   overrideRequired: boolean;
+  isTerminal: boolean;
   onConfirmar: (retiradoPorDni?: string) => void;
   onConfirmarConPin: (pin: string, retiradoPorDni?: string) => void;
   onCancelar: () => void;
@@ -1825,14 +1827,14 @@ function ConfirmStep({
         textAlign: 'center',
       }}>
         <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--brand)', letterSpacing: '0.18em', textTransform: 'uppercase' }}>
-          📱 Pasale el teléfono al cajero
+          {isTerminal ? '🎫 Verificá la identidad antes de confirmar' : '📱 Pasale el teléfono al cajero'}
         </p>
         <p style={{ fontSize: '11.5px', color: 'var(--text-2)', marginTop: 4, lineHeight: 1.4 }}>
           {esMenor
             ? 'Pedí DNI del adulto autorizado que retira'
             : familiarInfo
-              ? 'Pedí DNI físico al familiar y verificá contra los datos en pantalla'
-              : 'Pedí DNI físico al colaborador y verificá contra los datos en pantalla'}
+              ? 'Pedí el DNI físico al familiar y cotejá contra los datos en pantalla'
+              : 'Pedí el DNI físico al colaborador y cotejá contra los datos en pantalla'}
         </p>
       </div>
 
@@ -1879,6 +1881,19 @@ function ConfirmStep({
           </span>
           {beneficiario.es_talento_popper && <span style={{ marginLeft: 8, color: 'var(--brand)' }}>★ Talento</span>}
         </p>
+        {/* Edad del FAMILIAR (Lidia) — va con sus datos, no con los del titular */}
+        {familiarInfo && familiarInfo.edad != null && (
+          <div style={{ marginTop: 8 }}>
+            <span style={{
+              padding: '2px 10px', borderRadius: '999px',
+              background: esMenor ? 'var(--danger-bg)' : 'var(--success-bg)',
+              color: esMenor ? 'var(--danger-text)' : 'var(--success-text)',
+              fontSize: '11.5px', fontWeight: 700,
+            }}>
+              {familiarInfo.edad} años · {esMenor ? 'menor' : 'adulto'}
+            </span>
+          </div>
+        )}
         {familiarInfo && (() => {
           const titFoto = familiarInfo.titular.foto ?? beneficiario.foto;
           const titArea = formatArea(
@@ -1898,17 +1913,17 @@ function ConfirmStep({
                 src={titFoto}
                 alt={`${familiarInfo.titular.nombre} ${familiarInfo.titular.apellido}`}
                 style={{
-                  width: 46, height: 46, borderRadius: '50%', objectFit: 'cover',
+                  width: 60, height: 60, borderRadius: '50%', objectFit: 'cover',
                   flexShrink: 0, border: '2px solid var(--brand)',
                 }}
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
             ) : (
               <div style={{
-                width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
+                width: 60, height: 60, borderRadius: '50%', flexShrink: 0,
                 background: 'var(--brand-muted)', border: '2px solid var(--brand)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'var(--brand)', fontWeight: 700, fontSize: '16px',
+                color: 'var(--brand)', fontWeight: 700, fontSize: '19px',
               }}>
                 {familiarInfo.titular.nombre[0]}{familiarInfo.titular.apellido[0]}
               </div>
@@ -1923,23 +1938,13 @@ function ConfirmStep({
               <p style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-1)', lineHeight: 1.2 }}>
                 {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
               </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
-                {titArea && (
+              {titArea && (
+                <div style={{ marginTop: 3 }}>
                   <span style={{ fontSize: '11.5px', color: 'var(--text-2)' }}>
                     {titArea}
                   </span>
-                )}
-                {familiarInfo.edad != null && (
-                  <span style={{
-                    padding: '1px 7px', borderRadius: '999px',
-                    background: esMenor ? 'var(--danger-bg)' : 'var(--success-bg)',
-                    color: esMenor ? 'var(--danger-text)' : 'var(--success-text)',
-                    fontSize: '10.5px', fontWeight: 700,
-                  }}>
-                    {familiarInfo.edad} años {esMenor ? '· menor' : '· adulto'}
-                  </span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
           );
