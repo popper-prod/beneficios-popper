@@ -739,11 +739,11 @@ export default function AdminDashboard({ token, user, onLogout }: {
   // V3F — Seed boleterías + skipass + foto + listado
   const handleSeedBoleteriasSkipass = async () => {
     const ok = confirm(
-      '¿Configurar Skipass operativo?\n\n' +
+      '¿Configurar y normalizar el Skipass?\n\n' +
       'Esto va a:\n' +
-      '• Crear (o reactivar) 2 comercios: "Boletería Ciudad" y "Boletería Cerro Castor"\n' +
-      '• Crear/actualizar el beneficio "Pase de Esquí · Temporada" con límite 1 por persona\n' +
-      '• Asociar el skipass con ambas boleterías (se puede retirar en cualquiera, pero solo 1 vez)\n' +
+      '• Dejar UN solo beneficio "Pase de Esquí · Diario" (titular gratis, familiar 50%, 1 por día)\n' +
+      '• Asociarlo a las boleterías\n' +
+      '• Desvincular de las boleterías cualquier skipass duplicado (así no se ven dos)\n' +
       '• Aplica a empleado + familiares (Madre/Padre, Cónyuge, Concubino, Hijos)'
     );
     if (!ok) return;
@@ -752,7 +752,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
       const res = await fetch(`${API_URL}/admin/seed-boleterias-skipass`, { method: 'POST', headers });
       const data = await res.json();
       if (res.ok) {
-        alert(`✓ Configurado. ${data.boleterias.length} boleterías + skipass listas.\n\nQRs:\n${data.boleterias.map((b: any) => `• ${b.nombre}: ${b.qr}`).join('\n')}`);
+        alert(`✓ Skipass normalizado.\n${data.boleterias.length} boleterías configuradas.\n${data.duplicados_desvinculados || 0} duplicado(s) desvinculado(s), ${data.duplicados_desactivados || 0} desactivado(s).`);
         fetchComercios(); fetchBeneficios();
       } else {
         alert(`Error: ${data.error || 'No se pudo configurar'}`);

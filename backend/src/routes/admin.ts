@@ -2526,7 +2526,9 @@ router.post('/seed-boleterias-skipass', async (req: AuthRequest, res: Response) 
       familiar: { tipo: 'descuento', porcentaje: 50 },
     });
     let skipassId: string;
-    const exSki = await query(`SELECT id FROM beneficios WHERE LOWER(nombre) LIKE '%pase de esquí%' OR LOWER(nombre) LIKE '%skipass%' ORDER BY (SELECT COUNT(*) FROM verificaciones v WHERE v.beneficio_id = beneficios.id) DESC LIMIT 1`);
+    // Incluye categoria='skipass' porque el nombre puede venir con encoding roto
+    // ("EsquÃ­") y no matchear el LIKE. Elige el de más verificaciones para conservar historial.
+    const exSki = await query(`SELECT id FROM beneficios WHERE categoria='skipass' OR LOWER(nombre) LIKE '%pase de esquí%' OR LOWER(nombre) LIKE '%skipass%' ORDER BY (SELECT COUNT(*) FROM verificaciones v WHERE v.beneficio_id = beneficios.id) DESC LIMIT 1`);
     const hoy = new Date().toISOString().split('T')[0];
     const finAnio = `${new Date().getFullYear()}-12-31`;
     if (exSki.rows.length > 0) {
@@ -2557,11 +2559,40 @@ router.post('/seed-boleterias-skipass', async (req: AuthRequest, res: Response) 
         [cid, skipassId]);
     }
 
+    // Limpieza de duplicados: sacar de las boleterías cualquier OTRO beneficio de skipass
+    // que no sea el canónico, para que el titular no vea dos "Pase de Esquí". Los duplicados
+    // sin verificaciones se desactivan; los que tienen historial quedan (pero desvinculados).
+    let duplicadosDesvinculados = 0;
+    let duplicadosDesactivados = 0;
+    const otros = await query(
+      `SELECT id FROM beneficios
+       WHERE id <> $1 AND (categoria='skipass' OR LOWER(nombre) LIKE '%pase de esquí%' OR LOWER(nombre) LIKE '%skipass%')`,
+      [skipassId]
+    );
+    const otrosIds = otros.rows.map((r: any) => r.id);
+    if (otrosIds.length > 0 && comercioIds.length > 0) {
+      const del = await query(
+        `DELETE FROM comercio_beneficios WHERE comercio_id = ANY($1::uuid[]) AND beneficio_id = ANY($2::uuid[])`,
+        [comercioIds, otrosIds]
+      );
+      duplicadosDesvinculados = del.rowCount || 0;
+      const des = await query(
+        `UPDATE beneficios SET activo=FALSE, updated_at=NOW()
+         WHERE id = ANY($1::uuid[])
+           AND NOT EXISTS (SELECT 1 FROM verificaciones v WHERE v.beneficio_id = beneficios.id)
+         RETURNING id`,
+        [otrosIds]
+      );
+      duplicadosDesactivados = des.rows.length;
+    }
+
     res.json({
       exito: true,
       mensaje: 'Boleterías y skipass configurados',
       boleterias: boleterias.map(b => ({ nombre: b.nombre, qr: b.qr })),
       skipass_id: skipassId,
+      duplicados_desvinculados: duplicadosDesvinculados,
+      duplicados_desactivados: duplicadosDesactivados,
     });
   } catch (error: any) {
     res.status(500).json({ error: 'Error seed boleterías', detalle: error.message });
