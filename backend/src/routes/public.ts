@@ -85,9 +85,73 @@ async function ensureComercioLogosSeed() {
        WHERE qr_code = ANY($1) AND modo_terminal IS NULL`,
       [['POPPER-BOLETERIA-CERRO', 'POPPER-BOLETERIA-CIUDAD']]
     );
+    // Dirección real de Boletería Ciudad. Solo reemplaza el dato de relleno del seed
+    // ("Av. San Martín 1234"); si ya se editó a mano en el panel, no la toca.
+    await query(
+      `UPDATE comercios SET direccion = 'San Martín 1134'
+       WHERE qr_code = 'POPPER-BOLETERIA-CIUDAD' AND direccion = 'Av. San Martín 1234'`
+    );
     comercioLogosSeeded = true;
   } catch (e: any) {
     console.error(`ensureComercioLogosSeed: ${e.message}`);
+  }
+}
+
+// Normalización automática del skipass (idempotente). Deja UN solo beneficio correcto
+// ("Pase de Esquí · Diario": titular gratis, familiar 50%, ambos, 1/día, sin temporada)
+// asociado a las dos boleterías, y desvincula/desactiva los duplicados. Corre sola en
+// el primer GET /comercio del proceso — así no depende de que alguien apriete el botón
+// del panel. Es la misma lógica que POST /admin/seed-boleterias-skipass, pero sin crear
+// comercios. Best-effort: si algo falla, no rompe la respuesta del comercio.
+let skipassNormalizadoEnsured = false;
+async function ensureSkipassNormalizado() {
+  if (skipassNormalizadoEnsured) return;
+  try {
+    const bolRes = await query(
+      `SELECT id FROM comercios WHERE qr_code = ANY($1) AND activo = TRUE`,
+      [['POPPER-BOLETERIA-CERRO', 'POPPER-BOLETERIA-CIUDAD']]
+    );
+    const comercioIds = bolRes.rows.map((r: any) => r.id);
+    if (comercioIds.length === 0) { skipassNormalizadoEnsured = true; return; }
+
+    // Canónico = skipass con más verificaciones (conserva historial). categoria='skipass'
+    // porque el nombre puede venir con encoding roto ("EsquÃ­") y no matchear el LIKE.
+    const canon = await query(
+      `SELECT id FROM beneficios
+       WHERE categoria='skipass' OR LOWER(nombre) LIKE '%pase de esquí%' OR LOWER(nombre) LIKE '%skipass%'
+       ORDER BY (SELECT COUNT(*) FROM verificaciones v WHERE v.beneficio_id = beneficios.id) DESC LIMIT 1`
+    );
+    if (canon.rows.length === 0) { skipassNormalizadoEnsured = true; return; }
+    const skipassId = canon.rows[0].id;
+
+    const escala = JSON.stringify({ titular: { tipo: 'gratuito', porcentaje: 100 }, familiar: { tipo: 'descuento', porcentaje: 50 } });
+    const desc = 'Pase diario en boletería. Titular: gratis. Familiares directos (padres, cónyuge/concubino e hijos): 50% del valor de residente. 1 pase por día por persona.';
+    await query(
+      `UPDATE beneficios SET activo=TRUE, origen='interno', categoria='skipass', modalidad='acceso',
+         aplica_a='ambos', relaciones_familiar='Parents,Spouse,CivilUnion,Child', limite_uso_diario=1, limite_total=NULL,
+         escala_descuentos=$1::jsonb, nombre='Pase de Esquí · Diario', descripcion=$2, updated_at=NOW()
+       WHERE id=$3`,
+      [escala, desc, skipassId]
+    );
+
+    for (const cid of comercioIds) {
+      await query(`INSERT INTO comercio_beneficios (comercio_id, beneficio_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [cid, skipassId]);
+    }
+
+    const otros = await query(
+      `SELECT id FROM beneficios WHERE id <> $1 AND (categoria='skipass' OR LOWER(nombre) LIKE '%pase de esquí%' OR LOWER(nombre) LIKE '%skipass%')`,
+      [skipassId]
+    );
+    const otrosIds = otros.rows.map((r: any) => r.id);
+    if (otrosIds.length > 0) {
+      await query(`DELETE FROM comercio_beneficios WHERE comercio_id = ANY($1::uuid[]) AND beneficio_id = ANY($2::uuid[])`, [comercioIds, otrosIds]);
+      await query(`UPDATE beneficios SET activo=FALSE, updated_at=NOW() WHERE id = ANY($1::uuid[]) AND NOT EXISTS (SELECT 1 FROM verificaciones v WHERE v.beneficio_id = beneficios.id)`, [otrosIds]);
+    }
+
+    skipassNormalizadoEnsured = true;
+    console.log(`✓ Skipass normalizado automáticamente (canónico=${skipassId}, otros=${otrosIds.length})`);
+  } catch (e: any) {
+    console.error(`ensureSkipassNormalizado: ${e.message}`);
   }
 }
 
@@ -96,6 +160,7 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
   try {
     const { qrCode } = req.params;
     await ensureComercioLogosSeed();
+    await ensureSkipassNormalizado();
 
     // COALESCE para que devuelva null si la columna logo aun no existe (migracion lazy)
     const result = await query(
