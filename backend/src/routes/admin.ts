@@ -165,6 +165,7 @@ router.get('/beneficios', async (req: AuthRequest, res: Response) => {
 // GET /api/admin/comercios - Listar comercios (con paginación + count de beneficios vinculados)
 router.get('/comercios', async (req: AuthRequest, res: Response) => {
   try {
+    await ensureLogoColumn();
     const includeInactive = req.query.include_inactive === 'true' || req.query.all === 'true';
     const page = Math.max(1, parseInt(req.query.page as string || '1'));
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string || '100')));
@@ -380,6 +381,7 @@ async function ensureLogoColumn() {
   try {
     await query(`ALTER TABLE comercios ADD COLUMN IF NOT EXISTS logo TEXT`);
     await query(`ALTER TABLE comercios ADD COLUMN IF NOT EXISTS pin_responsable VARCHAR(60)`);
+    await query(`ALTER TABLE comercios ADD COLUMN IF NOT EXISTS modo_terminal BOOLEAN`);
     comerciosV3Ensured = true;
   } catch (e) { /* silencioso */ }
 }
@@ -388,7 +390,7 @@ async function ensureLogoColumn() {
 router.post('/comercios', async (req: AuthRequest, res: Response) => {
   try {
     await ensureLogoColumn();
-    const { nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, logo, pin } = req.body;
+    const { nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, logo, pin, modo_terminal } = req.body;
     if (!nombre) return res.status(400).json({ error: 'Nombre es requerido' });
     const qr_code = `QR-${nombre.replace(/\s+/g, '-').toUpperCase().substring(0, 20)}-${Date.now().toString(36).toUpperCase()}`;
     // Hashear PIN si viene (mínimo 4 dígitos)
@@ -397,9 +399,9 @@ router.post('/comercios', async (req: AuthRequest, res: Response) => {
       pinHash = await bcrypt.hash(String(pin), 8);
     }
     const result = await query(
-      `INSERT INTO comercios (nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, qr_code, logo, pin_responsable, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE) RETURNING *`,
-      [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, qr_code, logo || null, pinHash]
+      `INSERT INTO comercios (nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, qr_code, logo, pin_responsable, modo_terminal, activo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,TRUE) RETURNING *`,
+      [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, qr_code, logo || null, pinHash, modo_terminal === true || modo_terminal === 'true']
     );
     // No devolver el hash del PIN
     delete result.rows[0].pin_responsable;
@@ -415,28 +417,32 @@ router.put('/comercios/:id', async (req: AuthRequest, res: Response) => {
   try {
     await ensureLogoColumn();
     const { id } = req.params;
-    const { nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, activo, logo, pin } = req.body;
-    // Si pin viene vacío string → mantener actual. Si tiene contenido válido → hashear.
-    let pinClause = '';
-    let pinValue: any = null;
-    if (pin !== undefined && pin !== null && pin !== '') {
-      if (/^\d{4,8}$/.test(String(pin))) {
-        pinValue = await bcrypt.hash(String(pin), 8);
-        pinClause = ', pin_responsable=$13';
-      }
-    } else if (pin === '') {
-      // explícitamente borrar
-      pinValue = null;
-      pinClause = ', pin_responsable=NULL';
+    const { nombre, direccion, ciudad, provincia, telefono, email, horario_apertura, horario_cierre, responsable, activo, logo, pin, modo_terminal } = req.body;
+
+    // Builder dinámico: campos fijos + opcionales (modo_terminal, pin) sin juggling de índices.
+    const sets: string[] = ['nombre=$1', 'direccion=$2', 'ciudad=$3', 'provincia=$4', 'telefono=$5', 'email=$6', 'horario_apertura=$7', 'horario_cierre=$8', 'responsable=$9', 'activo=$10', 'logo=$11'];
+    const params: any[] = [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, activo, logo || null];
+
+    // modo boletería (kiosco): solo se actualiza si viene en el body
+    if (modo_terminal !== undefined) {
+      params.push(modo_terminal === null ? null : !!modo_terminal);
+      sets.push(`modo_terminal=$${params.length}`);
     }
 
-    const baseParams = [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, activo, logo || null, id];
-    const params = pinClause.includes('$13') ? [...baseParams.slice(0, 11), id, pinValue] : baseParams;
+    // pin: si viene vacío string → borrar; si es válido → hashear; si no viene → mantener
+    if (pin !== undefined && pin !== null && pin !== '') {
+      if (/^\d{4,8}$/.test(String(pin))) {
+        params.push(await bcrypt.hash(String(pin), 8));
+        sets.push(`pin_responsable=$${params.length}`);
+      }
+    } else if (pin === '') {
+      sets.push('pin_responsable=NULL');
+    }
 
+    params.push(id);
     const result = await query(
-      `UPDATE comercios SET nombre=$1, direccion=$2, ciudad=$3, provincia=$4, telefono=$5, email=$6, horario_apertura=$7, horario_cierre=$8, responsable=$9, activo=$10, logo=$11${pinClause}, updated_at=NOW()
-       WHERE id=$12 RETURNING *`,
-      pinClause.includes('$13') ? [nombre, direccion || null, ciudad || null, provincia || null, telefono || null, email || null, horario_apertura || null, horario_cierre || null, responsable || null, activo, logo || null, id, pinValue] : baseParams
+      `UPDATE comercios SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${params.length} RETURNING *`,
+      params
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Comercio no encontrado' });
     delete result.rows[0].pin_responsable;

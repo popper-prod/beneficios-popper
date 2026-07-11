@@ -255,7 +255,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
         max_invitados: '', cubre_invitados: '',
       });
     } else if (type === 'comercio') {
-      setForm({ nombre: '', direccion: '', ciudad: 'Ushuaia', provincia: 'Tierra del Fuego', telefono: '', email: '', horario_apertura: '09:00', horario_cierre: '20:00', responsable: '', logo: '', pin: '' });
+      setForm({ nombre: '', direccion: '', ciudad: 'Ushuaia', provincia: 'Tierra del Fuego', telefono: '', email: '', horario_apertura: '09:00', horario_cierre: '20:00', responsable: '', logo: '', pin: '', modo_terminal: 'false' });
     } else {
       setForm({ dni: '', nombre: '', apellido: '', email: '', telefono: '', nivel: 'bronce', departamento: '', empresa: 'Grupo Popper' });
     }
@@ -290,7 +290,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
         nombre: item.nombre || '', direccion: item.direccion || '', ciudad: item.ciudad || '', provincia: item.provincia || '',
         telefono: item.telefono || '', email: item.email || '', horario_apertura: item.horario_apertura || '',
         horario_cierre: item.horario_cierre || '', responsable: item.responsable || '', activo: item.activo ? 'true' : 'false',
-        logo: item.logo || '', pin: '',
+        logo: item.logo || '', pin: '', modo_terminal: item.modo_terminal ? 'true' : 'false',
       });
     } else {
       setForm({
@@ -317,6 +317,8 @@ export default function AdminDashboard({ token, user, onLogout }: {
       if (body.limite_uso_diario) body.limite_uso_diario = parseInt(body.limite_uso_diario);
       if (body.limite_uso_mensual) body.limite_uso_mensual = parseInt(body.limite_uso_mensual);
       if (body.activo !== undefined) body.activo = body.activo === 'true';
+      // Comercio — modo boletería (kiosco) viene como 'true'/'false' del select
+      if (body.modo_terminal !== undefined) body.modo_terminal = body.modo_terminal === 'true' || body.modo_terminal === true;
       // V2 — escala_descuentos viene como JSON string del editor
       if (body.escala_descuentos && typeof body.escala_descuentos === 'string') {
         try { body.escala_descuentos = JSON.parse(body.escala_descuentos); } catch { body.escala_descuentos = null; }
@@ -2323,6 +2325,11 @@ export default function AdminDashboard({ token, user, onLogout }: {
         />
         <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: -8, marginBottom: 8 }}>
           🔒 El PIN permite al cajero autorizar canjes que excedan el límite mensual del colaborador. Si no se carga, no se pueden hacer overrides.
+        </p>
+        <Field label="Modo boletería (kiosco)" value={form.modo_terminal || 'false'} onChange={v => setForm({ ...form, modo_terminal: v })}
+          options={[{ value: 'false', label: 'No — es un comercio normal (autoservicio)' }, { value: 'true', label: 'Sí — es una boletería/punto de venta con operador' }]} />
+        <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: -8, marginBottom: 8 }}>
+          🎫 En modo boletería, cada consulta de DNI queda registrada en "Control boletería" (aunque el operador no cierre el canje), aparece el recordatorio en pantalla y la terminal no se apaga. No depende de la URL.
         </p>
         {modal?.mode === 'edit' && (
           <Field label="Estado" value={form.activo || 'true'} onChange={v => setForm({ ...form, activo: v })}

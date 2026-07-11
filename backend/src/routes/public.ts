@@ -73,6 +73,16 @@ async function ensureComercioLogosSeed() {
        WHERE qr_code = $2 AND (logo IS NULL OR logo = '')`,
       ['https://beneficios.recluta.com.ar/logo-cerro-castor.png', 'POPPER-BOLETERIA-CERRO']
     );
+    // modo_terminal: el comercio corre en modo kiosco/boletería por sí mismo, sin
+    // depender de ?terminal=1 en la URL (banner + registro de pendientes + anti-reset).
+    // Nullable a propósito: seed a TRUE solo si NUNCA se tocó (IS NULL), así el panel
+    // puede desactivarlo y el seed no lo vuelve a pisar. Se lee con COALESCE(...,FALSE).
+    await query(`ALTER TABLE comercios ADD COLUMN IF NOT EXISTS modo_terminal BOOLEAN`);
+    await query(
+      `UPDATE comercios SET modo_terminal = TRUE
+       WHERE qr_code = $1 AND modo_terminal IS NULL`,
+      ['POPPER-BOLETERIA-CERRO']
+    );
     comercioLogosSeeded = true;
   } catch (e: any) {
     console.error(`ensureComercioLogosSeed: ${e.message}`);
@@ -90,7 +100,10 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
       `SELECT c.id, c.nombre, c.direccion, c.ciudad, c.telefono, c.horario_apertura, c.horario_cierre, c.responsable,
               CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='comercios' AND column_name='logo')
                 THEN (SELECT logo FROM comercios WHERE qr_code = $1 AND activo = TRUE LIMIT 1)
-                ELSE NULL END as logo
+                ELSE NULL END as logo,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='comercios' AND column_name='modo_terminal')
+                THEN (SELECT COALESCE(modo_terminal, FALSE) FROM comercios WHERE qr_code = $1 AND activo = TRUE LIMIT 1)
+                ELSE FALSE END as modo_terminal
        FROM comercios c WHERE c.qr_code = $1 AND c.activo = TRUE`,
       [qrCode]
     );
@@ -317,9 +330,13 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
       return res.status(400).json({ error: 'DNI invalido' });
     }
 
-    // Verificar comercio
+    // Verificar comercio (+ modo boletería: fuerza registro de pendientes sin ?terminal).
+    // CASE WHEN EXISTS: mismo patrón que `foto`/`logo` para columnas de migración lazy.
     const comercioResult = await query(
-      'SELECT id, nombre FROM comercios WHERE id = $1 AND activo = TRUE',
+      `SELECT id, nombre,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='comercios' AND column_name='modo_terminal')
+                THEN COALESCE(modo_terminal, FALSE) ELSE FALSE END AS modo_terminal
+       FROM comercios WHERE id = $1 AND activo = TRUE`,
       [comercioId]
     );
     if (comercioResult.rows.length === 0) {
@@ -489,10 +506,13 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
       });
     }
 
-    // Registro "pendiente" para control de consumo en la boletería (SOLO terminal).
+    // Registro "pendiente" para control de consumo en la boletería. Se activa con
+    // ?terminal=1 en la URL O si el comercio está en modo boletería (modo_terminal):
+    // así el registro NO depende de que alguien recuerde el flag en la URL.
     // Deja rastro de la consulta aunque el boletero no llegue a cerrar el canje.
     // Best-effort: nunca debe romper ni demorar la consulta del boletero.
-    if (req.query.terminal && beneficiosConDescuento.length > 0) {
+    const esBoleteria = !!req.query.terminal || comercioResult.rows[0].modo_terminal === true;
+    if (esBoleteria && beneficiosConDescuento.length > 0) {
       const dniPortador = esFamiliar ? familiar.dni : titular.dni;
       const nombrePortador = esFamiliar
         ? (familiar.nombre_completo || '').trim()

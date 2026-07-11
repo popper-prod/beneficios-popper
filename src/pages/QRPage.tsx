@@ -34,6 +34,7 @@ interface Comercio {
   horario_cierre: string;
   responsable: string;
   logo?: string | null;
+  modo_terminal?: boolean;
 }
 
 interface Beneficiario {
@@ -153,11 +154,17 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
   const [skipProfile, setSkipProfile] = useState(false); // true si se auto-saltó "elegir beneficio"
   const [idleWarning, setIdleWarning] = useState(false);  // aviso "canje sin registrar" en terminal
 
-  // Modo terminal (PC/kiosco) vs QR en el teléfono de la persona.
-  // El lanzador de la PC abre la URL con ?terminal=1 → activa kiosco, pantalla
-  // encendida y auto-reset. En el teléfono propio nada de eso aplica (no le
-  // borra el código de éxito ni le bloquea el toque).
-  const isTerminal = new URLSearchParams(window.location.search).has('terminal');
+  // Modo terminal (PC/kiosco) vs QR en el teléfono de la persona. Se activa por:
+  //  - ?terminal=1 en la URL (en el search o dentro del hash, por si el lanzador lo
+  //    pega después del #), o
+  //  - que el comercio esté marcado como "modo boletería" (robusto: no depende de la
+  //    URL, así el registro de consumo nunca se apaga por un favorito viejo).
+  // En el teléfono propio nada de esto aplica (no le borra el código ni le bloquea el toque).
+  const urlTerminal =
+    new URLSearchParams(window.location.search).has('terminal') ||
+    (window.location.hash.includes('?') &&
+      new URLSearchParams(window.location.hash.slice(window.location.hash.indexOf('?') + 1)).has('terminal'));
+  const isTerminal = urlTerminal || comercio?.modo_terminal === true;
 
   // Terminal: activar el blindaje de kiosco (definido en index.html) solo en modo
   // terminal. No afecta el panel admin, otras vistas, ni el QR en teléfono propio.
