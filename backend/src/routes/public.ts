@@ -68,10 +68,12 @@ async function ensureComercioLogosSeed() {
   if (comercioLogosSeeded) return;
   try {
     await query(`ALTER TABLE comercios ADD COLUMN IF NOT EXISTS logo TEXT`);
+    // Logo de Cerro Castor en las DOS boleterías (ambas son punto de retiro de pases
+    // de Cerro Castor). Solo si el comercio no tiene logo, así no pisa uno cargado a mano.
     await query(
       `UPDATE comercios SET logo = $1
-       WHERE qr_code = $2 AND (logo IS NULL OR logo = '')`,
-      ['https://beneficios.recluta.com.ar/logo-cerro-castor.png', 'POPPER-BOLETERIA-CERRO']
+       WHERE qr_code = ANY($2) AND (logo IS NULL OR logo = '')`,
+      ['https://beneficios.recluta.com.ar/logo-cerro-castor.png', ['POPPER-BOLETERIA-CERRO', 'POPPER-BOLETERIA-CIUDAD']]
     );
     // modo_terminal: el comercio corre en modo kiosco/boletería por sí mismo, sin
     // depender de ?terminal=1 en la URL (banner + registro de pendientes + anti-reset).
