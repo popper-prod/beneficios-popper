@@ -1,5 +1,5 @@
 import { query } from '../db';
-import { naalooToBeneficiario } from './naaloo';
+import { naalooToBeneficiario, obtenerEmpleadoCompleto, NaalooFamiliar, normalizarRelacion } from './naaloo';
 
 const NAALOO_API_URL = 'https://backend.naaloo.com';
 const NAALOO_TOKEN = process.env.NAALOO_TOKEN || '';
@@ -414,5 +414,149 @@ export async function previewReconciliacionBajas(): Promise<ReconciliacionPrevie
       fecha_ingreso: r.fecha_ingreso,
       ultima_sync: r.ultima_sync,
     })),
+  };
+}
+
+export interface SyncFamiliaresResumen {
+  empleadosProcesados: number;
+  empleadosSinFamiliares: number;
+  familiaresNuevos: number;
+  familiaresActualizados: number;
+  familiaresBaja: number;
+  reconciliacionOmitida: boolean;
+  errores: string[];
+}
+
+// Sincroniza los familiares de TODOS los beneficiarios activos con naaloo_id.
+// Es pesado: hace un GET /personal/{id} por empleado (los familiares vienen
+// anidados en el detalle individual, no en el listado), por eso corre aparte
+// del sync de titulares y a una cadencia más baja (1×/día).
+// Hace requests concurrentes en lotes para no bombardear Naaloo.
+//
+// Además de altas/actualizaciones, RECONCILIA bajas: un familiar de origen Naaloo
+// (naaloo_id IS NOT NULL) que ya no viene en el detalle del titular = fue eliminado
+// en Naaloo → se desactiva. Dos resguardos:
+//   1) Sólo toca familiares con naaloo_id — los cargados a mano (naaloo_id NULL) se
+//      preservan siempre.
+//   2) Si el titular no se pudo traer de Naaloo (fetch falló), no se reconcila nada
+//      de ese titular. Y un guard global de proporción aborta la reconciliación si
+//      las bajas candidatas superan SYNC_FAMILIARES_MAX_BAJA_RATIO (default 0.5) del
+//      total de familiares activos — protege contra una respuesta parcial de Naaloo.
+export async function runSyncFamiliares(): Promise<SyncFamiliaresResumen> {
+  const benefRes = await query(
+    `SELECT id, naaloo_id, dni, nombre, apellido FROM beneficiarios
+     WHERE activo = TRUE AND naaloo_id IS NOT NULL`
+  );
+  const beneficiarios = benefRes.rows;
+
+  let totalSincronizados = 0;
+  let totalFamiliaresNuevos = 0;
+  let totalFamiliaresActualizados = 0;
+  let totalEmpleadosSinFamiliares = 0;
+  const errores: string[] = [];
+  const candidatosBaja: string[] = [];   // ids de familiares a desactivar
+  const titularesOk: string[] = [];      // titulares traídos OK de Naaloo (denominador del guard)
+
+  // Procesar en lotes de 8 concurrentes
+  const batchSize = 8;
+  for (let i = 0; i < beneficiarios.length; i += batchSize) {
+    const batch = beneficiarios.slice(i, i + batchSize);
+    await Promise.all(batch.map(async (b: any) => {
+      try {
+        const detalle = await obtenerEmpleadoCompleto(b.naaloo_id);
+        if (!detalle) return; // fetch falló → no tocamos NADA de este titular
+
+        titularesOk.push(b.id);
+        const fams: NaalooFamiliar[] = (detalle.familiares || []).filter((f) => f.dni);
+        if (fams.length === 0) totalEmpleadosSinFamiliares++;
+
+        for (const f of fams) {
+          // Upsert por (beneficiario_id, dni)
+          const existing = await query(
+            `SELECT id FROM familiares WHERE beneficiario_id=$1 AND dni=$2 LIMIT 1`,
+            [b.id, f.dni]
+          );
+          const fechaNac = f.fechaNacimiento ? f.fechaNacimiento.split('T')[0] : null;
+          if (existing.rows.length > 0) {
+            await query(
+              `UPDATE familiares SET
+                naaloo_id=$1, nombre_completo=$2, relacion=$3, fecha_nacimiento=$4,
+                email=$5, telefono=$6, a_cargo=$7, activo=TRUE, ultima_sync=NOW(), updated_at=NOW()
+              WHERE id=$8`,
+              [f.id, f.nombreCompleto, normalizarRelacion(f.relacion), fechaNac,
+               f.email || null, f.telefonos || null, f.aCargo || false, existing.rows[0].id]
+            );
+            totalFamiliaresActualizados++;
+          } else {
+            await query(
+              `INSERT INTO familiares (beneficiario_id, naaloo_id, dni, nombre_completo, relacion,
+                                       fecha_nacimiento, email, telefono, a_cargo, activo, ultima_sync)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, NOW())`,
+              [b.id, f.id, f.dni, f.nombreCompleto, normalizarRelacion(f.relacion), fechaNac,
+               f.email || null, f.telefonos || null, f.aCargo || false]
+            );
+            totalFamiliaresNuevos++;
+          }
+        }
+
+        // Candidatos a baja: familiares de origen Naaloo, activos, cuyo DNI ya NO
+        // viene en la lista de este titular. Los cargados a mano (naaloo_id NULL)
+        // quedan excluidos. Con lista vacía, `dni = ANY('{}')` es siempre falso, así
+        // que todos los naaloo del titular caen como candidatos (baja legítima).
+        const dnisNaaloo = fams.map((f) => f.dni);
+        const huerfanos = await query(
+          `SELECT id FROM familiares
+           WHERE beneficiario_id=$1 AND activo=TRUE AND naaloo_id IS NOT NULL
+             AND NOT (dni = ANY($2::text[]))`,
+          [b.id, dnisNaaloo]
+        );
+        for (const row of huerfanos.rows) candidatosBaja.push(row.id);
+
+        totalSincronizados++;
+      } catch (e: any) {
+        errores.push(`${b.dni}: ${e.message}`);
+      }
+    }));
+  }
+
+  // RECONCILIACIÓN DE BAJAS — con guard global de proporción.
+  let familiaresBaja = 0;
+  let reconciliacionOmitida = false;
+  if (candidatosBaja.length > 0) {
+    const totalActivosRes = await query(
+      `SELECT COUNT(*)::int AS n FROM familiares
+       WHERE activo=TRUE AND naaloo_id IS NOT NULL AND beneficiario_id = ANY($1::uuid[])`,
+      [titularesOk]
+    );
+    const totalActivos: number = totalActivosRes.rows[0]?.n || 0;
+    const maxRatio = parseFloat(process.env.SYNC_FAMILIARES_MAX_BAJA_RATIO || '0.5');
+    if (totalActivos > 0 && candidatosBaja.length > totalActivos * maxRatio) {
+      reconciliacionOmitida = true;
+      console.error(
+        `⚠️ Reconciliación de familiares OMITIDA: ${candidatosBaja.length} bajas candidatas sobre ` +
+        `${totalActivos} activos (> ${maxRatio}). Posible respuesta parcial de Naaloo. Sin aplicar.`
+      );
+    } else {
+      const CHUNK = 200;
+      for (let i = 0; i < candidatosBaja.length; i += CHUNK) {
+        const slice = candidatosBaja.slice(i, i + CHUNK);
+        const ph = slice.map((_, j) => `$${j + 1}`).join(',');
+        await query(
+          `UPDATE familiares SET activo=FALSE, updated_at=NOW() WHERE id IN (${ph})`,
+          slice
+        ).catch(() => {});
+      }
+      familiaresBaja = candidatosBaja.length;
+    }
+  }
+
+  return {
+    empleadosProcesados: totalSincronizados,
+    empleadosSinFamiliares: totalEmpleadosSinFamiliares,
+    familiaresNuevos: totalFamiliaresNuevos,
+    familiaresActualizados: totalFamiliaresActualizados,
+    familiaresBaja,
+    reconciliacionOmitida,
+    errores: errores.slice(0, 10),
   };
 }

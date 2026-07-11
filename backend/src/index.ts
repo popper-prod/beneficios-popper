@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { runSyncNaaloo, previewReconciliacionBajas } from './services/syncService';
+import { runSyncNaaloo, runSyncFamiliares, previewReconciliacionBajas } from './services/syncService';
 import cors from 'cors';
 import { config } from './config';
 import authRoutes from './routes/auth';
@@ -265,6 +265,25 @@ app.listen(config.port, () => {
     }, SYNC_INTERVAL);
 
     console.log(`🔄 Auto-sync Naaloo activado: cada 2 horas`);
+
+    // Auto-sync de FAMILIARES 1×/día. Va aparte del sync de titulares porque es
+    // pesado: hace un GET /personal/{id} por cada empleado activo. Trae altas y
+    // actualizaciones de familiares nuevos cargados en Naaloo.
+    const SYNC_FAMILIARES_INTERVAL = 24 * 60 * 60 * 1000;
+    setInterval(async () => {
+      try {
+        const r = await runSyncFamiliares();
+        const bajaTxt = r.reconciliacionOmitida ? 'bajas OMITIDAS (guard)' : `${r.familiaresBaja} bajas`;
+        console.log(
+          `👪 Auto-sync familiares: ${r.familiaresNuevos} nuevos, ${r.familiaresActualizados} actualizados, ${bajaTxt} ` +
+          `(${r.empleadosProcesados} empleados) — ${new Date().toISOString()}`
+        );
+      } catch (err: any) {
+        console.log(`⚠️ Auto-sync familiares falló: ${err.message} — ${new Date().toISOString()}`);
+      }
+    }, SYNC_FAMILIARES_INTERVAL);
+
+    console.log(`👪 Auto-sync familiares activado: cada 24 horas`);
   }
 });
 

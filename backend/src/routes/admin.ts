@@ -1,8 +1,7 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
 import { verifyToken, AuthRequest } from '../middleware/auth';
-import { obtenerTodosEmpleados, naalooToBeneficiario, obtenerEmpleadoCompleto, NaalooFamiliar, normalizarRelacion } from '../services/naaloo';
-import { runSyncNaaloo } from '../services/syncService';
+import { runSyncNaaloo, runSyncFamiliares } from '../services/syncService';
 import * as XLSX from 'xlsx';
 import bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
@@ -1530,81 +1529,8 @@ router.get('/familiares/:beneficiarioId', async (req: AuthRequest, res: Response
 
 router.post('/familiares/sync-naaloo', async (req: AuthRequest, res: Response) => {
   try {
-    // Sincroniza familiares de TODOS los beneficiarios activos con naaloo_id.
-    // Hace requests concurrentes en lotes para no bombardear Naaloo.
-    const benefRes = await query(
-      `SELECT id, naaloo_id, dni, nombre, apellido FROM beneficiarios
-       WHERE activo = TRUE AND naaloo_id IS NOT NULL`
-    );
-    const beneficiarios = benefRes.rows;
-
-    let totalSincronizados = 0;
-    let totalFamiliaresNuevos = 0;
-    let totalFamiliaresActualizados = 0;
-    let totalEmpleadosSinFamiliares = 0;
-    const errores: string[] = [];
-
-    // Procesar en lotes de 8 concurrentes
-    const batchSize = 8;
-    for (let i = 0; i < beneficiarios.length; i += batchSize) {
-      const batch = beneficiarios.slice(i, i + batchSize);
-      await Promise.all(batch.map(async (b: any) => {
-        try {
-          const detalle = await obtenerEmpleadoCompleto(b.naaloo_id);
-          if (!detalle) return;
-
-          const fams: NaalooFamiliar[] = detalle.familiares || [];
-          if (fams.length === 0) {
-            totalEmpleadosSinFamiliares++;
-            return;
-          }
-
-          for (const f of fams) {
-            if (!f.dni) continue;
-            // Upsert por (beneficiario_id, dni)
-            const existing = await query(
-              `SELECT id FROM familiares WHERE beneficiario_id=$1 AND dni=$2 LIMIT 1`,
-              [b.id, f.dni]
-            );
-            const fechaNac = f.fechaNacimiento ? f.fechaNacimiento.split('T')[0] : null;
-            if (existing.rows.length > 0) {
-              await query(
-                `UPDATE familiares SET
-                  naaloo_id=$1, nombre_completo=$2, relacion=$3, fecha_nacimiento=$4,
-                  email=$5, telefono=$6, a_cargo=$7, activo=TRUE, ultima_sync=NOW(), updated_at=NOW()
-                WHERE id=$8`,
-                [f.id, f.nombreCompleto, normalizarRelacion(f.relacion), fechaNac,
-                 f.email || null, f.telefonos || null, f.aCargo || false, existing.rows[0].id]
-              );
-              totalFamiliaresActualizados++;
-            } else {
-              await query(
-                `INSERT INTO familiares (beneficiario_id, naaloo_id, dni, nombre_completo, relacion,
-                                         fecha_nacimiento, email, telefono, a_cargo, activo, ultima_sync)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, NOW())`,
-                [b.id, f.id, f.dni, f.nombreCompleto, normalizarRelacion(f.relacion), fechaNac,
-                 f.email || null, f.telefonos || null, f.aCargo || false]
-              );
-              totalFamiliaresNuevos++;
-            }
-          }
-          totalSincronizados++;
-        } catch (e: any) {
-          errores.push(`${b.dni}: ${e.message}`);
-        }
-      }));
-    }
-
-    res.json({
-      exito: true,
-      resumen: {
-        empleadosProcesados: totalSincronizados,
-        empleadosSinFamiliares: totalEmpleadosSinFamiliares,
-        familiaresNuevos: totalFamiliaresNuevos,
-        familiaresActualizados: totalFamiliaresActualizados,
-        errores: errores.slice(0, 10),
-      },
-    });
+    const resumen = await runSyncFamiliares();
+    res.json({ exito: true, resumen });
   } catch (error: any) {
     console.error('Error sync familiares:', error.message);
     res.status(500).json({ error: 'Error sincronizando familiares', detalle: error.message });
