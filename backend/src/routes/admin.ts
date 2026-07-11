@@ -2505,13 +2505,14 @@ router.post('/seed-boleterias-skipass', async (req: AuthRequest, res: Response) 
     for (const b of boleterias) {
       const existing = await query(`SELECT id FROM comercios WHERE qr_code=$1`, [b.qr]);
       if (existing.rows.length > 0) {
-        await query(`UPDATE comercios SET activo=TRUE, nombre=$1, direccion=$2, ciudad=$3, updated_at=NOW() WHERE qr_code=$4`,
-          [b.nombre, b.direccion, b.ciudad, b.qr]);
+        // Ya existe: NO pisamos nombre/dirección (se editan por separado en el panel),
+        // solo garantizamos activa + modo boletería.
+        await query(`UPDATE comercios SET activo=TRUE, modo_terminal=TRUE, updated_at=NOW() WHERE qr_code=$1`, [b.qr]);
         comercioIds.push(existing.rows[0].id);
       } else {
         const r = await query(
-          `INSERT INTO comercios (nombre, direccion, ciudad, provincia, qr_code, horario_apertura, horario_cierre, activo, responsable)
-           VALUES ($1, $2, $3, 'Tierra del Fuego', $4, '08:00', '20:00', TRUE, 'Punto de retiro interno') RETURNING id`,
+          `INSERT INTO comercios (nombre, direccion, ciudad, provincia, qr_code, horario_apertura, horario_cierre, activo, responsable, modo_terminal)
+           VALUES ($1, $2, $3, 'Tierra del Fuego', $4, '08:00', '20:00', TRUE, 'Punto de retiro interno', TRUE) RETURNING id`,
           [b.nombre, b.direccion, b.ciudad, b.qr]
         );
         comercioIds.push(r.rows[0].id);

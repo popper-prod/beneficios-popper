@@ -78,10 +78,12 @@ async function ensureComercioLogosSeed() {
     // Nullable a propósito: seed a TRUE solo si NUNCA se tocó (IS NULL), así el panel
     // puede desactivarlo y el seed no lo vuelve a pisar. Se lee con COALESCE(...,FALSE).
     await query(`ALTER TABLE comercios ADD COLUMN IF NOT EXISTS modo_terminal BOOLEAN`);
+    // Las DOS boleterías (Cerro Castor + Ciudad) son puntos operados por boletero → modo
+    // boletería. Solo si nunca se tocó (IS NULL), así el panel puede desactivarlo.
     await query(
       `UPDATE comercios SET modo_terminal = TRUE
-       WHERE qr_code = $1 AND modo_terminal IS NULL`,
-      ['POPPER-BOLETERIA-CERRO']
+       WHERE qr_code = ANY($1) AND modo_terminal IS NULL`,
+      [['POPPER-BOLETERIA-CERRO', 'POPPER-BOLETERIA-CIUDAD']]
     );
     comercioLogosSeeded = true;
   } catch (e: any) {
