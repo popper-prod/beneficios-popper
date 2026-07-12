@@ -584,7 +584,8 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
          AND (b.fecha_inicio IS NULL OR b.fecha_inicio <= NOW())
          AND (b.fecha_fin   IS NULL OR b.fecha_fin   >= NOW())
          AND (b.horario_inicio IS NULL OR b.horario_fin IS NULL
-              OR (CURRENT_TIME >= b.horario_inicio::time AND CURRENT_TIME <= b.horario_fin::time))`,
+              OR ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::time >= b.horario_inicio::time
+                  AND (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::time <= b.horario_fin::time))`,
       [comercioId]
     );
 
