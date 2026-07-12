@@ -128,9 +128,13 @@ async function ensureSkipassNormalizado() {
 
     const escala = JSON.stringify({ titular: { tipo: 'gratuito', porcentaje: 100 }, familiar: { tipo: 'descuento', porcentaje: 50 } });
     const desc = 'Pase diario en boletería. Titular: gratis. Familiares directos (padres, cónyuge/concubino e hijos): 50% del valor de residente. 1 pase por día por persona.';
+    // horario 00:00–23:59: el pase se retira cuando la boletería está abierta (control
+    // físico). Sin esto, el filtro de horario (que corre en UTC, no en hora Argentina)
+    // lo esconde fuera de un rango angosto. fecha amplia para que nunca lo filtre por vigencia.
     await query(
       `UPDATE beneficios SET activo=TRUE, origen='interno', categoria='skipass', modalidad='acceso',
          aplica_a='ambos', relaciones_familiar='Parents,Spouse,CivilUnion,Child', limite_uso_diario=1, limite_total=NULL,
+         horario_inicio='00:00', horario_fin='23:59', fecha_inicio='2020-01-01', fecha_fin='2099-12-31',
          escala_descuentos=$1::jsonb, nombre='Pase de Esquí · Diario', descripcion=$2, updated_at=NOW()
        WHERE id=$3`,
       [escala, desc, skipassId]
