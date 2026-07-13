@@ -151,7 +151,9 @@ async function ensureSkipassNormalizado() {
     const otrosIds = otros.rows.map((r: any) => r.id);
     if (otrosIds.length > 0) {
       await query(`DELETE FROM comercio_beneficios WHERE comercio_id = ANY($1::uuid[]) AND beneficio_id = ANY($2::uuid[])`, [comercioIds, otrosIds]);
-      await query(`UPDATE beneficios SET activo=FALSE, updated_at=NOW() WHERE id = ANY($1::uuid[]) AND NOT EXISTS (SELECT 1 FROM verificaciones v WHERE v.beneficio_id = beneficios.id)`, [otrosIds]);
+      // Desactiva TODOS los skipass no-canónicos (incluidos los que tienen canjes): son
+      // duplicados desvinculados. El historial de verificaciones se conserva igual.
+      await query(`UPDATE beneficios SET activo=FALSE, updated_at=NOW() WHERE id = ANY($1::uuid[])`, [otrosIds]);
     }
 
     skipassNormalizadoEnsured = true;
@@ -239,11 +241,6 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
     await ensureComercioLogosSeed();
     await ensureSkipassNormalizado();
     await ensureRentalCiudad();
-
-    if (req.query.debug === 'benef') {
-      const all = await query(`SELECT nombre, origen, activo, categoria FROM beneficios ORDER BY origen, nombre`);
-      return res.json({ beneficios: all.rows });
-    }
 
     // COALESCE para que devuelva null si la columna logo aun no existe (migracion lazy)
     const result = await query(
