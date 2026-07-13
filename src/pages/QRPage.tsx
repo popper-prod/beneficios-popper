@@ -1827,14 +1827,16 @@ function ConfirmStep({
         textAlign: 'center',
       }}>
         <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--brand)', letterSpacing: '0.18em', textTransform: 'uppercase' }}>
-          {isTerminal ? '🎫 Verificá la identidad antes de confirmar' : '📱 Pasale el teléfono al cajero'}
+          {isTerminal ? '🎫 Verificá la identidad antes de confirmar' : '🏷️ Confirmá tu beneficio'}
         </p>
         <p style={{ fontSize: '11.5px', color: 'var(--text-2)', marginTop: 4, lineHeight: 1.4 }}>
-          {esMenor
-            ? 'Pedí DNI del adulto autorizado que retira'
-            : familiarInfo
-              ? 'Pedí el DNI físico al familiar y cotejá contra los datos en pantalla'
-              : 'Pedí el DNI físico al colaborador y cotejá contra los datos en pantalla'}
+          {isTerminal
+            ? (esMenor
+                ? 'Pedí DNI del adulto autorizado que retira'
+                : familiarInfo
+                  ? 'Pedí el DNI físico al familiar y cotejá contra los datos en pantalla'
+                  : 'Pedí el DNI físico al colaborador y cotejá contra los datos en pantalla')
+            : 'Al confirmar, mostrale la pantalla al cajero del comercio para que te aplique el descuento.'}
         </p>
       </div>
 
