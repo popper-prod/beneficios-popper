@@ -274,17 +274,6 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
     await ensureRentalCiudad();
     await ensureCleanupBeneficios();
 
-    if (req.query.debug === 'links') {
-      const rows = await query(`
-        SELECT b.nombre AS beneficio, b.origen, b.activo AS ben_activo, b.categoria,
-               c.nombre AS comercio, c.activo AS com_activo
-        FROM comercio_beneficios cb
-        JOIN beneficios b ON b.id = cb.beneficio_id
-        JOIN comercios c ON c.id = cb.comercio_id
-        ORDER BY b.nombre, c.nombre`);
-      return res.json({ links: rows.rows });
-    }
-
     // COALESCE para que devuelva null si la columna logo aun no existe (migracion lazy)
     const result = await query(
       `SELECT c.id, c.nombre, c.direccion, c.ciudad, c.telefono, c.horario_apertura, c.horario_cierre, c.responsable,
