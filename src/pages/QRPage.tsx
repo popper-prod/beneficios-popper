@@ -634,11 +634,14 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
             />
           )}
 
-          {step === 'success' && successData && selectedBenefitData && comercio && (
+          {step === 'success' && successData && selectedBenefitData && comercio && beneficiario && (
             <SuccessStep
               beneficio={selectedBenefitData}
               successData={successData}
               comercio={comercio}
+              beneficiario={beneficiario}
+              familiarInfo={familiarInfo}
+              isTerminal={isTerminal}
               onReset={handleReset}
             />
           )}
@@ -2184,11 +2187,17 @@ function SuccessStep({
   beneficio,
   successData,
   comercio,
+  beneficiario,
+  familiarInfo,
+  isTerminal,
   onReset,
 }: {
   beneficio: Beneficio;
   successData: any;
   comercio: Comercio;
+  beneficiario: Beneficiario;
+  familiarInfo: FamiliarInfo | null;
+  isTerminal: boolean;
   onReset: () => void;
 }) {
   const codigo = successData.verificacion?.codigo_referencia || '---';
@@ -2261,6 +2270,43 @@ function SuccessStep({
           )
         )}
       </div>
+
+      {/* Identidad — SOLO en comercios externos: el cajero verifica cuando el colaborador
+          le muestra el celular. En boletería el boletero ya verificó al confirmar. */}
+      {!isTerminal && (
+      <div style={{
+        padding: '14px 16px', marginBottom: 16,
+        background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: '12px',
+        display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left',
+      }}>
+        {(() => {
+          const fotoMostrar = familiarInfo ? null : beneficiario.foto;
+          return fotoMostrar ? (
+            <img src={fotoMostrar} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--brand)', flexShrink: 0 }} />
+          ) : (
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--brand-muted)', border: '2px solid var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--brand)', fontWeight: 700, fontSize: '22px', flexShrink: 0 }}>
+              {beneficiario.nombre[0]}{beneficiario.apellido[0]}
+            </div>
+          );
+        })()}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={{ fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 3 }}>
+            Verificá identidad
+          </p>
+          <p style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-1)', lineHeight: 1.2 }}>
+            {beneficiario.nombre} {beneficiario.apellido}
+          </p>
+          <p style={{ fontSize: '12px', color: 'var(--text-3)', marginTop: 2 }}>
+            DNI <span style={{ fontFamily: 'var(--font-geist-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-2)' }}>{beneficiario.dni}</span>
+          </p>
+          {familiarInfo && (
+            <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: 3 }}>
+              {relacionLabel(familiarInfo.relacion)} de {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
+            </p>
+          )}
+        </div>
+      </div>
+      )}
 
       {/* Code card — el QR equivalente para el comerciante */}
       <div
@@ -2341,7 +2387,9 @@ function SuccessStep({
       </div>
 
       <p style={{ fontSize: '12px', color: 'var(--text-3)', textAlign: 'center', marginBottom: 24, lineHeight: 1.5 }}>
-        Mostrá este código al encargado del comercio para hacer efectivo el beneficio.
+        {isTerminal
+          ? 'Mostrá este código al encargado del comercio para hacer efectivo el beneficio.'
+          : 'Mostrale esta pantalla al cajero: verifica tus datos y foto, y te aplica el descuento.'}
       </p>
 
       <button
