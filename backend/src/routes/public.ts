@@ -258,6 +258,13 @@ async function ensureCleanupBeneficios() {
     // Deduplicar links repetidos (mismo comercio + beneficio).
     await query(`DELETE FROM comercio_beneficios a USING comercio_beneficios b
                  WHERE a.ctid < b.ctid AND a.comercio_id = b.comercio_id AND a.beneficio_id = b.beneficio_id`);
+    // Borrar comercios junk (nombres de beneficios creados por error como comercio),
+    // inactivos y sin canjes: "Almuerzo", "Transporte Personal".
+    await query(`DELETE FROM comercio_beneficios WHERE comercio_id IN (
+      SELECT id FROM comercios WHERE activo = FALSE AND LOWER(nombre) IN ('almuerzo','transporte personal')
+        AND NOT EXISTS (SELECT 1 FROM verificaciones v WHERE v.comercio_id = comercios.id))`);
+    await query(`DELETE FROM comercios WHERE activo = FALSE AND LOWER(nombre) IN ('almuerzo','transporte personal')
+      AND NOT EXISTS (SELECT 1 FROM verificaciones v WHERE v.comercio_id = comercios.id)`);
     cleanupBeneficiosEnsured = true;
     console.log('✓ Cleanup de links de beneficios OK');
   } catch (e: any) {
@@ -524,7 +531,7 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
 
     // 1) ¿Es titular (beneficiario directo)?
     const titularResult = await query(
-      `SELECT id, dni, nombre, apellido, nivel, departamento, sector, fecha_ingreso,
+      `SELECT id, dni, nombre, apellido, nivel, departamento, sector, cargo, fecha_ingreso,
               activo, es_talento_popper,
               CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='beneficiarios' AND column_name='foto')
                    THEN foto ELSE NULL END as foto
@@ -721,6 +728,7 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
         nivel: titular.nivel,
         departamento: titular.departamento,
         sector: titular.sector,
+        cargo: titular.cargo || null,
         legajo: null,
         empresa: 'Grupo Popper',
         es_talento_popper: esTalento,
