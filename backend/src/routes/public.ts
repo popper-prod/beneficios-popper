@@ -234,6 +234,28 @@ async function ensureRentalCiudad() {
   }
 }
 
+// Limpieza de links basura (idempotente): beneficios internos leftover que quedaron
+// linkeados a comercios equivocados o duplicados. Corre una vez.
+let cleanupBeneficiosEnsured = false;
+async function ensureCleanupBeneficios() {
+  if (cleanupBeneficiosEnsured) return;
+  try {
+    // "Indumentaria de Rental" es redundante con "Alquiler de equipos y ropa" (equipos +
+    // ropa) y estaba en un comercio equivocado (Core Rehabilitación). Se desactiva.
+    await query(`UPDATE beneficios SET activo=FALSE, updated_at=NOW() WHERE LOWER(nombre) LIKE '%indumentaria de rental%'`);
+    // Desvincular de TODOS los comercios cualquier beneficio inactivo (limpia leftovers:
+    // Transporte de Personal/para personal, Indumentaria de Rental, skipass Temporada, etc.)
+    await query(`DELETE FROM comercio_beneficios WHERE beneficio_id IN (SELECT id FROM beneficios WHERE activo = FALSE)`);
+    // Deduplicar links repetidos (mismo comercio + beneficio).
+    await query(`DELETE FROM comercio_beneficios a USING comercio_beneficios b
+                 WHERE a.ctid < b.ctid AND a.comercio_id = b.comercio_id AND a.beneficio_id = b.beneficio_id`);
+    cleanupBeneficiosEnsured = true;
+    console.log('✓ Cleanup de links de beneficios OK');
+  } catch (e: any) {
+    console.error(`ensureCleanupBeneficios: ${e.message}`);
+  }
+}
+
 // GET /api/public/comercio/:qrCode - Info del comercio por QR code
 router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
   try {
@@ -241,6 +263,7 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
     await ensureComercioLogosSeed();
     await ensureSkipassNormalizado();
     await ensureRentalCiudad();
+    await ensureCleanupBeneficios();
 
     if (req.query.debug === 'links') {
       const rows = await query(`
