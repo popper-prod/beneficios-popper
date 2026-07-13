@@ -246,6 +246,15 @@ async function ensureCleanupBeneficios() {
     // Desvincular de TODOS los comercios cualquier beneficio inactivo (limpia leftovers:
     // Transporte de Personal/para personal, Indumentaria de Rental, skipass Temporada, etc.)
     await query(`DELETE FROM comercio_beneficios WHERE beneficio_id IN (SELECT id FROM beneficios WHERE activo = FALSE)`);
+    // Comercios duplicados por qr_code (una race del seed creó dos "Rental Ciudad"):
+    // quedarse con el más viejo, borrar los otros y sus links (solo si no tienen canjes).
+    await query(`DELETE FROM comercio_beneficios WHERE comercio_id IN (
+      SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY qr_code ORDER BY created_at) rn
+                      FROM comercios WHERE qr_code IS NOT NULL) t WHERE rn > 1)`);
+    await query(`DELETE FROM comercios WHERE id IN (
+      SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY qr_code ORDER BY created_at) rn
+                      FROM comercios WHERE qr_code IS NOT NULL) t WHERE rn > 1)
+      AND NOT EXISTS (SELECT 1 FROM verificaciones v WHERE v.comercio_id = comercios.id)`);
     // Deduplicar links repetidos (mismo comercio + beneficio).
     await query(`DELETE FROM comercio_beneficios a USING comercio_beneficios b
                  WHERE a.ctid < b.ctid AND a.comercio_id = b.comercio_id AND a.beneficio_id = b.beneficio_id`);
