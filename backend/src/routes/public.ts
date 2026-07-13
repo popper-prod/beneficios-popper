@@ -215,6 +215,16 @@ async function ensureRentalCiudad() {
     // 3) Linkear beneficio ↔ comercio.
     await query(`INSERT INTO comercio_beneficios (comercio_id, beneficio_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [comercioId, benId]);
 
+    // 4) Cualquier beneficio de rental/alquiler es INTERNO (Grupo Popper), no externo.
+    // Cubre leftovers viejos (incluso inactivos) que se colaban en "beneficios externos"
+    // del panel. Los nombres de rental son internos; los externos se llaman por comercio.
+    await query(
+      `UPDATE beneficios SET origen='interno', updated_at=NOW()
+       WHERE origen IS DISTINCT FROM 'interno'
+         AND (categoria='alquiler' OR categoria='equipos_nieve'
+              OR LOWER(nombre) LIKE '%alquiler%' OR LOWER(nombre) LIKE '%rental%' OR LOWER(nombre) LIKE '%de renta%')`
+    );
+
     rentalCiudadEnsured = true;
     console.log(`✓ Rental Ciudad configurado (comercio=${comercioId}, beneficio=${benId})`);
   } catch (e: any) {
@@ -229,6 +239,11 @@ router.get('/comercio/:qrCode', async (req: Request, res: Response) => {
     await ensureComercioLogosSeed();
     await ensureSkipassNormalizado();
     await ensureRentalCiudad();
+
+    if (req.query.debug === 'benef') {
+      const all = await query(`SELECT nombre, origen, activo, categoria FROM beneficios ORDER BY origen, nombre`);
+      return res.json({ beneficios: all.rows });
+    }
 
     // COALESCE para que devuelva null si la columna logo aun no existe (migracion lazy)
     const result = await query(
