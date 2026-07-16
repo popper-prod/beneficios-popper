@@ -171,7 +171,18 @@ async function ensureRentalCiudad() {
   if (rentalCiudadEnsured) return;
   try {
     const LOGO = 'https://beneficios.recluta.com.ar/logo-cerro-castor.png';
-    const QR = 'POPPER-RENTAL-CIUDAD';
+    const QR = 'POPPER-RENTAL-USHUAIA';
+    const OLD_QR = 'POPPER-RENTAL-CIUDAD';
+
+    // 0) Migración idempotente: renombrar el código viejo (CIUDAD → USHUAIA)
+    // preservando el comercio, sus beneficios vinculados y el historial de canjes
+    // (todo va por comercio_id, no por qr_code). Solo si el nuevo aún no existe,
+    // para no chocar con el UNIQUE de qr_code.
+    await query(
+      `UPDATE comercios SET qr_code=$1, updated_at=NOW()
+       WHERE qr_code=$2 AND NOT EXISTS (SELECT 1 FROM comercios WHERE qr_code=$1)`,
+      [QR, OLD_QR]
+    );
 
     // 1) Comercio (modo boletería + logo). No pisa ediciones a mano del panel.
     let comercioId: string;
@@ -186,7 +197,7 @@ async function ensureRentalCiudad() {
     } else {
       const r = await query(
         `INSERT INTO comercios (nombre, direccion, ciudad, provincia, qr_code, horario_apertura, horario_cierre, activo, responsable, modo_terminal, logo)
-         VALUES ('Rental Ciudad', 'San Martín y 9 de Julio', 'Ushuaia', 'Tierra del Fuego', $1, '08:00', '20:00', TRUE, 'Punto de retiro interno', TRUE, $2) RETURNING id`,
+         VALUES ('Rental Ushuaia', 'San Martín n° 802', 'Ushuaia', 'Tierra del Fuego', $1, '08:00', '20:00', TRUE, 'Punto de retiro interno', TRUE, $2) RETURNING id`,
         [QR, LOGO]
       );
       comercioId = r.rows[0].id;
@@ -228,7 +239,7 @@ async function ensureRentalCiudad() {
     );
 
     rentalCiudadEnsured = true;
-    console.log(`✓ Rental Ciudad configurado (comercio=${comercioId}, beneficio=${benId})`);
+    console.log(`✓ Rental Ushuaia configurado (comercio=${comercioId}, beneficio=${benId})`);
   } catch (e: any) {
     console.error(`ensureRentalCiudad: ${e.message}`);
   }
