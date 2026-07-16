@@ -2282,9 +2282,9 @@ function SuccessStep({
         {(() => {
           const fotoMostrar = familiarInfo ? null : beneficiario.foto;
           return fotoMostrar ? (
-            <img src={fotoMostrar} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--brand)', flexShrink: 0 }} />
+            <img src={fotoMostrar} alt="" style={{ width: 92, height: 92, borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--brand)', boxShadow: '0 0 0 4px var(--brand-muted)', flexShrink: 0 }} />
           ) : (
-            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--brand-muted)', border: '2px solid var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--brand)', fontWeight: 700, fontSize: '22px', flexShrink: 0 }}>
+            <div style={{ width: 92, height: 92, borderRadius: '50%', background: 'var(--brand-muted)', border: '3px solid var(--brand)', boxShadow: '0 0 0 4px var(--brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--brand)', fontWeight: 700, fontSize: '32px', flexShrink: 0 }}>
               {beneficiario.nombre[0]}{beneficiario.apellido[0]}
             </div>
           );
@@ -2334,15 +2334,15 @@ function SuccessStep({
         </p>
         <p
           style={{
-            fontSize: '32px',
+            fontSize: '21px',
             fontWeight: 700,
-            color: 'var(--text-1)',
+            color: 'var(--text-2)',
             fontFamily: 'var(--font-geist-mono)',
-            letterSpacing: '0.16em',
+            letterSpacing: '0.1em',
             fontVariantNumeric: 'tabular-nums',
             marginBottom: 12,
             wordBreak: 'break-all',
-            lineHeight: 1.1,
+            lineHeight: 1.2,
           }}
         >
           {codigo}
