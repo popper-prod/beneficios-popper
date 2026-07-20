@@ -592,6 +592,7 @@ export default function QRPage({ qrCode }: { qrCode: string }) {
               errorMsg={errorMsg}
               setErrorMsg={setErrorMsg}
               onSearch={handleSearch}
+              isTerminal={isTerminal}
             />
           )}
 
@@ -726,6 +727,7 @@ function IdentifyStep({
   errorMsg,
   setErrorMsg,
   onSearch,
+  isTerminal,
 }: {
   comercio: Comercio;
   dni: string;
@@ -734,6 +736,7 @@ function IdentifyStep({
   errorMsg: string;
   setErrorMsg: (v: string) => void;
   onSearch: () => void;
+  isTerminal: boolean;
 }) {
   const [focused, setFocused] = useState(false);
 
@@ -789,7 +792,7 @@ function IdentifyStep({
           textAlign: 'center',
         }}
       >
-        Identificate
+        {isTerminal ? 'Identificá al colaborador o familiar' : 'Identificate'}
       </h1>
       <p
         style={{
@@ -800,7 +803,9 @@ function IdentifyStep({
           lineHeight: 1.5,
         }}
       >
-        Ingresá tu DNI para ver tus beneficios disponibles.
+        {isTerminal
+          ? 'Ingresá su DNI para ver los beneficios disponibles.'
+          : 'Ingresá tu DNI para ver tus beneficios disponibles.'}
       </p>
 
       <input
