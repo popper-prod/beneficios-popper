@@ -51,9 +51,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   // Traer el Client ID del backend. Si falla o tarda (Render puede estar frío),
   // cortamos a los 6s y caemos al login por email en vez de dejar la pantalla vacía.
+  //
+  // Corre SIEMPRE, incluso si hay valor de build: ese se usa para pintar el botón
+  // al instante (sin esperar el round-trip), y el del backend lo pisa si difiere.
+  // Así el .env no puede quedar desactualizado respecto del `audience` real.
   useEffect(() => {
-    if (GOOGLE_CLIENT_ID_BUILD) return;
-
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 6000);
 
