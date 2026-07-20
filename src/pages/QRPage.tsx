@@ -1865,6 +1865,9 @@ function ConfirmStep({
               />
             );
           }
+          // Familiar: no lleva círculo (no tiene foto propia). Se coteja por DNI + foto del titular.
+          if (familiarInfo) return null;
+          // Titular sin foto: iniciales como fallback.
           return (
             <div style={{
               width: 120, height: 120, borderRadius: '50%',
@@ -1877,14 +1880,19 @@ function ConfirmStep({
             </div>
           );
         })()}
-        <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.01em', marginBottom: 4 }}>
+        <h2 style={{ fontSize: familiarInfo ? '27px' : '22px', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.01em', marginBottom: familiarInfo ? 10 : 4 }}>
           {fullName}
         </h2>
-        <p style={{ fontSize: '13px', color: 'var(--text-3)' }}>
-          DNI <span style={{ fontFamily: 'var(--font-geist-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-2)' }}>
-            {beneficiario.dni}
-          </span>
-          {beneficiario.es_talento_popper && <span style={{ marginLeft: 8, color: 'var(--brand)' }}>★ Talento</span>}
+        {/* DNI grande: es el dato que el cajero coteja contra el documento físico */}
+        <p style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 3 }}>
+          DNI{beneficiario.es_talento_popper && <span style={{ marginLeft: 8, color: 'var(--brand)' }}>★ Talento</span>}
+        </p>
+        <p style={{
+          fontSize: familiarInfo ? '34px' : '18px', fontWeight: 700,
+          fontFamily: 'var(--font-geist-mono)', fontVariantNumeric: 'tabular-nums',
+          letterSpacing: '0.04em', color: 'var(--text-1)', lineHeight: 1.1,
+        }}>
+          {beneficiario.dni}
         </p>
         {/* Edad del FAMILIAR (Lidia) — va con sus datos, no con los del titular */}
         {familiarInfo && familiarInfo.edad != null && (
@@ -1907,45 +1915,45 @@ function ConfirmStep({
           );
           return (
           <div style={{
-            marginTop: 12, padding: '10px 12px', maxWidth: 340,
+            marginTop: 16, padding: '14px 16px', maxWidth: 400,
             marginLeft: 'auto', marginRight: 'auto',
-            background: 'var(--bg-canvas)', borderRadius: '10px',
+            background: 'var(--bg-canvas)', borderRadius: '12px',
             border: '1px solid var(--border-subtle)',
-            display: 'flex', alignItems: 'center', gap: 11, textAlign: 'left',
+            display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left',
           }}>
             {titFoto ? (
               <img
                 src={titFoto}
                 alt={`${familiarInfo.titular.nombre} ${familiarInfo.titular.apellido}`}
                 style={{
-                  width: 60, height: 60, borderRadius: '50%', objectFit: 'cover',
-                  flexShrink: 0, border: '2px solid var(--brand)',
+                  width: 84, height: 84, borderRadius: '50%', objectFit: 'cover',
+                  flexShrink: 0, border: '3px solid var(--brand)',
                 }}
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
             ) : (
               <div style={{
-                width: 60, height: 60, borderRadius: '50%', flexShrink: 0,
-                background: 'var(--brand-muted)', border: '2px solid var(--brand)',
+                width: 84, height: 84, borderRadius: '50%', flexShrink: 0,
+                background: 'var(--brand-muted)', border: '3px solid var(--brand)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'var(--brand)', fontWeight: 700, fontSize: '19px',
+                color: 'var(--brand)', fontWeight: 700, fontSize: '26px',
               }}>
                 {familiarInfo.titular.nombre[0]}{familiarInfo.titular.apellido[0]}
               </div>
             )}
             <div style={{ minWidth: 0, flex: 1 }}>
               <p style={{
-                fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.08em',
-                textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 2,
+                fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.08em',
+                textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 3,
               }}>
                 {relacionLabel(familiarInfo.relacion)} · Titular colaborador
               </p>
-              <p style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-1)', lineHeight: 1.2 }}>
+              <p style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-1)', lineHeight: 1.2 }}>
                 {familiarInfo.titular.nombre} {familiarInfo.titular.apellido}
               </p>
               {titArea && (
-                <div style={{ marginTop: 3 }}>
-                  <span style={{ fontSize: '11.5px', color: 'var(--text-2)' }}>
+                <div style={{ marginTop: 4 }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text-2)' }}>
                     {titArea}
                   </span>
                 </div>
