@@ -9,6 +9,21 @@ const router = Router();
 // Rate limiting global para todos los endpoints públicos
 router.use(publicLimiter);
 
+// Config pública de auth para el frontend. El Client ID de Google es público por
+// diseño (va embebido en el bundle de cualquier app con Google Sign-In), así que
+// exponerlo no filtra nada — el client secret no se usa acá: el backend sólo
+// verifica ID tokens contra las claves públicas de Google.
+//
+// Por qué existe este endpoint: antes el frontend leía el Client ID de
+// VITE_GOOGLE_CLIENT_ID en build time. Al migrar el dominio entre cuentas de
+// Vercel (2026-07-15) esa variable se perdió, el bloque de Google quedó como
+// constante falsy y el minificador lo eliminó por dead-code: el botón dejó de
+// renderizarse. Sirviéndolo desde acá, el backend (que ya necesita el valor
+// como `audience`) es la única fuente de verdad y no puede desincronizarse.
+router.get('/auth-config', (_req: Request, res: Response) => {
+  res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || '' });
+});
+
 // Migración lazy idempotente: `verificaciones.beneficiario_dni` era VARCHAR(8), que
 // desborda con DNIs de extranjeros/CUIT (>8 chars) y hace fallar el INSERT del canje
 // ("value too long for type character varying(8)"). Lo ensanchamos a VARCHAR(20).

@@ -13,7 +13,14 @@ interface LoginScreenProps {
   error?: string | null;
 }
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const API_URL = import.meta.env.VITE_API_URL || 'https://beneficios-backend-jfpx.onrender.com/api';
+
+// El Client ID se pide al backend en runtime (GET /public/auth-config) en vez de
+// hornearlo en build time. VITE_GOOGLE_CLIENT_ID queda sólo como override local.
+// Motivo: al migrar el dominio entre cuentas de Vercel se perdió la variable de
+// build y el botón de Google desapareció del bundle. El backend ya tiene el valor
+// (lo usa como `audience` al verificar el token), así que es la fuente de verdad.
+const GOOGLE_CLIENT_ID_BUILD = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 declare global {
   interface Window {
@@ -34,22 +41,51 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [emailMode, setEmailMode] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [googleClientId, setGoogleClientId] = useState(GOOGLE_CLIENT_ID_BUILD);
+  const [authConfigLoading, setAuthConfigLoading] = useState(!GOOGLE_CLIENT_ID_BUILD);
   const googleButtonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (error) setLoginError(error);
   }, [error]);
 
+  // Traer el Client ID del backend. Si falla o tarda (Render puede estar frío),
+  // cortamos a los 6s y caemos al login por email en vez de dejar la pantalla vacía.
+  useEffect(() => {
+    if (GOOGLE_CLIENT_ID_BUILD) return;
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+
+    fetch(`${API_URL}/public/auth-config`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.googleClientId) setGoogleClientId(data.googleClientId);
+      })
+      .catch(() => {
+        /* sin Google: queda el login por email */
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        setAuthConfigLoading(false);
+      });
+
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, []);
+
   // Inicializar Google Identity Services
   useEffect(() => {
-    if (!onGoogleLogin || !GOOGLE_CLIENT_ID) return;
+    if (!onGoogleLogin || !googleClientId) return;
 
     let tries = 0;
     const init = () => {
       if (window.google?.accounts?.id) {
         try {
           window.google.accounts.id.initialize({
-            client_id: GOOGLE_CLIENT_ID,
+            client_id: googleClientId,
             callback: async (response: any) => {
               if (!response?.credential) return;
               setGoogleLoading(true);
@@ -81,7 +117,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       }
     };
     init();
-  }, [onGoogleLogin]);
+  }, [onGoogleLogin, googleClientId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -241,7 +277,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           {step === 1 && (
             <>
               {/* Google */}
-              {GOOGLE_CLIENT_ID && onGoogleLogin && !emailMode && (
+              {googleClientId && onGoogleLogin && !emailMode && (
                 <>
                   <div style={{ position: 'relative', marginBottom: 24 }}>
                     <div ref={googleButtonRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
@@ -315,7 +351,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               )}
 
               {/* Form email */}
-              {(emailMode || !GOOGLE_CLIENT_ID || !onGoogleLogin) && (
+              {(emailMode || (!authConfigLoading && (!googleClientId || !onGoogleLogin))) && (
                 <form onSubmit={handleSubmit} style={{ animation: 'fadeIn 200ms var(--ease-out)' }}>
                   {emailMode && (
                     <button
