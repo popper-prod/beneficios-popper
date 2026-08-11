@@ -569,12 +569,14 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
     let familiar: any = null;
     let esFamiliar = false;
 
-    if (titularResult.rows.length > 0) {
+    if (titularResult.rows.length > 0 && titularResult.rows[0].activo) {
       titular = titularResult.rows[0];
-      if (!titular.activo) {
-        return res.status(403).json({ error: 'Colaborador inactivo' });
-      }
     } else {
+      // El DNI no matchea un titular ACTIVO. Puede ser: (a) un titular inactivo
+      // (ex-colaborador dado de baja), (b) un familiar de un colaborador vigente, o
+      // ambas cosas a la vez (misma persona que fue colaboradora y hoy es familiar).
+      // Por eso NO cortamos acá: buscamos como familiar antes de rechazar. Solo si
+      // tampoco es familiar tratamos el registro viejo como "colaborador inactivo".
       // 2) ¿Es familiar? Buscar en tabla familiares (con foto si existe la columna)
       let familiarResult: any = { rows: [] };
       try {
@@ -602,6 +604,11 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
       }
 
       if (familiarResult.rows.length === 0) {
+        // No es familiar. Si existía un registro de titular pero inactivo, es un
+        // ex-colaborador dado de baja (y no es familiar de nadie) → colaborador inactivo.
+        if (titularResult.rows.length > 0) {
+          return res.status(403).json({ error: 'Colaborador inactivo' });
+        }
         // 3) Fallback Naaloo (busqueda directa por DNI)
         const empleadoNaaloo = await buscarEmpleadoPorDni(dni);
         if (empleadoNaaloo) {
@@ -946,16 +953,12 @@ router.post('/canjear', canjearLimiter, async (req: Request, res: Response) => {
     let beneficiarioId: string | null = null;
     let esFamiliarCanje = false;
     const titularRes = await query('SELECT id, activo, nombre, apellido, motivo_baja FROM beneficiarios WHERE dni = $1', [dni]);
-    if (titularRes.rows.length > 0) {
-      const t = titularRes.rows[0];
-      if (!t.activo) {
-        return res.status(403).json({
-          error: `Colaborador inactivo${t.motivo_baja ? ` (${t.motivo_baja})` : ''}. No se puede registrar el canje.`,
-          inactivo: true,
-        });
-      }
-      beneficiarioId = t.id;
+    if (titularRes.rows.length > 0 && titularRes.rows[0].activo) {
+      beneficiarioId = titularRes.rows[0].id;
     } else {
+      // No es titular ACTIVO. Puede ser titular inactivo (baja), familiar, o ambos
+      // (ex-colaborador que hoy es familiar). Igual que en GET /beneficiario: probamos
+      // como familiar ANTES de rechazar por "colaborador inactivo".
       // ¿Familiar? Validar que tanto familiar como titular estén activos
       const famRes = await query(
         `SELECT b.id, b.activo as titular_activo, b.motivo_baja, f.activo as familiar_activo
@@ -979,6 +982,13 @@ router.post('/canjear', canjearLimiter, async (req: Request, res: Response) => {
         }
         beneficiarioId = r.id;
         esFamiliarCanje = true;
+      } else if (titularRes.rows.length > 0) {
+        // Había un registro de titular pero inactivo y no es familiar de nadie → baja real.
+        const t = titularRes.rows[0];
+        return res.status(403).json({
+          error: `Colaborador inactivo${t.motivo_baja ? ` (${t.motivo_baja})` : ''}. No se puede registrar el canje.`,
+          inactivo: true,
+        });
       } else {
         // Fallback Naaloo
         const empleado = await buscarEmpleadoPorDni(dni);

@@ -72,12 +72,31 @@ describe('GET /api/public/beneficiario/:comercioId/:dni', () => {
     expect(res.status).toBe(404);
   });
 
-  test('Colaborador inactivo → 403', async () => {
+  test('Colaborador inactivo (y no es familiar) → 403', async () => {
     mockComercio();
     mockTitular({ activo: false });
+    mockQuery([]); // tampoco figura como familiar → se confirma la baja
     const res = await request(app).get(`/api/public/beneficiario/${COMERCIO_ID}/${DNI}`);
     expect(res.status).toBe(403);
     expect(res.body.error).toMatch(/inactivo/i);
+  });
+
+  test('Ex-colaborador dado de baja pero hoy familiar activo → entra como familiar', async () => {
+    mockComercio();
+    mockTitular({ activo: false }); // registro viejo de colaborador, ya inactivo
+    // ahora SÍ figura como familiar de un titular vigente
+    mockQuery([{
+      familiar_id: 'fam-001', familiar_dni: DNI, nombre_completo: 'Ana Pérez',
+      relacion: 'Spouse', fecha_nacimiento: '1990-05-01', familiar_activo: true, familiar_foto: null,
+      id: 'tit-999', dni: '87654321', nombre: 'Carlos', apellido: 'Gómez',
+      nivel: 'senior', departamento: 'RRHH', sector: null,
+      fecha_ingreso: '2020-01-01', activo: true, es_talento_popper: false,
+    }]);
+    mockBeneficioActivo({ aplica_a: 'ambos' }); // beneficio que aplica a familiares
+    const res = await request(app).get(`/api/public/beneficiario/${COMERCIO_ID}/${DNI}`);
+    expect(res.status).toBe(200);
+    expect(res.body.beneficiario.dni).toBe(DNI);
+    expect(res.body.familiar).toBeTruthy();
   });
 
   test('Colaborador sin foto → 403 (no se puede cotejar identidad)', async () => {
@@ -215,8 +234,9 @@ describe('POST /api/public/canjear', () => {
     expect(res.status).toBe(404);
   });
 
-  test('Colaborador inactivo → 403', async () => {
+  test('Colaborador inactivo (y no es familiar) → 403', async () => {
     mockQuery([{ id: 'tit-001', activo: false, nombre: 'Juan', apellido: 'Pérez', motivo_baja: 'Renuncia' }]);
+    mockQuery([]); // tampoco es familiar → se confirma la baja
     const res = await request(app).post('/api/public/canjear').send(body());
     expect(res.status).toBe(403);
     expect(res.body.inactivo).toBe(true);
