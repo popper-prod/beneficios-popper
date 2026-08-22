@@ -667,9 +667,18 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
        WHERE cb.comercio_id = $1 AND b.activo = TRUE
          AND (b.fecha_inicio IS NULL OR b.fecha_inicio <= NOW())
          AND (b.fecha_fin   IS NULL OR b.fecha_fin   >= NOW())
+         -- Ventana horaria en hora de Argentina. Contempla los dos casos:
+         -- rango normal (09:00-20:00) y rango que cruza la medianoche
+         -- (20:00-02:00, o el clasico 08:00-00:00 de un bar que cierra a las 12).
+         -- Sin la segunda rama, un horario_fin menor al inicio da una ventana
+         -- vacia y el beneficio queda invisible las 24 horas, sin ningun aviso.
          AND (b.horario_inicio IS NULL OR b.horario_fin IS NULL
-              OR ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::time >= b.horario_inicio::time
-                  AND (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::time <= b.horario_fin::time))`,
+              OR (b.horario_inicio::time <= b.horario_fin::time
+                  AND (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::time
+                      BETWEEN b.horario_inicio::time AND b.horario_fin::time)
+              OR (b.horario_inicio::time > b.horario_fin::time
+                  AND ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::time >= b.horario_inicio::time
+                       OR (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::time <= b.horario_fin::time)))`,
       [comercioId]
     );
 
