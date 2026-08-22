@@ -716,10 +716,19 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
       } catch { /* silencioso */ }
     }
 
-    // Regla de negocio: el colaborador (titular) se coteja por foto en la boletería.
-    // Sin foto no se puede verificar identidad → no accede al beneficio.
-    // Los familiares se cotejan por DNI/datos personales, así que esta regla no los bloquea.
-    if (!esFamiliar && !foto) {
+    // Punto operado por personal del grupo (boletería / rental): se activa con
+    // ?terminal=1 en la URL O si el comercio está en modo boletería. Se calcula acá
+    // porque lo usan dos reglas: el cotejo por foto y el registro de pendientes.
+    const esBoleteria = !!req.query.terminal || comercioResult.rows[0].modo_terminal === true;
+
+    // Regla de negocio: el colaborador (titular) se coteja por foto SOLO en los puntos
+    // operados, donde retira algo físico (pase de esquí, equipo de rental) y hay que
+    // verificar que sea él. En un comercio externo el cajero tiene el DNI en la mano y
+    // solo aplica un descuento: exigir foto ahí bloqueaba a ~1 de cada 6 colaboradores
+    // sin ganancia de seguridad, y con un mensaje que hablaba de "retirar el pase" en
+    // una farmacia. Los familiares se cotejan por DNI/datos personales, así que esta
+    // regla nunca los bloqueó.
+    if (esBoleteria && !esFamiliar && !foto) {
       return res.status(403).json({
         error: 'No figura tu foto en el sistema. Acercate a RRHH para cargarla y poder retirar el pase.',
         codigo: 'SIN_FOTO',
@@ -731,7 +740,6 @@ router.get('/beneficiario/:comercioId/:dni', beneficiarioLimiter, async (req: Re
     // así el registro NO depende de que alguien recuerde el flag en la URL.
     // Deja rastro de la consulta aunque el boletero no llegue a cerrar el canje.
     // Best-effort: nunca debe romper ni demorar la consulta del boletero.
-    const esBoleteria = !!req.query.terminal || comercioResult.rows[0].modo_terminal === true;
     if (esBoleteria && beneficiosConDescuento.length > 0) {
       const dniPortador = esFamiliar ? familiar.dni : titular.dni;
       const nombrePortador = esFamiliar

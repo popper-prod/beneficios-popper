@@ -28,8 +28,14 @@ const COMERCIO_ID = 'com-123';
 const BENEFICIO_ID = 'ben-456';
 const DNI = '12345678';
 
-function mockComercio() {
-  mockQuery([{ id: COMERCIO_ID, nombre: 'Farmacia Test' }]);
+function mockComercio(overrides = {}) {
+  mockQuery([{ id: COMERCIO_ID, nombre: 'Farmacia Test', modo_terminal: false, ...overrides }]);
+}
+
+// Punto operado por personal del grupo (boletería / rental), donde el colaborador
+// retira algo físico y por eso se lo coteja por foto.
+function mockBoleteria() {
+  mockComercio({ nombre: 'Boletería Test', modo_terminal: true });
 }
 
 function mockTitular(overrides = {}) {
@@ -99,8 +105,8 @@ describe('GET /api/public/beneficiario/:comercioId/:dni', () => {
     expect(res.body.familiar).toBeTruthy();
   });
 
-  test('Colaborador sin foto → 403 (no se puede cotejar identidad)', async () => {
-    mockComercio();
+  test('Colaborador sin foto en boletería → 403 (ahí se coteja identidad por foto)', async () => {
+    mockBoleteria();
     mockTitular({ foto: null });
     mockBeneficioActivo(); // la query de beneficios corre antes del guard de foto
     // Naaloo tampoco tiene foto
@@ -108,6 +114,31 @@ describe('GET /api/public/beneficiario/:comercioId/:dni', () => {
     buscarEmpleadoPorDni.mockResolvedValueOnce(null);
 
     const res = await request(app).get(`/api/public/beneficiario/${COMERCIO_ID}/${DNI}`);
+    expect(res.status).toBe(403);
+    expect(res.body.codigo).toBe('SIN_FOTO');
+  });
+
+  test('Colaborador sin foto en comercio externo → 200 (el cajero coteja por DNI en mano)', async () => {
+    mockComercio(); // externo: modo_terminal false
+    mockTitular({ foto: null });
+    mockBeneficioActivo();
+    const { buscarEmpleadoPorDni } = require('../src/__mocks__/naaloo');
+    buscarEmpleadoPorDni.mockResolvedValueOnce(null);
+
+    const res = await request(app).get(`/api/public/beneficiario/${COMERCIO_ID}/${DNI}`);
+    expect(res.status).toBe(200);
+    expect(res.body.beneficiario.foto).toBeNull();
+    expect(res.body.beneficios.length).toBeGreaterThan(0);
+  });
+
+  test('Colaborador sin foto con ?terminal=1 → 403 aunque el comercio no sea boletería', async () => {
+    mockComercio();
+    mockTitular({ foto: null });
+    mockBeneficioActivo();
+    const { buscarEmpleadoPorDni } = require('../src/__mocks__/naaloo');
+    buscarEmpleadoPorDni.mockResolvedValueOnce(null);
+
+    const res = await request(app).get(`/api/public/beneficiario/${COMERCIO_ID}/${DNI}?terminal=1`);
     expect(res.status).toBe(403);
     expect(res.body.codigo).toBe('SIN_FOTO');
   });
