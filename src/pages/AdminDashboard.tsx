@@ -54,14 +54,16 @@ function Field({ label, value, onChange, type = 'text', placeholder, required, o
   label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; required?: boolean;
   options?: { value: string; label: string }[];
 }) {
-  const inputStyle = { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'white' };
+  // backgroundColor (no el shorthand `background`): el shorthand resetea
+  // background-image y borraria el chevron que pone index.css.
+  const inputStyle = { backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'white' };
   return (
     <div className="mb-3">
       <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(191,163,99,0.5)' }}>
         {label}{required && <span style={{ color: '#f87171' }}> *</span>}
       </label>
       {options ? (
-        <select value={value} onChange={e => onChange(e.target.value)} className="w-full px-3 py-2.5 rounded-lg text-[13px] outline-none" style={inputStyle}>
+        <select value={value} onChange={e => onChange(e.target.value)} className="w-full px-3 py-2.5 rounded-lg text-[13px] outline-none" style={{ ...inputStyle, paddingRight: 30 }}>
           {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       ) : (
@@ -2916,8 +2918,8 @@ function GroupBlockPanel({
         value={filtroValue}
         onChange={(e) => setFiltroValue(e.target.value)}
         style={{
-          width: '100%', height: 36, padding: '0 10px',
-          background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
+          width: '100%', height: 36, padding: '0 30px 0 10px',
+          backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-default)',
           borderRadius: '6px', color: 'var(--text-1)', fontSize: '13px', outline: 'none',
           marginBottom: 8,
         }}

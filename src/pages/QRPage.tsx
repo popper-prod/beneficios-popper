@@ -2068,8 +2068,8 @@ function ConfirmStep({
               value={retiradoPorDni}
               onChange={e => setRetiradoPorDni(e.target.value)}
               style={{
-                width: '100%', height: 40, padding: '0 12px',
-                background: 'var(--bg-canvas)', border: '1px solid var(--border-default)',
+                width: '100%', height: 40, padding: '0 30px 0 12px',
+                backgroundColor: 'var(--bg-canvas)', border: '1px solid var(--border-default)',
                 borderRadius: '6px', color: 'var(--text-1)', fontSize: '13px',
                 marginBottom: 8, outline: 'none',
               }}

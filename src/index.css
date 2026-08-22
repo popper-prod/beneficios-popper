@@ -89,6 +89,11 @@ html,
 body {
   margin: 0;
   padding: 0;
+  /* El popup del <select> lo dibuja el sistema operativo, no la pagina.
+     Sin esto hereda superficie clara y las opciones quedan ilegibles.
+     El <meta name="color-scheme"> del index.html no alcanza: no llega a
+     la propiedad CSS (se lee como "normal" en getComputedStyle). */
+  color-scheme: dark;
   background: var(--bg-canvas);
   color: var(--text-1);
   -webkit-font-smoothing: antialiased;
@@ -199,6 +204,53 @@ input[type=number]::-webkit-outer-spin-button {
 }
 input[type=number] {
   -moz-appearance: textfield;
+}
+
+/* ============================================
+   Select — listas desplegables
+   Dos problemas distintos, dos arreglos distintos:
+   1. El POPUP lo dibuja el SO. No hereda del <select>, asi que las
+      <option> necesitan fondo y color propios y OPACOS. Con fondo
+      transparente + texto blanco quedaban blanco sobre blanco.
+   2. El CONTROL cerrado: appearance:none saca la flecha nativa (que
+      cada navegador dibuja distinto) y la reemplaza por un chevron
+      propio, consistente con el resto del sistema de diseno.
+   ============================================ */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%23ededee' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' opacity='.45'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+  cursor: pointer;
+  transition: border-color 160ms var(--ease-out), background-color 160ms var(--ease-out);
+}
+
+select:hover {
+  border-color: var(--border-strong);
+}
+
+select:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* El popup: opaco y con la escala de grises del sistema de diseno. */
+select option,
+select optgroup {
+  background-color: var(--bg-elevated);
+  color: var(--text-1);
+}
+
+select option:disabled {
+  color: var(--text-4);
 }
 
 /* ============================================

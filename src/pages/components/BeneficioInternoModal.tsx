@@ -460,7 +460,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function inputStyle(): React.CSSProperties {
   return {
-    width: '100%', padding: '8px 10px', background: 'var(--bg-canvas)',
+    width: '100%', padding: '8px 10px', backgroundColor: 'var(--bg-canvas)',
     border: '1px solid var(--border-default)', borderRadius: 6,
     color: 'var(--text-1)', fontSize: '12.5px', outline: 'none',
     fontVariantNumeric: 'tabular-nums',
@@ -480,7 +480,7 @@ function Field({
         {label}{required && <span style={{ color: 'var(--brand)' }}> *</span>}
       </label>
       {options ? (
-        <select value={value} onChange={e => onChange(e.target.value)} style={inputStyle()}>
+        <select value={value} onChange={e => onChange(e.target.value)} style={{ ...inputStyle(), paddingRight: 30 }}>
           {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       ) : multiline ? (
