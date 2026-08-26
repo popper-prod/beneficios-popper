@@ -447,7 +447,10 @@ export default function AdminDashboard({ token, user, onLogout }: {
   // Imprimir hoja QR de un comercio/boletería
   const handlePrintQR = (comercio: any) => {
     const qrUrl = `${baseUrl}#/qr/${comercio.qr_code}`;
-    const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=${encodeURIComponent(qrUrl)}&margin=16&color=111111&bgcolor=ffffff`;
+    const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=680x680&data=${encodeURIComponent(qrUrl)}&margin=6&color=1a1a1a&bgcolor=ffffff`;
+    const direccion = comercio.direccion
+      ? `${comercio.direccion}${comercio.ciudad ? ` · ${comercio.ciudad}` : ''}`
+      : '';
     const pw = window.open('', '_blank');
     if (!pw) return;
     pw.document.write(`<!DOCTYPE html>
@@ -456,41 +459,95 @@ export default function AdminDashboard({ token, user, onLogout }: {
   <meta charset="UTF-8"/>
   <title>Terminal · ${comercio.nombre}</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:32px}
-    .card{border:2px solid #111;border-radius:20px;padding:40px 36px;max-width:440px;width:100%;display:flex;flex-direction:column;align-items:center;gap:0}
-    .brand{font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#999;margin-bottom:28px}
-    .qr-wrap{background:#f9f9f9;border-radius:12px;padding:12px;margin-bottom:28px}
-    .qr-wrap img{display:block;width:260px;height:260px}
-    .name{font-size:24px;font-weight:800;text-align:center;letter-spacing:-0.02em;margin-bottom:6px}
-    .address{font-size:13px;color:#888;text-align:center;margin-bottom:24px}
-    hr{width:100%;border:none;border-top:1px solid #eee;margin-bottom:20px}
-    .steps{display:flex;flex-direction:column;gap:10px;width:100%;margin-bottom:20px}
+    /* ===== Tarjeta QR — identidad ADN POPPER ===== */
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    :root{
+      --pink:#F0607A; --orange:#F08030; --lime:#CFD84E; --green:#5AAA1E;
+      --tomato:#E8451F; --coral:#F3A28C; --blue:#2090C0;
+    }
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#fff;color:#1a1a1a;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:28px}
+
+    /* Sticker: marco de colores + tarjeta blanca + barra verde */
+    .sticker{position:relative;overflow:hidden;width:440px;border-radius:34px;background:#fff;padding:78px 26px 0;box-shadow:0 10px 34px rgba(0,0,0,.14)}
+
+    /* Blobs orgánicos del ADN Popper (arcos de color en el marco) */
+    .blob{position:absolute;border-radius:50%;z-index:0}
+    .b-pink  {width:230px;height:230px;background:var(--pink);  top:-118px;left:-84px}
+    .b-orange{width:200px;height:200px;background:var(--orange);top:-120px;left:118px}
+    .b-lime  {width:280px;height:280px;background:var(--lime);  top:-150px;right:-96px}
+    .b-coral {width:170px;height:170px;background:var(--coral); top:250px;left:-104px}
+    .b-green2{width:210px;height:210px;background:var(--green); top:200px;right:-118px}
+
+    /* Logo oficial ADN POPPER (arriba a la derecha, sobre la banda de color) */
+    .adn{position:absolute;top:22px;right:28px;z-index:3}
+    .adn img{display:block;height:54px;width:auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.12))}
+
+    /* Panel blanco central */
+    .panel{position:relative;z-index:2;background:#fff;border-radius:24px;padding:26px 24px 30px;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+    .t1{font-size:44px;font-weight:900;letter-spacing:-.01em;color:#1a1a1a;line-height:1}
+    .t2{font-size:16px;font-weight:800;letter-spacing:.16em;color:#1a1a1a;margin-top:6px}
+
+    /* Marco rojo del QR (estilo ADN Popper) */
+    .qr-frame{margin:22px auto 0;width:264px;height:264px;border:9px solid var(--tomato);border-radius:34px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(232,69,31,.18)}
+    .qr-frame img{display:block;width:224px;height:224px}
+
+    .tag{font-size:20px;font-weight:800;color:#1a1a1a;line-height:1.25;margin-top:22px}
+    .tag .v{color:var(--blue)} .tag .o{color:var(--tomato)} .tag .s{color:var(--green)}
+
+    .name{font-size:21px;font-weight:900;letter-spacing:-.02em;margin-top:18px}
+    .address{font-size:13px;color:#8a8a8a;margin-top:3px}
+
+    /* Barra verde inferior con los logos de los comercios del grupo (bandeja blanca) */
+    .bar{position:relative;z-index:2;margin:24px -26px 0;background:var(--green);padding:13px 16px;display:flex;align-items:center;justify-content:center}
+    .bar .tray{width:100%;background:#fff;border-radius:14px;padding:9px 18px;display:flex;align-items:center;justify-content:center}
+    .bar .tray img{display:block;width:100%;max-width:356px;height:auto}
+
+    /* Instructivo interno (no forma parte de la tarjeta de marca) */
+    .intern{width:440px;margin-top:20px;padding:16px 18px;border:1px dashed #d4d4d4;border-radius:14px}
+    .intern .h{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#a3a3a3;margin-bottom:12px}
+    .steps{display:flex;flex-direction:column;gap:9px;margin-bottom:14px}
     .step{display:flex;align-items:flex-start;gap:10px;font-size:12.5px;color:#555;line-height:1.5}
-    .num{min-width:22px;height:22px;background:#111;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px}
-    .url{font-family:monospace;font-size:10px;color:#aaa;text-align:center;word-break:break-all;padding:8px 12px;background:#f5f5f5;border-radius:8px;width:100%}
-    .badge{display:inline-block;padding:3px 10px;background:#111;color:#fff;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-top:16px}
-    @media print{body{padding:16px}.card{border:1.5px solid #111}}
+    .num{min-width:21px;height:21px;background:var(--green);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;margin-top:1px}
+    .url{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;color:#9a9a9a;text-align:center;word-break:break-all;padding:8px 12px;background:#f6f6f6;border-radius:8px}
+
+    @page{margin:10mm}
+    @media print{body{padding:0;min-height:auto}.sticker{box-shadow:none}.intern{display:none}}
   </style>
 </head>
 <body>
-  <div class="card">
-    <p class="brand">Grupo Popper · Sistema de Beneficios</p>
-    <div class="qr-wrap">
-      <img src="${qrImg}" alt="QR ${comercio.nombre}"/>
+  <div class="sticker">
+    <span class="blob b-pink"></span>
+    <span class="blob b-orange"></span>
+    <span class="blob b-lime"></span>
+    <span class="blob b-coral"></span>
+    <span class="blob b-green2"></span>
+
+    <div class="adn"><img src="${window.location.origin}/logo-adn.png" alt="ADN Popper"/></div>
+
+    <div class="panel">
+      <h1 class="t1">ESCANEÁ</h1>
+      <p class="t2">Y ACCEDÉ A TU BENEFICIO</p>
+      <div class="qr-frame"><img src="${qrImg}" alt="QR ${comercio.nombre}"/></div>
+      <p class="tag">¡Disfrutá de todos los beneficios<br/>que tenemos para <span class="v">v</span><span class="o">o</span><span class="s">s</span>!</p>
+      <p class="name">${comercio.nombre}</p>
+      ${direccion ? `<p class="address">${direccion}</p>` : ''}
     </div>
-    <h1 class="name">${comercio.nombre}</h1>
-    ${comercio.direccion ? `<p class="address">${comercio.direccion}${comercio.ciudad ? ` · ${comercio.ciudad}` : ''}</p>` : '<div style="margin-bottom:24px"></div>'}
-    <hr/>
+
+    <div class="bar">
+      <div class="tray"><img src="${window.location.origin}/logos-grupo.png" alt="Popper Store · Popper Sports · Popper Outlet · El Distrito · Cape Horn · Cerro Castor"/></div>
+    </div>
+  </div>
+
+  <div class="intern">
+    <p class="h">Instructivo interno</p>
     <div class="steps">
       <div class="step"><div class="num">1</div><span>Abrí la URL en la tablet o escaneá el QR con tu teléfono.</span></div>
       <div class="step"><div class="num">2</div><span>El colaborador presenta su DNI físico al cajero.</span></div>
       <div class="step"><div class="num">3</div><span>El cajero ingresa el DNI y confirma el beneficio disponible.</span></div>
     </div>
     <p class="url">${qrUrl}</p>
-    <span class="badge">Solo uso interno</span>
   </div>
-  <script>window.onload=()=>{ setTimeout(()=>window.print(), 400); }</script>
+  <script>window.onload=()=>{ setTimeout(()=>window.print(), 500); }</script>
 </body>
 </html>`);
     pw.document.close();
@@ -1585,7 +1642,7 @@ export default function AdminDashboard({ token, user, onLogout }: {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
               {comercios.map((c: any) => {
                 const qrUrl = `${baseUrl}#/qr/${c.qr_code}`;
-                const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}&margin=12&color=ededee&bgcolor=16161a`;
+                const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qrUrl)}&margin=8&color=1a1a1a&bgcolor=ffffff`;
                 const copied = copiedQrId === c.id;
                 const handleCopy = () => {
                   navigator.clipboard?.writeText(qrUrl);
@@ -1627,13 +1684,18 @@ export default function AdminDashboard({ token, user, onLogout }: {
                       </span>
                     </div>
 
-                    {/* QR */}
+                    {/* QR — marco rojo ADN Popper sobre fondo blanco (igual que la tarjeta impresa) */}
                     <div style={{
                       padding: 20, display: 'flex', justifyContent: 'center',
                       background: 'var(--bg-canvas)',
                     }}>
-                      <div style={{ padding: 8, background: '#16161a', borderRadius: '10px' }}>
-                        <img src={qrImg} alt={`QR ${c.nombre}`} style={{ width: 200, height: 200, display: 'block' }} />
+                      <div style={{
+                        padding: 12, background: '#ffffff',
+                        border: '5px solid #E8451F', borderRadius: '18px',
+                        boxShadow: '0 4px 14px rgba(232,69,31,0.18)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <img src={qrImg} alt={`QR ${c.nombre}`} style={{ width: 190, height: 190, display: 'block' }} />
                       </div>
                     </div>
 
